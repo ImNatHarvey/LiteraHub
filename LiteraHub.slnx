@@ -1,4 +1,12 @@
 <Solution>
+  <Folder Name="/docs/">
+    <File Path="DECISIONS.md" />
+    <File Path="FILES.md" />
+    <File Path="OPEN_QUESTIONS.md" />
+    <File Path="PROGRESS.md" />
+    <File Path="PROJECT_BRIEF.md" />
+    <File Path="SCHEMA.md" />
+  </Folder>
   <Project Path="LiteraHub.Core/LiteraHub.Core.csproj" />
   <Project Path="LiteraHub.Data/LiteraHub.Data.csproj" />
   <Project Path="LiteraHub.Services/LiteraHub.Services.csproj" />
