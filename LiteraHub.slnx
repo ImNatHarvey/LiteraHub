@@ -1,11 +1,11 @@
 <Solution>
   <Folder Name="/docs/">
-    <File Path="DECISIONS.md" />
-    <File Path="FILES.md" />
-    <File Path="OPEN_QUESTIONS.md" />
-    <File Path="PROGRESS.md" />
-    <File Path="PROJECT_BRIEF.md" />
-    <File Path="SCHEMA.md" />
+    <File Path="docs/DECISIONS.md" />
+    <File Path="docs/FILES.md" />
+    <File Path="docs/OPEN_QUESTIONS.md" />
+    <File Path="docs/PROGRESS.md" />
+    <File Path="docs/PROJECT_BRIEF.md" />
+    <File Path="docs/SCHEMA.md" />
   </Folder>
   <Project Path="LiteraHub.Core/LiteraHub.Core.csproj" />
   <Project Path="LiteraHub.Data/LiteraHub.Data.csproj" />
