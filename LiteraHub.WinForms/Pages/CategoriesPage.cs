@@ -50,7 +50,6 @@ public sealed class CategoriesPage : ThemedUserControl
     private readonly Button _addButton = new()
     {
         Text = "+ Add Category",
-        Height = 38,
         Dock = DockStyle.Fill,
         FlatStyle = FlatStyle.Flat,
         Margin = new Padding(0, 4, 0, 4)
@@ -85,9 +84,8 @@ public sealed class CategoriesPage : ThemedUserControl
         BuildLayout();
         ConfigureGrid();
 
-        // CRUD is not implemented yet.
+        // Add action is not implemented yet.
         _addButton.Enabled = false;
-
         _addButton.Visible =
             _permissions.Can(Permission.CreateLookups);
 
@@ -219,30 +217,32 @@ public sealed class CategoriesPage : ThemedUserControl
             _toolbar.ColumnStyles.Clear();
             _toolbar.RowStyles.Clear();
 
+            // Always use one row.
+            _toolbar.ColumnCount = 2;
+            _toolbar.RowCount = 1;
+
+            _toolbar.RowStyles.Add(
+                new RowStyle(SizeType.Percent, 100));
+
+            _toolbar.ColumnStyles.Add(
+                new ColumnStyle(SizeType.Percent, 100));
+
             if (compact)
             {
-                _toolbar.ColumnCount = 1;
-                _toolbar.RowCount = 2;
-
+                // Compact icon-only button.
                 _toolbar.ColumnStyles.Add(
-                    new ColumnStyle(SizeType.Percent, 100));
-
-                _toolbar.RowStyles.Add(
-                    new RowStyle(SizeType.Absolute, 46));
-
-                _toolbar.RowStyles.Add(
-                    new RowStyle(SizeType.Absolute, 46));
+                    new ColumnStyle(SizeType.Absolute, 44));
 
                 _search.Margin =
-                    new Padding(0, 4, 0, 4);
+                    new Padding(0, 4, 8, 4);
 
                 _addButton.Margin =
                     new Padding(0, 4, 0, 4);
 
-                _toolbar.Controls.Add(_search, 0, 0);
-                _toolbar.Controls.Add(_addButton, 0, 1);
+                _addButton.Text = "+";
+                _addButton.AccessibleName = "Add Category";
 
-                _layout.RowStyles[1].Height = 100;
+                _layout.RowStyles[1].Height = 56;
 
                 _grid.AutoSizeColumnsMode =
                     DataGridViewAutoSizeColumnsMode.None;
@@ -253,17 +253,8 @@ public sealed class CategoriesPage : ThemedUserControl
             }
             else
             {
-                _toolbar.ColumnCount = 2;
-                _toolbar.RowCount = 1;
-
-                _toolbar.ColumnStyles.Add(
-                    new ColumnStyle(SizeType.Percent, 100));
-
                 _toolbar.ColumnStyles.Add(
                     new ColumnStyle(SizeType.Absolute, 160));
-
-                _toolbar.RowStyles.Add(
-                    new RowStyle(SizeType.Percent, 100));
 
                 _search.Margin =
                     new Padding(0, 4, 12, 4);
@@ -271,20 +262,36 @@ public sealed class CategoriesPage : ThemedUserControl
                 _addButton.Margin =
                     new Padding(0, 4, 0, 4);
 
-                _toolbar.Controls.Add(_search, 0, 0);
-                _toolbar.Controls.Add(_addButton, 1, 0);
+                _addButton.Text = "+ Add Category";
+                _addButton.AccessibleName = "Add Category";
 
                 _layout.RowStyles[1].Height = 56;
 
                 _grid.AutoSizeColumnsMode =
                     DataGridViewAutoSizeColumnsMode.Fill;
             }
+
+            _toolbar.Controls.Add(_search, 0, 0);
+            _toolbar.Controls.Add(_addButton, 1, 0);
+
+            ApplyAddButtonFont();
         }
         finally
         {
             _toolbar.ResumeLayout(true);
             _layout.ResumeLayout(true);
         }
+    }
+
+    private void ApplyAddButtonFont()
+    {
+        _addButton.Font = _compact
+            ? new Font(
+                "Segoe UI",
+                18f,
+                FontStyle.Regular,
+                GraphicsUnit.Point)
+            : Theme.BodyStrong;
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -368,13 +375,13 @@ public sealed class CategoriesPage : ThemedUserControl
         _status.ForeColor = c.TextMuted;
         _status.Font = Theme.Caption;
 
-        // Search field manages its own theme.
         _search.BackColor = c.Surface;
 
         _addButton.BackColor = c.Accent;
         _addButton.ForeColor = c.OnAccent;
-        _addButton.Font = Theme.BodyStrong;
         _addButton.FlatAppearance.BorderSize = 0;
+
+        ApplyAddButtonFont();
 
         _grid.ApplyTheme();
 
