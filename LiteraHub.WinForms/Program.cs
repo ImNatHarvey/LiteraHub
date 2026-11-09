@@ -1,9 +1,11 @@
+
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
 using LiteraHub.Core.Settings;
 using LiteraHub.Data;
 using LiteraHub.Data.Bootstrap;
 using LiteraHub.Data.Repositories;
+using LiteraHub.Services.Categories;
 using LiteraHub.Services.Security;
 using LiteraHub.WinForms.Forms;
 using Microsoft.Extensions.Configuration;
@@ -34,47 +36,79 @@ internal static class Program
                 Name = config["Database:Name"] ?? "LiteraHub"
             };
 
-            bootstrap = Task.Run(() => DatabaseBootstrapper.RunAsync(options, hasher))
-                .GetAwaiter().GetResult();
+            bootstrap = Task.Run(() =>
+                    DatabaseBootstrapper.RunAsync(options, hasher))
+                .GetAwaiter()
+                .GetResult();
         }
         catch (DatabaseBootstrapException ex)
         {
-            MessageBox.Show(ex.Message, "LiteraHub: database error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(
+                ex.Message,
+                "LiteraHub: database error",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
             return;
         }
         catch (Exception ex)
         {
             MessageBox.Show(
-                ex.Message + "\n\nIf this says appsettings.json was not found, set its 'Copy to Output Directory' to 'Copy if newer'.",
-                "LiteraHub: startup error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ex.Message +
+                "\n\nIf this says appsettings.json was not found, " +
+                "set its 'Copy to Output Directory' to 'Copy if newer'.",
+                "LiteraHub: startup error",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
             return;
         }
 
-        // Composition root: the only place that wires concrete classes together.
+        // Composition root: concrete dependencies are created here.
+        var connectionFactory =
+            new SqlConnectionFactory(bootstrap.ConnectionString);
+
         var session = new SessionContext();
-        var users = new UserRepository(new SqlConnectionFactory(bootstrap.ConnectionString));
         var permissions = new PermissionService(session);
+        var users = new UserRepository(connectionFactory);
         var auth = new AuthService(users, hasher, session);
 
-        RunSessions(auth, permissions, session);
+        // Categories: repository -> service.
+        var categoryRepository =
+            new CategoryRepository(connectionFactory);
+
+        ICategoryService categories =
+            new CategoryService(categoryRepository, permissions);
+
+        RunSessions(auth, permissions, session, categories);
     }
 
-    private static void RunSessions(IAuthService auth, IPermissionService permissions, ISessionContext session)
+    private static void RunSessions(
+        IAuthService auth,
+        IPermissionService permissions,
+        ISessionContext session,
+        ICategoryService categories)
     {
         while (true)
         {
             AuthResult? login;
+
             using (var loginForm = new LoginForm(auth))
             {
-                if (loginForm.ShowDialog() != DialogResult.OK) return;
+                if (loginForm.ShowDialog() != DialogResult.OK)
+                    return;
+
                 login = loginForm.Result;
             }
 
-            if (login?.Session is null) return;
+            if (login?.Session is null)
+                return;
 
             if (login.MustChangePassword)
             {
-                using var change = new ChangePasswordForm(auth, login.Session.UserId, login.Session.Username);
+                using var change = new ChangePasswordForm(
+                    auth,
+                    login.Session.UserId,
+                    login.Session.Username);
+
                 if (change.ShowDialog() != DialogResult.OK)
                 {
                     auth.Logout();
@@ -82,11 +116,18 @@ internal static class Program
                 }
             }
 
-            using var shell = new ShellForm(session, permissions, auth);
+            // The Categories UI is not connected yet.
+            // Keep the existing shell constructor unchanged.
+            using var shell = new ShellForm(
+                session,
+                permissions,
+                auth);
+
             shell.ShowDialog();
             auth.Logout();
 
-            if (!shell.LoggedOut) return;
+            if (!shell.LoggedOut)
+                return;
         }
     }
 }
