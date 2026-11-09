@@ -2,9 +2,9 @@
 # LiteraHub — Development Progress
 
 **Last updated:** 2026-11-10
-**Current phase:** Enhancement checkpoint P1
+**Current phase:** Enhancement checkpoint P4
 **Paused implementation:** Step 5A.4B
-**Next implementation:** Nine-preset theme system
+**Next implementation:** Categories navigation and database loading
 
 ## 1. Completed Milestones
 
@@ -42,10 +42,10 @@ GitHub source verification does not constitute runtime testing.
 
 | Step | Description | Status |
 |---|---|---|
-| P1 | Document new product goals and theme presets | In progress |
-| P2 | Implement nine-preset theme engine | Pending |
-| P3 | Theme selector and local persistence | Pending |
-| P4 | Theme regression testing | Pending |
+| P1 | Document new product goals and theme presets | Completed |
+| P2 | Implement nine-preset theme engine | Tested — developer |
+| P3 | Theme selector and local persistence | Tested — developer |
+| P4 | Theme regression testing | Pending final verification |
 
 After P4, resume Step 5A.4B.
 
@@ -128,6 +128,11 @@ See ENHANCEMENT_ROADMAP.md.
   investigation; no confirmed runtime bug.
 - Dark native-control compatibility on Windows 10
   remains unverified.
+- Login and password-change forms have not yet
+  been redesigned for the nine-preset theme system.
+- Application appearance is saved locally per
+  Windows profile, not per LiteraHub account.
+- Reader appearance preferences remain planned.
 
 ## 8. Development Rules
 
