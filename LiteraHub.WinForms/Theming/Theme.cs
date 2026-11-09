@@ -1,9 +1,27 @@
-﻿namespace LiteraHub.WinForms.Theming;
+﻿
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+
+namespace LiteraHub.WinForms.Theming;
 
 public enum ThemeMode
 {
     Light,
     Dark
+}
+
+public enum ThemePreset
+{
+    ClassicLight,
+    MidnightLibrary,
+    SepiaPaper,
+    ForestScholar,
+    SlateAndTeal,
+    LavenderDusk,
+    OceanBreeze,
+    Rosewood,
+    Graphite
 }
 
 public sealed class Palette
@@ -24,7 +42,6 @@ public sealed class Palette
     public required Color PillBadText { get; init; }
 }
 
-// Spacing scale in design pixels at 96 DPI.
 public static class Space
 {
     public const int XS = 4;
@@ -42,63 +59,163 @@ public static class Radius
 
 public static class Theme
 {
-    private static Color H(string hex) => ColorTranslator.FromHtml(hex);
+    private static Color H(string hex) =>
+        ColorTranslator.FromHtml(hex);
 
-    private static readonly Palette Light = new()
+    private static Palette MakePalette(
+        string background,
+        string surface,
+        string surfaceAlt,
+        string border,
+        string text,
+        string muted,
+        string accent,
+        string onAccent,
+        string accentSoft,
+        bool dark)
     {
-        Background = H("#FAF8F4"),
-        Surface = H("#FFFFFF"),
-        SurfaceAlt = H("#F1EEE8"),
-        Border = H("#E4E0D8"),
-        Text = H("#1F2328"),
-        TextMuted = H("#5F6670"),
-        Accent = H("#B45309"),
-        OnAccent = H("#FFFFFF"),
-        AccentSoft = H("#FBEBD7"),
-        Danger = H("#B42318"),
-        PillGoodBack = H("#DCFCE7"),
-        PillGoodText = H("#166534"),
-        PillBadBack = H("#FEE2E2"),
-        PillBadText = H("#991B1B")
-    };
+        return new Palette
+        {
+            Background = H(background),
+            Surface = H(surface),
+            SurfaceAlt = H(surfaceAlt),
+            Border = H(border),
+            Text = H(text),
+            TextMuted = H(muted),
+            Accent = H(accent),
+            OnAccent = H(onAccent),
+            AccentSoft = H(accentSoft),
 
-    private static readonly Palette Dark = new()
-    {
-        Background = H("#16181D"),
-        Surface = H("#1E2127"),
-        SurfaceAlt = H("#2A2E36"),
-        Border = H("#353A44"),
-        Text = H("#E8E6E1"),
-        TextMuted = H("#A0A6B0"),
-        Accent = H("#F59E0B"),
-        OnAccent = H("#1A1A1A"),
-        AccentSoft = H("#3A2E17"),
-        Danger = H("#F97066"),
-        PillGoodBack = H("#14532D"),
-        PillGoodText = H("#BBF7D0"),
-        PillBadBack = H("#7F1D1D"),
-        PillBadText = H("#FECACA")
-    };
+            Danger = H(dark ? "#FF8F89" : "#B42318"),
+            PillGoodBack = H(dark ? "#204B39" : "#DCFCE7"),
+            PillGoodText = H(dark ? "#BDF3D2" : "#166534"),
+            PillBadBack = H(dark ? "#5B2930" : "#FEE2E2"),
+            PillBadText = H(dark ? "#FFD0D0" : "#991B1B")
+        };
+    }
 
-    public static ThemeMode Mode { get; private set; } = ThemeMode.Light;
+    private static readonly IReadOnlyDictionary<ThemePreset, Palette>
+        Palettes = new Dictionary<ThemePreset, Palette>
+        {
+            [ThemePreset.ClassicLight] = MakePalette(
+                "#FAFAF8", "#FFFFFF", "#F0F2F5",
+                "#D8DFE8", "#242B35", "#596678",
+                "#536C9B", "#FFFFFF", "#E1E9F7", false),
 
-    public static Palette Colors { get; private set; } = Light;
+            [ThemePreset.MidnightLibrary] = MakePalette(
+                "#171C29", "#232B3B", "#2D374A",
+                "#3A455A", "#E9EDF7", "#A9B6CC",
+                "#8BA4F5", "#171C29", "#303D61", true),
 
-    // Raised on the UI thread after the mode changes.
+            [ThemePreset.SepiaPaper] = MakePalette(
+                "#F4E8D1", "#FAF0DD", "#E8D8BD",
+                "#D0BFA5", "#483C30", "#73604C",
+                "#8B6746", "#FFFFFF", "#E6D1B5", false),
+
+            [ThemePreset.ForestScholar] = MakePalette(
+                "#17231F", "#24352E", "#30463B",
+                "#405B4C", "#E6F0E9", "#A9C5B4",
+                "#83B89B", "#14241B", "#355746", true),
+
+            [ThemePreset.SlateAndTeal] = MakePalette(
+                "#181F28", "#263340", "#304453",
+                "#405766", "#E8F0F2", "#ADC4CC",
+                "#57C2BE", "#102628", "#244F55", true),
+
+            [ThemePreset.LavenderDusk] = MakePalette(
+                "#242034", "#342D48", "#413859",
+                "#574B70", "#F0EAF9", "#C5B9DA",
+                "#C2A9F5", "#241C36", "#4C3D70", true),
+
+            [ThemePreset.OceanBreeze] = MakePalette(
+                "#EAF4F8", "#F7FCFE", "#DCEEF5",
+                "#B8D4E1", "#233E50", "#547083",
+                "#287A9A", "#FFFFFF", "#CBE8F1", false),
+
+            [ThemePreset.Rosewood] = MakePalette(
+                "#2D2028", "#3D2C35", "#4C3642",
+                "#664858", "#F8E9EF", "#D4B5C3",
+                "#E7A3B8", "#301C27", "#614051", true),
+
+            [ThemePreset.Graphite] = MakePalette(
+                "#1C1E22", "#2A2D33", "#363A42",
+                "#484E59", "#F0F2F5", "#B6C0CD",
+                "#B5C0D0", "#20242B", "#414957", true)
+        };
+
+    public static ThemePreset Preset { get; private set; } =
+        ThemePreset.ClassicLight;
+
+    public static ThemeMode Mode { get; private set; } =
+        ThemeMode.Light;
+
+    public static Palette Colors { get; private set; } =
+        Palettes[ThemePreset.ClassicLight];
+
     public static event EventHandler? Changed;
 
-    public static void SetMode(ThemeMode mode)
+    public static IReadOnlyList<ThemePreset> AvailablePresets { get; } =
+        Array.AsReadOnly(Enum.GetValues<ThemePreset>());
+
+    public static string GetDisplayName(ThemePreset preset) =>
+        preset switch
+        {
+            ThemePreset.ClassicLight => "Classic Light",
+            ThemePreset.MidnightLibrary => "Midnight Library",
+            ThemePreset.SepiaPaper => "Sepia Paper",
+            ThemePreset.ForestScholar => "Forest Scholar",
+            ThemePreset.SlateAndTeal => "Slate & Teal",
+            ThemePreset.LavenderDusk => "Lavender Dusk",
+            ThemePreset.OceanBreeze => "Ocean Breeze",
+            ThemePreset.Rosewood => "Rosewood",
+            ThemePreset.Graphite => "Graphite",
+            _ => preset.ToString()
+        };
+
+    public static ThemeMode GetMode(ThemePreset preset) =>
+        preset is ThemePreset.ClassicLight
+            or ThemePreset.SepiaPaper
+            or ThemePreset.OceanBreeze
+            ? ThemeMode.Light
+            : ThemeMode.Dark;
+
+    public static void SetPreset(ThemePreset preset)
     {
-        if (mode == Mode) return;
-        Mode = mode;
-        Colors = mode == ThemeMode.Dark ? Dark : Light;
+        if (!Palettes.TryGetValue(preset, out var palette))
+            throw new ArgumentOutOfRangeException(nameof(preset));
+
+        if (Preset == preset)
+            return;
+
+        Preset = preset;
+        Mode = GetMode(preset);
+        Colors = palette;
         Changed?.Invoke(null, EventArgs.Empty);
     }
 
-    // Type scale: a small fixed set, shared and never disposed.
-    public static Font Caption { get; } = new("Segoe UI", 9f);
-    public static Font Body { get; } = new("Segoe UI", 10f);
-    public static Font BodyStrong { get; } = new("Segoe UI", 10f, FontStyle.Bold);
-    public static Font Title { get; } = new("Segoe UI", 14f, FontStyle.Bold);
-    public static Font Display { get; } = new("Segoe UI", 20f, FontStyle.Bold);
+    // Compatibility with existing Light/Dark callers.
+    public static void SetMode(ThemeMode mode)
+    {
+        if (!Enum.IsDefined(mode))
+            throw new ArgumentOutOfRangeException(nameof(mode));
+
+        SetPreset(mode == ThemeMode.Dark
+            ? ThemePreset.MidnightLibrary
+            : ThemePreset.ClassicLight);
+    }
+
+    public static Font Caption { get; } =
+        new("Segoe UI", 9f);
+
+    public static Font Body { get; } =
+        new("Segoe UI", 10f);
+
+    public static Font BodyStrong { get; } =
+        new("Segoe UI", 10f, FontStyle.Bold);
+
+    public static Font Title { get; } =
+        new("Segoe UI", 14f, FontStyle.Bold);
+
+    public static Font Display { get; } =
+        new("Segoe UI", 20f, FontStyle.Bold);
 }

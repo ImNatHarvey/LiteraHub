@@ -8,6 +8,7 @@ using LiteraHub.Data.Repositories;
 using LiteraHub.Services.Categories;
 using LiteraHub.Services.Security;
 using LiteraHub.WinForms.Forms;
+using LiteraHub.WinForms.Theming;
 using Microsoft.Extensions.Configuration;
 
 namespace LiteraHub.WinForms;
@@ -18,6 +19,9 @@ internal static class Program
     static void Main()
     {
         ApplicationConfiguration.Initialize();
+
+        // Restore the saved appearance before creating forms.
+        ThemePreferences.Load();
 
         BootstrapResult bootstrap;
         var hasher = new BcryptPasswordHasher();

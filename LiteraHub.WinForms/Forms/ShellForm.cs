@@ -114,31 +114,76 @@ public sealed class ShellForm : Form
         if (_pages.Count > 0) ShowPage(_pages[0].Key);
     }
 
+
     private void BuildDemoMenu()
     {
         var sizeMenu = new ToolStripMenuItem("Window size");
+
         foreach (var (label, w, h) in new[]
                  {
-                     ("1920 x 1080", 1920, 1080),
-                     ("1280 x 720 (primary)", 1280, 720),
-                     ("390 x 844 (portrait)", 390, 844)
-                 })
+                 ("1920 x 1080", 1920, 1080),
+                 ("1280 x 720 (primary)", 1280, 720),
+                 ("390 x 844 (portrait)", 390, 844)
+             })
         {
             var item = new ToolStripMenuItem(label);
-            item.Click += (_, _) => ApplyWindowSize(w, h);
+
+            item.Click += (_, _) =>
+                ApplyWindowSize(w, h);
+
             sizeMenu.DropDownItems.Add(item);
         }
 
-        var themeMenu = new ToolStripMenuItem("Theme");
-        var light = new ToolStripMenuItem("Light");
-        light.Click += (_, _) => Theme.SetMode(ThemeMode.Light);
-        var dark = new ToolStripMenuItem("Dark");
-        dark.Click += (_, _) => Theme.SetMode(ThemeMode.Dark);
-        themeMenu.DropDownItems.AddRange(new ToolStripItem[] { light, dark });
+        var themeMenu = new ToolStripMenuItem("Appearance");
 
-        _demoMenu.Items.AddRange(new ToolStripItem[] { sizeMenu, themeMenu });
-        _demoButton.Click += (_, _) => _demoMenu.Show(_demoButton, new Point(0, _demoButton.Height));
+        var themeItems =
+            new Dictionary<ThemePreset, ToolStripMenuItem>();
+
+        foreach (var preset in Theme.AvailablePresets)
+        {
+            var item = new ToolStripMenuItem(
+                Theme.GetDisplayName(preset));
+
+            item.Click += (_, _) =>
+            {
+                Theme.SetPreset(preset);
+
+                if (!ThemePreferences.TrySave(out var error))
+                {
+                    MessageBox.Show(
+                        "The theme was applied, but could not be saved." +
+                        Environment.NewLine + error,
+                        "LiteraHub: appearance settings",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                }
+            };
+
+            themeItems.Add(preset, item);
+            themeMenu.DropDownItems.Add(item);
+        }
+
+        themeMenu.DropDownOpening += (_, _) =>
+        {
+            foreach (var (preset, item) in themeItems)
+            {
+                item.Checked = preset == Theme.Preset;
+            }
+        };
+
+        _demoMenu.Items.AddRange(
+            new ToolStripItem[]
+            {
+            sizeMenu,
+            themeMenu
+            });
+
+        _demoButton.Click += (_, _) =>
+            _demoMenu.Show(
+                _demoButton,
+                new Point(0, _demoButton.Height));
     }
+
 
     private int Px(int designPixels) => (int)Math.Round(designPixels * DeviceDpi / 96f);
 
