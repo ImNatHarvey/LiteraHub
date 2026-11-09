@@ -18,3 +18,14 @@
 - ReaLTaiizor and icon package deferred to Step 4 (verify .NET 10 compatibility first).
 - - SQL Server: Express (.\SQLEXPRESS) is the primary server; LocalDB is only the fallback because the LocalDB tool was not found on the dev PC.
 - Added explicit System.Security.Cryptography.Pkcs (patched, 10.0.13 or higher) to LiteraHub.Data to fix NU1902/NU1903 warnings from a vulnerable transitive 9.0.18 (CVE-2026-84008).
+
+## 2026-11-09 (Step 3)
+- Borrower accounts cannot sign in during the MVP (AuthService.BorrowerPortalEnabled = false); portal is bonus.
+- Admin has every permission. Librarian: ViewCatalog, ManageBooks, ManageStudents, CreateLookups, ProcessBorrowReturn, ViewReports. Borrower: ViewCatalog, ViewOwnLoans.
+- Added CreateLookups (inline create from forms) separate from ManageLookups (edit/archive, Admin only) to reconcile "Admin manages lookups" with "create on the fly".
+- Permissions are enforced in the service layer via IPermissionService.Demand (throws PermissionDeniedException); UI only hides buttons.
+- Login failure messages are generic; a dummy BCrypt check runs for unknown users to avoid timing leaks.
+- Password policy: 8-72 characters, at least one letter and one number, different from current, not equal to username. (72 because BCrypt ignores bytes beyond that.)
+- Forced password change for the seeded admin; completing it signs the user in.
+- No login lockout in the MVP (see OPEN_QUESTIONS).
+- Composition root is Program.cs (manual wiring, no DI container).

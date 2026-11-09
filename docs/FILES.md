@@ -13,4 +13,19 @@ C:\Dev\LiteraHub\
 - LiteraHub.Services\: business rules (empty)
 - LiteraHub.WinForms\: UI
   - appsettings.json: database server and name
-  - Form1.cs / Program.cs: template defaults, to be replaced
+- LiteraHub.Core\Models\UserModels.cs: UserAccount, UserSession
+- LiteraHub.Core\Models\ResultModels.cs: ServiceResult, AuthFailure, AuthResult
+- LiteraHub.Core\Security\AccessControl.cs: RoleNames, Permission enum, PermissionDeniedException
+- LiteraHub.Core\Interfaces\IDbConnectionFactory.cs: creates unopened DbConnection
+- LiteraHub.Core\Interfaces\IUserRepository.cs: user lookup and password update contract
+- LiteraHub.Core\Interfaces\IAuthServices.cs: ISessionContext, IPermissionService, IAuthService
+- LiteraHub.Data\SqlConnectionFactory.cs: SqlConnection factory from the bootstrap connection string
+- LiteraHub.Data\Repositories\UserRepository.cs: Dapper user queries
+- LiteraHub.Services\Security\PasswordPolicy.cs: password rules
+- LiteraHub.Services\Security\SessionContext.cs: holds the signed-in UserSession
+- LiteraHub.Services\Security\PermissionService.cs: role-to-permission matrix, Can/Demand
+- LiteraHub.Services\Security\AuthService.cs: login, change password, logout
+- LiteraHub.WinForms\Forms\LoginForm.cs: login window (code-built)
+- LiteraHub.WinForms\Forms\ChangePasswordForm.cs: forced password change window
+- LiteraHub.WinForms\Forms\ShellForm.cs: placeholder shell (shows role and permissions), replaced in Step 4
+- LiteraHub.WinForms\Program.cs: bootstrap, manual wiring, login/shell loop

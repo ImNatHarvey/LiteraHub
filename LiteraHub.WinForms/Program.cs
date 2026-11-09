@@ -1,6 +1,11 @@
+using LiteraHub.Core.Interfaces;
+using LiteraHub.Core.Models;
 using LiteraHub.Core.Settings;
+using LiteraHub.Data;
 using LiteraHub.Data.Bootstrap;
+using LiteraHub.Data.Repositories;
 using LiteraHub.Services.Security;
+using LiteraHub.WinForms.Forms;
 using Microsoft.Extensions.Configuration;
 
 namespace LiteraHub.WinForms;
@@ -11,6 +16,9 @@ internal static class Program
     static void Main()
     {
         ApplicationConfiguration.Initialize();
+
+        BootstrapResult bootstrap;
+        var hasher = new BcryptPasswordHasher();
 
         try
         {
@@ -26,20 +34,8 @@ internal static class Program
                 Name = config["Database:Name"] ?? "LiteraHub"
             };
 
-            var result = Task.Run(() => DatabaseBootstrapper.RunAsync(options, new BcryptPasswordHasher()))
+            bootstrap = Task.Run(() => DatabaseBootstrapper.RunAsync(options, hasher))
                 .GetAwaiter().GetResult();
-
-            var applied = result.AppliedVersions.Count == 0
-                ? "none (already up to date)"
-                : string.Join(", ", result.AppliedVersions);
-
-            MessageBox.Show(
-                $"Server: {result.ServerUsed}\n" +
-                $"Migrations applied now: {applied}\n" +
-                $"Tables: {result.Summary.TableCount} | Roles: {result.Summary.RoleCount} | " +
-                $"Statuses: {result.Summary.StatusCount} | Categories: {result.Summary.CategoryCount} | " +
-                $"Users: {result.Summary.UserCount}",
-                "LiteraHub: database ready");
         }
         catch (DatabaseBootstrapException ex)
         {
@@ -54,6 +50,43 @@ internal static class Program
             return;
         }
 
-        Application.Run(new Form1());
+        // Composition root: the only place that wires concrete classes together.
+        var session = new SessionContext();
+        var users = new UserRepository(new SqlConnectionFactory(bootstrap.ConnectionString));
+        var permissions = new PermissionService(session);
+        var auth = new AuthService(users, hasher, session);
+
+        RunSessions(auth, permissions, session);
+    }
+
+    private static void RunSessions(IAuthService auth, IPermissionService permissions, ISessionContext session)
+    {
+        while (true)
+        {
+            AuthResult? login;
+            using (var loginForm = new LoginForm(auth))
+            {
+                if (loginForm.ShowDialog() != DialogResult.OK) return;
+                login = loginForm.Result;
+            }
+
+            if (login?.Session is null) return;
+
+            if (login.MustChangePassword)
+            {
+                using var change = new ChangePasswordForm(auth, login.Session.UserId, login.Session.Username);
+                if (change.ShowDialog() != DialogResult.OK)
+                {
+                    auth.Logout();
+                    continue;
+                }
+            }
+
+            using var shell = new ShellForm(session, permissions, auth);
+            shell.ShowDialog();
+            auth.Logout();
+
+            if (!shell.LoggedOut) return;
+        }
     }
 }
