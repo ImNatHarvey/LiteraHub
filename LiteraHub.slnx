@@ -1,13 +1,13 @@
 <Solution>
   <Folder Name="/docs/">
     <File Path="docs/DECISIONS.md" />
+    <File Path="docs/ENHANCEMENT_ROADMAP.md" />
     <File Path="docs/FILES.md" />
     <File Path="docs/OPEN_QUESTIONS.md" />
     <File Path="docs/PROGRESS.md" />
     <File Path="docs/PROJECT_BRIEF.md" />
     <File Path="docs/SCHEMA.md" />
     <File Path="docs/SESSION_HANDOFF.md" />
-    <File Path="ENHANCEMENT_ROADMAP.md" />
   </Folder>
   <Project Path="LiteraHub.Core/LiteraHub.Core.csproj" />
   <Project Path="LiteraHub.Data/LiteraHub.Data.csproj" />
