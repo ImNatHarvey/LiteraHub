@@ -1,4 +1,4 @@
-﻿# Decisions Log
+# Decisions Log
 
 ## 2026-11-08
 - Target .NET 10 (current LTS, supported to Nov 2028; .NET 8 reaches end of life 2026-11-10).

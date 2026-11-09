@@ -6,6 +6,7 @@
     <File Path="docs/PROGRESS.md" />
     <File Path="docs/PROJECT_BRIEF.md" />
     <File Path="docs/SCHEMA.md" />
+    <File Path="docs/SESSION_HANDOFF.md" />
   </Folder>
   <Project Path="LiteraHub.Core/LiteraHub.Core.csproj" />
   <Project Path="LiteraHub.Data/LiteraHub.Data.csproj" />
