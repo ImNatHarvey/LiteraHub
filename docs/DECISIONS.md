@@ -41,3 +41,13 @@
 - Navigation is filtered by IPermissionService; pages are placeholders until their steps.
 - Login/ChangePassword forms keep default styling until a later polish step.
 - Added a Users screen (Admin creates staff accounts) to Step 5; otherwise no way to create Librarian accounts.
+
+## 2026-11-09 (Step 4A fixes)
+- Page renamed "Borrow and Return" (the & in WinForms Text is a mnemonic marker and was swallowed). Set UseMnemonic = false on labels that may show user text later.
+- Table cells get Margin = Padding.Empty to remove the default 3px gaps.
+
+## 2026-11-09 (Step 4B result)
+- Tested 4 conditions on Windows 11 (build 26300): Application.SetColorMode(Dark) does NOT darken native scrollbars; SetWindowTheme "DarkMode_Explorer" DOES (DataGridView incl. its internal scrollbars, ListView, AutoScroll Panel); custom ThinScrollBar is identical everywhere.
+- Decision: tables use DataGridView + DarkMode_Explorer/Explorer by theme (NativeTheme helper and ThemedGrid built at the start of Step 5); card lists use ScrollHost + ThinScrollBar; Application.SetColorMode is not used.
+- ListView rejected: its header stays white in dark mode.
+- DarkMode_Explorer on Windows 10: UNVERIFIED; worst case a light scrollbar in dark mode.

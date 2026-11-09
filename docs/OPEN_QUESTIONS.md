@@ -12,3 +12,7 @@
 - Does WinForms auto-scale Padding/Margin/TableLayoutPanel sizes at 125%/150%? (4A test)
 - Does Application.SetColorMode work without the experimental warning in .NET 10, and does it darken scrollbars? (4B)
 - Context menu and title bar theming for dark mode (4B).
+- 4B result: which scrollbar technique is chosen (built-in dark mode / SetWindowTheme / custom ThinScrollBar)? Pending the 4-condition test.
+- DPI awareness column check in Task Manager skipped (Ctrl+Shift+Esc blocked); behavior at 125%/150% verified instead.
+- Dark title bar and context menu in dark theme: not handled yet (optional polish; DwmSetWindowAttribute is a candidate, UNVERIFIED).
+- DarkMode_Explorer on Windows 10 demo laptops: UNVERIFIED.

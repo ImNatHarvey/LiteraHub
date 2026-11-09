@@ -35,3 +35,5 @@ C:\Dev\LiteraHub\
 - LiteraHub.WinForms\Controls\SidebarNav.cs: permission-filtered sidebar (compact mode, selection, user + logout)
 - LiteraHub.WinForms\Pages\PlaceholderPage.cs: temporary page for modules not built yet
 - LiteraHub.WinForms\Forms\ShellForm.cs: real shell (sidebar, top bar, page host, demo menu); replaces the Step 3 placeholder
+- LiteraHub.WinForms\Controls\ThinScrollBar.cs: custom thin vertical scrollbar (painted, themed)
+- LiteraHub.WinForms\Controls\ScrollHost.cs: scrolls one content control using ThinScrollBar

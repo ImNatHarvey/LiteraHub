@@ -9,6 +9,7 @@
 6. Borrow/Return with auto-suggest: todo
 7. Four summary lists (export/print optional): todo
 8. Test checklist vs PROJECT_BRIEF, performance pass, release zip: todo
+9. Step 4 → 4A tested, 4B tested, 4C todo.
 
 ## Pinned NuGet versions
 - Dapper: 2.1.89 (Data)
