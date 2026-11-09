@@ -37,3 +37,7 @@ C:\Dev\LiteraHub\
 - LiteraHub.WinForms\Forms\ShellForm.cs: real shell (sidebar, top bar, page host, demo menu); replaces the Step 3 placeholder
 - LiteraHub.WinForms\Controls\ThinScrollBar.cs: custom thin vertical scrollbar (painted, themed)
 - LiteraHub.WinForms\Controls\ScrollHost.cs: scrolls one content control using ThinScrollBar
+- LiteraHub.WinForms\Theming\Gfx.cs: rounded rectangle path, color mixing, spinner drawing
+- LiteraHub.WinForms\Controls\SkeletonView.cs: painted placeholder rows/cards with pulse
+- LiteraHub.WinForms\Controls\LoadingHost.cs: wraps content; RunAsync shows the skeleton after 150 ms
+- LiteraHub.WinForms\Controls\BusyButton.cs: accent button with spinner while an async action runs

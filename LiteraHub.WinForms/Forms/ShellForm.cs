@@ -174,8 +174,12 @@ public sealed class ShellForm : Form
         var page = _pages.FirstOrDefault(p => p.Key == key);
         if (page is null) return;
 
-        var next = new PlaceholderPage(page.Title, page.Note) { Dock = DockStyle.Fill };
+        SwapPage(new PlaceholderPage(page.Title, page.Note) { Dock = DockStyle.Fill }, page.Title);
+        _nav.SelectItem(page.Key);
+    }
 
+    private void SwapPage(Control next, string title)
+    {
         _host.SuspendLayout();
         _host.Controls.Add(next);
         if (_currentPage is not null)
@@ -186,8 +190,7 @@ public sealed class ShellForm : Form
         _currentPage = next;
         _host.ResumeLayout(performLayout: true);
 
-        _pageTitle.Text = page.Title;
-        _nav.SelectItem(page.Key);
+        _pageTitle.Text = title;
     }
 
     private void OnThemeChanged(object? sender, EventArgs e) => ApplyTheme();

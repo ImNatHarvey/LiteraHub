@@ -51,3 +51,9 @@
 - Decision: tables use DataGridView + DarkMode_Explorer/Explorer by theme (NativeTheme helper and ThemedGrid built at the start of Step 5); card lists use ScrollHost + ThinScrollBar; Application.SetColorMode is not used.
 - ListView rejected: its header stays white in dark mode.
 - DarkMode_Explorer on Windows 10: UNVERIFIED; worst case a light scrollbar in dark mode.
+
+## 2026-11-09 (Step 4C)
+- Loading states: LoadingHost shows a skeleton only if the work exceeds 150 ms, and keeps it at least 300 ms once shown. SkeletonView is custom-painted (rows/cards), pulses via a 60 ms timer that runs only while visible, and stays static when SystemInformation.UIEffectsEnabled is false (UNVERIFIED mapping to the Windows animation setting).
+- Actions use BusyButton (spinner + busy text, ignores clicks while busy) to prevent double submits.
+- Shared drawing helpers live in Theming/Gfx.cs (RoundedRect, Mix, DrawSpinner).
+- ShellForm.SwapPage(control, title) is the way to show any page in the host.
