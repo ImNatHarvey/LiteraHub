@@ -3,74 +3,118 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using LiteraHub.WinForms.Theming;
+using System.ComponentModel;
 
 namespace LiteraHub.WinForms.Controls;
 
-/// <summary>
-/// Reusable, theme-aware table for LiteraHub management screens.
-/// Uses native WinForms DataGridView rendering.
-/// </summary>
 public sealed class ThemedDataGridView : DataGridView
 {
+    private bool _readOnlyDisplayMode;
+
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool ReadOnlyDisplayMode
+    {
+        get => _readOnlyDisplayMode;
+        set
+        {
+            _readOnlyDisplayMode = value;
+            TabStop = !value;
+            ApplyTheme();
+
+            if (value)
+                ClearRowSelection();
+        }
+    }
+
     public ThemedDataGridView()
     {
-        // Rendering and interaction
         DoubleBuffered = true;
         ReadOnly = true;
         MultiSelect = false;
-        SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+        SelectionMode =
+            DataGridViewSelectionMode.FullRowSelect;
+
         AllowUserToAddRows = false;
         AllowUserToDeleteRows = false;
         AllowUserToResizeRows = false;
         RowHeadersVisible = false;
         AutoGenerateColumns = false;
 
-        // Layout
         Dock = DockStyle.Fill;
         BorderStyle = BorderStyle.None;
-        CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
-        ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
+        CellBorderStyle =
+            DataGridViewCellBorderStyle.SingleHorizontal;
+        ColumnHeadersBorderStyle =
+            DataGridViewHeaderBorderStyle.None;
         EnableHeadersVisualStyles = false;
-        AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+
+        AutoSizeColumnsMode =
+            DataGridViewAutoSizeColumnsMode.Fill;
+
         ColumnHeadersHeightSizeMode =
             DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+
         ColumnHeadersHeight = 44;
         RowTemplate.Height = 42;
 
-        // Behavior
         EditMode = DataGridViewEditMode.EditProgrammatically;
         ClipboardCopyMode =
             DataGridViewClipboardCopyMode.EnableWithoutHeaderText;
-        ShowCellToolTips = true;
-        BackgroundColor = Theme.Colors.Surface;
 
+        ShowCellToolTips = true;
+        ScrollBars = ScrollBars.Both;
         Font = Theme.Body;
 
         Theme.Changed += HandleThemeChanged;
+
         ApplyTheme();
     }
 
-    /// <summary>
-    /// Returns the currently selected data-bound object,
-    /// or null when no row is selected.
-    /// </summary>
     public T? GetSelectedItem<T>() where T : class
     {
         return CurrentRow?.DataBoundItem as T;
     }
 
-    /// <summary>
-    /// Clears any automatic row selection after binding data.
-    /// </summary>
     public void ClearRowSelection()
     {
         ClearSelection();
         CurrentCell = null;
     }
 
-    /// <summary>
-    /// Applies the current LiteraHub palette to the grid.
-    /// </summary>
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        NativeTheme.ApplyScrollBarTheme(this);
+    }
+
+    protected override void OnScroll(ScrollEventArgs e)
+    {
+        base.OnScroll(e);
+
+        if (_readOnlyDisplayMode && SelectedCells.Count > 0)
+            ClearSelection();
+    }
+
+    protected override void OnSelectionChanged(EventArgs e)
+    {
+        base.OnSelectionChanged(e);
+
+        if (_readOnlyDisplayMode && SelectedCells.Count > 0)
+            ClearSelection();
+    }
+
+    protected override void OnCellMouseDown(
+        DataGridViewCellMouseEventArgs e)
+    {
+        if (_readOnlyDisplayMode && e.RowIndex >= 0)
+        {
+            ClearRowSelection();
+            return;
+        }
+
+        base.OnCellMouseDown(e);
+    }
+
     public void ApplyTheme()
     {
         if (IsDisposed || Disposing)
@@ -91,49 +135,62 @@ public sealed class ThemedDataGridView : DataGridView
             {
                 BackColor = c.Surface,
                 ForeColor = c.Text,
-                SelectionBackColor = c.AccentSoft,
+                SelectionBackColor = _readOnlyDisplayMode
+                    ? c.Surface
+                    : c.AccentSoft,
                 SelectionForeColor = c.Text,
                 Font = Theme.Body,
                 Padding = new Padding(10, 4, 10, 4),
-                Alignment = DataGridViewContentAlignment.MiddleLeft
+                Alignment =
+                    DataGridViewContentAlignment.MiddleLeft
             };
 
-            AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle
-            {
-                BackColor = c.SurfaceAlt,
-                ForeColor = c.Text,
-                SelectionBackColor = c.AccentSoft,
-                SelectionForeColor = c.Text,
-                Font = Theme.Body
-            };
+            AlternatingRowsDefaultCellStyle =
+                new DataGridViewCellStyle
+                {
+                    BackColor = c.SurfaceAlt,
+                    ForeColor = c.Text,
+                    SelectionBackColor = _readOnlyDisplayMode
+                        ? c.SurfaceAlt
+                        : c.AccentSoft,
+                    SelectionForeColor = c.Text,
+                    Font = Theme.Body
+                };
 
-            ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
-            {
-                BackColor = c.SurfaceAlt,
-                ForeColor = c.Text,
-                SelectionBackColor = c.SurfaceAlt,
-                SelectionForeColor = c.Text,
-                Font = Theme.BodyStrong,
-                Padding = new Padding(10, 4, 10, 4),
-                Alignment = DataGridViewContentAlignment.MiddleLeft
-            };
+            ColumnHeadersDefaultCellStyle =
+                new DataGridViewCellStyle
+                {
+                    BackColor = c.SurfaceAlt,
+                    ForeColor = c.Text,
+                    SelectionBackColor = c.SurfaceAlt,
+                    SelectionForeColor = c.Text,
+                    Font = Theme.BodyStrong,
+                    Padding = new Padding(10, 4, 10, 4),
+                    Alignment =
+                        DataGridViewContentAlignment.MiddleLeft
+                };
 
-            RowHeadersDefaultCellStyle = new DataGridViewCellStyle
-            {
-                BackColor = c.SurfaceAlt,
-                ForeColor = c.Text,
-                SelectionBackColor = c.AccentSoft,
-                SelectionForeColor = c.Text
-            };
+            RowHeadersDefaultCellStyle =
+                new DataGridViewCellStyle
+                {
+                    BackColor = c.SurfaceAlt,
+                    ForeColor = c.Text,
+                    SelectionBackColor = c.SurfaceAlt,
+                    SelectionForeColor = c.Text
+                };
 
             RowsDefaultCellStyle.BackColor = c.Surface;
             RowsDefaultCellStyle.ForeColor = c.Text;
 
+            if (_readOnlyDisplayMode)
+                ClearRowSelection();
+
+            NativeTheme.ApplyScrollBarTheme(this);
             Invalidate();
         }
         finally
         {
-            ResumeLayout(performLayout: true);
+            ResumeLayout(true);
         }
     }
 
@@ -145,9 +202,7 @@ public sealed class ThemedDataGridView : DataGridView
     protected override void Dispose(bool disposing)
     {
         if (disposing)
-        {
             Theme.Changed -= HandleThemeChanged;
-        }
 
         base.Dispose(disposing);
     }

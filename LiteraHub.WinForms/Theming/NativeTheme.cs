@@ -1,16 +1,20 @@
 ﻿
 using System;
-using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace LiteraHub.WinForms.Theming;
 
-/// <summary>
-/// Applies the current LiteraHub palette to standard WinForms controls.
-/// Call Apply() when constructing a page and after theme changes.
-/// </summary>
 public static class NativeTheme
 {
+    [DllImport("uxtheme.dll",
+        CharSet = CharSet.Unicode,
+        ExactSpelling = true)]
+    private static extern int SetWindowTheme(
+        IntPtr hwnd,
+        string? subAppName,
+        string? subIdList);
+
     public static void Apply(Control root)
     {
         ArgumentNullException.ThrowIfNull(root);
@@ -18,8 +22,47 @@ public static class NativeTheme
         ApplyControl(root);
 
         foreach (Control child in root.Controls)
-        {
             Apply(child);
+    }
+
+    public static void ApplyScrollBarTheme(Control control)
+    {
+        if (control.IsDisposed || !control.IsHandleCreated)
+            return;
+
+        try
+        {
+            string? theme = Theme.Mode == ThemeMode.Dark
+                ? "DarkMode_Explorer"
+                : "Explorer";
+
+            SetWindowTheme(control.Handle, theme, null);
+
+            // DataGridView creates its own scrollbar controls.
+            // Apply the same theme to those child handles.
+            if (control is DataGridView grid)
+            {
+                foreach (Control child in grid.Controls)
+                {
+                    if (child is ScrollBar && child.IsHandleCreated)
+                    {
+                        SetWindowTheme(
+                            child.Handle,
+                            theme,
+                            null);
+                    }
+                }
+            }
+
+            control.Invalidate();
+        }
+        catch (DllNotFoundException)
+        {
+            // Keep native scrolling available.
+        }
+        catch (EntryPointNotFoundException)
+        {
+            // Unsupported Windows implementation.
         }
     }
 
@@ -47,11 +90,11 @@ public static class NativeTheme
                 numeric.BorderStyle = BorderStyle.FixedSingle;
                 break;
 
-            case DateTimePicker datePicker:
-                datePicker.CalendarMonthBackground = c.Surface;
-                datePicker.CalendarForeColor = c.Text;
-                datePicker.CalendarTitleBackColor = c.Accent;
-                datePicker.CalendarTitleForeColor = c.OnAccent;
+            case DateTimePicker picker:
+                picker.CalendarMonthBackground = c.Surface;
+                picker.CalendarForeColor = c.Text;
+                picker.CalendarTitleBackColor = c.Accent;
+                picker.CalendarTitleForeColor = c.OnAccent;
                 break;
 
             case CheckBox checkBox:
@@ -59,14 +102,17 @@ public static class NativeTheme
                 checkBox.ForeColor = c.Text;
                 break;
 
-            case RadioButton radioButton:
-                radioButton.BackColor = c.Background;
-                radioButton.ForeColor = c.Text;
+            case RadioButton radio:
+                radio.BackColor = c.Background;
+                radio.ForeColor = c.Text;
                 break;
 
             case Label label:
                 label.ForeColor = c.Text;
                 break;
         }
+
+        if (control is DataGridView or ScrollBar)
+            ApplyScrollBarTheme(control);
     }
 }

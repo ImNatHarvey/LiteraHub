@@ -20,7 +20,6 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
 
-        // Restore the saved appearance before creating forms.
         ThemePreferences.Load();
 
         BootstrapResult bootstrap;
@@ -35,13 +34,20 @@ internal static class Program
 
             var options = new DatabaseOptions
             {
-                Server = config["Database:Server"] ?? ".\\SQLEXPRESS",
-                FallbackServer = config["Database:FallbackServer"],
-                Name = config["Database:Name"] ?? "LiteraHub"
+                Server =
+                    config["Database:Server"] ?? ".\\SQLEXPRESS",
+
+                FallbackServer =
+                    config["Database:FallbackServer"],
+
+                Name =
+                    config["Database:Name"] ?? "LiteraHub"
             };
 
             bootstrap = Task.Run(() =>
-                    DatabaseBootstrapper.RunAsync(options, hasher))
+                    DatabaseBootstrapper.RunAsync(
+                        options,
+                        hasher))
                 .GetAwaiter()
                 .GetResult();
         }
@@ -52,6 +58,7 @@ internal static class Program
                 "LiteraHub: database error",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
+
             return;
         }
         catch (Exception ex)
@@ -63,26 +70,39 @@ internal static class Program
                 "LiteraHub: startup error",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
+
             return;
         }
 
-        // Composition root: concrete dependencies are created here.
+        // Composition root.
         var connectionFactory =
-            new SqlConnectionFactory(bootstrap.ConnectionString);
+            new SqlConnectionFactory(
+                bootstrap.ConnectionString);
 
         var session = new SessionContext();
-        var permissions = new PermissionService(session);
-        var users = new UserRepository(connectionFactory);
-        var auth = new AuthService(users, hasher, session);
 
-        // Categories: repository -> service.
+        var permissions =
+            new PermissionService(session);
+
+        var users =
+            new UserRepository(connectionFactory);
+
+        var auth =
+            new AuthService(users, hasher, session);
+
         var categoryRepository =
             new CategoryRepository(connectionFactory);
 
         ICategoryService categories =
-            new CategoryService(categoryRepository, permissions);
+            new CategoryService(
+                categoryRepository,
+                permissions);
 
-        RunSessions(auth, permissions, session, categories);
+        RunSessions(
+            auth,
+            permissions,
+            session,
+            categories);
     }
 
     private static void RunSessions(
@@ -120,14 +140,14 @@ internal static class Program
                 }
             }
 
-            // The Categories UI is not connected yet.
-            // Keep the existing shell constructor unchanged.
             using var shell = new ShellForm(
                 session,
                 permissions,
-                auth);
+                auth,
+                categories);
 
             shell.ShowDialog();
+
             auth.Logout();
 
             if (!shell.LoggedOut)
