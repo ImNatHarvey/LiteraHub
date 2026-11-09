@@ -41,14 +41,9 @@ public sealed class CategoriesPage : ThemedUserControl
         Margin = Padding.Empty
     };
 
-    private readonly TextBox _search = new()
+    private readonly ThemedSearchBox _search = new()
     {
-        PlaceholderText = "Search categories...",
-        AutoSize = false,
-        Height = 38,
         Dock = DockStyle.Fill,
-        Font = Theme.Body,
-        TextAlign = HorizontalAlignment.Left,
         Margin = new Padding(0, 4, 12, 4)
     };
 
@@ -90,8 +85,7 @@ public sealed class CategoriesPage : ThemedUserControl
         BuildLayout();
         ConfigureGrid();
 
-        // Search and CRUD are not implemented yet.
-        _search.Enabled = false;
+        // CRUD is not implemented yet.
         _addButton.Enabled = false;
 
         _addButton.Visible =
@@ -374,20 +368,16 @@ public sealed class CategoriesPage : ThemedUserControl
         _status.ForeColor = c.TextMuted;
         _status.Font = Theme.Caption;
 
-        // Search field
-        NativeTheme.Apply(_search);
-        _search.Font = Theme.Body;
+        // Search field manages its own theme.
+        _search.BackColor = c.Surface;
 
-        // Add Category button
         _addButton.BackColor = c.Accent;
         _addButton.ForeColor = c.OnAccent;
         _addButton.Font = Theme.BodyStrong;
         _addButton.FlatAppearance.BorderSize = 0;
 
-        // Categories table
         _grid.ApplyTheme();
 
-        // Center Active header and checkboxes.
         var activeColumn = _grid.Columns["IsActive"];
 
         if (activeColumn is not null)
