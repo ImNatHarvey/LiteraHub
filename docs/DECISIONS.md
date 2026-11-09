@@ -29,3 +29,15 @@
 - Forced password change for the seeded admin; completing it signs the user in.
 - No login lockout in the MVP (see OPEN_QUESTIONS).
 - Composition root is Program.cs (manual wiring, no DI container).
+
+## 2026-11-09 (Step 4A)
+- Step 4 split: 4A theme + shell + icons; 4B dark-scrollbar spike; 4C loading states.
+- ReaLTaiizor deferred (NuGet shows net10.0-windows7.0 target, active releases; added in Step 5 only if a control justifies it). Reason: every borrowed control must be re-skinned to Theme tokens.
+- Icons: FontAwesome.Sharp 6.6.0 (last published Jul 2024, net8 target; .NET 10 fit UNVERIFIED). All icon choices live in Theming/AppIcons.cs.
+- Accent: light #B45309 (about 5:1 on white by hand calc), dark #F59E0B (about 8:1 on #16181D). Mockup orange #D9730D was about 3.3:1 on white: fails AA.
+- Theme: static Theme class, Palette (light + dark), Space scale 4/8/12/16/24, Radius, type scale (Segoe UI). Screens derive from ThemedUserControl and never hardcode colors.
+- ApplicationHighDpiMode = PerMonitorV2 in csproj. Window presets are logical pixels scaled by DeviceDpi and clamped to the screen working area.
+- Portrait/narrow windows (< 700 logical px) switch the sidebar to icon-only (compact) mode.
+- Navigation is filtered by IPermissionService; pages are placeholders until their steps.
+- Login/ChangePassword forms keep default styling until a later polish step.
+- Added a Users screen (Admin creates staff accounts) to Step 5; otherwise no way to create Librarian accounts.

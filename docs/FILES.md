@@ -29,3 +29,9 @@ C:\Dev\LiteraHub\
 - LiteraHub.WinForms\Forms\ChangePasswordForm.cs: forced password change window
 - LiteraHub.WinForms\Forms\ShellForm.cs: placeholder shell (shows role and permissions), replaced in Step 4
 - LiteraHub.WinForms\Program.cs: bootstrap, manual wiring, login/shell loop
+- LiteraHub.WinForms\Theming\Theme.cs: ThemeMode, Palette, Space, Radius, Theme (light/dark palettes, fonts, Changed event)
+- LiteraHub.WinForms\Theming\AppIcons.cs: single place that maps app icons to FontAwesome.Sharp IconChar
+- LiteraHub.WinForms\Controls\ThemedUserControl.cs: base class that applies the theme
+- LiteraHub.WinForms\Controls\SidebarNav.cs: permission-filtered sidebar (compact mode, selection, user + logout)
+- LiteraHub.WinForms\Pages\PlaceholderPage.cs: temporary page for modules not built yet
+- LiteraHub.WinForms\Forms\ShellForm.cs: real shell (sidebar, top bar, page host, demo menu); replaces the Step 3 placeholder

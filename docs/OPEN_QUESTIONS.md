@@ -8,3 +8,7 @@
 - Per-copy tracking is out of scope for the MVP; revisit only if needed.
 - Login lockout/throttling after repeated failures: optional, not in MVP.
 - Admin password recovery during development without SSMS: ask Claude for a reset option if needed.
+- Does FontAwesome.Sharp work cleanly on .NET 10, and are all IconChar names valid? (4A test)
+- Does WinForms auto-scale Padding/Margin/TableLayoutPanel sizes at 125%/150%? (4A test)
+- Does Application.SetColorMode work without the experimental warning in .NET 10, and does it darken scrollbars? (4B)
+- Context menu and title bar theming for dark mode (4B).
