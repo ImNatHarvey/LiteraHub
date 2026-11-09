@@ -96,6 +96,10 @@ public sealed class ShellForm : Form
         _main.Controls.Add(_host, 0, 1);
         _root.Controls.Add(_nav, 0, 0);
         _root.Controls.Add(_main, 1, 0);
+        _nav.Margin = Padding.Empty;
+        _main.Margin = Padding.Empty;
+        _topBar.Margin = Padding.Empty;
+        _host.Margin = Padding.Empty;
         Controls.Add(_root);
 
         Theme.Changed += OnThemeChanged;
@@ -132,7 +136,13 @@ public sealed class ShellForm : Form
         dark.Click += (_, _) => Theme.SetMode(ThemeMode.Dark);
         themeMenu.DropDownItems.AddRange(new ToolStripItem[] { light, dark });
 
-        _demoMenu.Items.AddRange(new ToolStripItem[] { sizeMenu, themeMenu });
+        var spike = new ToolStripMenuItem("Scrollbar spike (4B)");
+        spike.Click += (_, _) =>
+        {
+            using var form = new ScrollbarSpikeForm();
+            form.ShowDialog(this);
+        };
+        _demoMenu.Items.AddRange(new ToolStripItem[] { sizeMenu, themeMenu, new ToolStripSeparator(), spike });
         _demoButton.Click += (_, _) => _demoMenu.Show(_demoButton, new Point(0, _demoButton.Height));
     }
 

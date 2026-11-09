@@ -47,6 +47,7 @@ public sealed class SidebarNav : ThemedUserControl
         _items.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         _footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
+        _user.Padding = new Padding(Space.M, 0, 0, 0);
         _logout.Dock = DockStyle.Fill;
         _logout.Height = 40;
         _logout.IconChar = AppIcons.Logout;

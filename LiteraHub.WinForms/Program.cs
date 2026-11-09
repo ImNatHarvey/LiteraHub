@@ -26,6 +26,10 @@ internal static class Program
                 .SetBasePath(AppContext.BaseDirectory)
                 .AddJsonFile("appsettings.json", optional: false)
                 .Build();
+                
+            // Step 4B experiment: built-in dark mode. Must run before any form is created.
+                if (string.Equals(config["Ui:ColorMode"], "Dark", StringComparison.OrdinalIgnoreCase))
+                Application.SetColorMode(SystemColorMode.Dark);
 
             var options = new DatabaseOptions
             {
