@@ -57,3 +57,97 @@
 - Actions use BusyButton (spinner + busy text, ignores clicks while busy) to prevent double submits.
 - Shared drawing helpers live in Theming/Gfx.cs (RoundedRect, Mix, DrawSpinner).
 - ShellForm.SwapPage(control, title) is the way to show any page in the host.
+
+
+## 2026-11-10 (Enhancement Planning and Theme System)
+
+### Product Direction
+
+- LiteraHub will evolve into an intelligent hybrid
+  library management and digital reading system.
+- STI Balagtas Case Study #5 remains the source
+  of truth for mandatory features.
+- New features are documented in
+  docs/ENHANCEMENT_ROADMAP.md.
+- Step 5A.4B is temporarily paused while the
+  enhancement documentation and theme system
+  are implemented and tested.
+
+### Nine Theme Presets
+
+Replace the two-choice appearance experience
+with nine named color presets:
+
+1. Classic Light
+2. Midnight Library
+3. Sepia Paper
+4. Forest Scholar
+5. Slate & Teal
+6. Lavender Dusk
+7. Ocean Breeze
+8. Rosewood
+9. Graphite
+
+- Midnight Library is the default dark preset.
+- Classic Light is the default light preset.
+- Existing orange theme colors are historical
+  decisions and will be superseded.
+- The existing Theme.Colors design-token pattern
+  will be preserved.
+- The theme engine must distinguish light and
+  dark native-control styling independently
+  of the selected preset name.
+- Theme changes must update existing controls
+  without requiring application restart.
+- Theme preferences should persist across sessions.
+- Existing application functionality must continue
+  working after the theme migration.
+
+### Theme Architecture
+
+- Application and reader appearance will have
+  separate user-selectable preferences.
+- The same nine presets may be shared by both.
+- Reader-specific typography, margins, and
+  line spacing will be added with the reader.
+- Reader appearance is a planned feature, not
+  an implemented feature.
+- No new database migration is required solely
+  for the initial local theme selector.
+- Per-account theme synchronization is deferred
+  until user preferences are designed.
+
+### Enhanced Library Features
+
+Planned:
+- ISBN-powered metadata import and book covers
+- Member book requests and staff approval
+- Physical and digital catalog support
+- PDF and EPUB reading
+- Bookmarks, highlights, notes, and reading progress
+- Parallel Read with two reading panes
+
+Optional:
+- Wikipedia lookup
+- DeepL translation
+- Text-to-speech
+- AI-assisted descriptions and recommendations
+
+### Implementation Order
+
+P1. Update project documentation.
+P2. Implement nine-preset theme engine.
+P3. Implement theme selector and local persistence.
+P4. Test theme switching and regressions.
+5A.4B. Resume Categories database integration.
+
+### Engineering Constraints
+
+- Preserve the existing four-project architecture.
+- Continue using programmatic Windows Forms.
+- Avoid changing already-applied SQL migrations.
+- Keep API credentials outside source control.
+- Validate third-party integrations before adoption.
+- Do not implement optional features before their
+  architecture, permissions, and data requirements
+  are reviewed.
