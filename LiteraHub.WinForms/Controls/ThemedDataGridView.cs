@@ -31,8 +31,6 @@ public sealed class ThemedDataGridView : DataGridView
         Visible = false
     };
 
-    private const int ScrollbarThickness = 14;
-
     [DesignerSerializationVisibility(
         DesignerSerializationVisibility.Hidden)]
     public bool ReadOnlyDisplayMode
@@ -42,7 +40,6 @@ public sealed class ThemedDataGridView : DataGridView
         {
             _readOnlyDisplayMode = value;
             TabStop = !value;
-
             ApplyTheme();
 
             if (value)
@@ -82,8 +79,7 @@ public sealed class ThemedDataGridView : DataGridView
             DataGridViewAutoSizeColumnsMode.Fill;
 
         ColumnHeadersHeightSizeMode =
-            DataGridViewColumnHeadersHeightSizeMode
-                .DisableResizing;
+            DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
 
         ColumnHeadersHeight = 44;
         RowTemplate.Height = 42;
@@ -97,7 +93,7 @@ public sealed class ThemedDataGridView : DataGridView
 
         ShowCellToolTips = true;
 
-        // Custom bars replace native scrollbar UI.
+        // Keep native scrolling mechanics enabled.
         ScrollBars = ScrollBars.Both;
 
         Font = Theme.Body;
@@ -137,6 +133,12 @@ public sealed class ThemedDataGridView : DataGridView
     protected override void OnSizeChanged(EventArgs e)
     {
         base.OnSizeChanged(e);
+        QueueScrollbarRefresh();
+    }
+
+    protected override void OnLayout(LayoutEventArgs e)
+    {
+        base.OnLayout(e);
         QueueScrollbarRefresh();
     }
 
@@ -202,23 +204,6 @@ public sealed class ThemedDataGridView : DataGridView
         QueueScrollbarRefresh();
     }
 
-    protected override void OnMouseWheel(MouseEventArgs e)
-    {
-        base.OnMouseWheel(e);
-
-        if (Rows.Count > 0)
-        {
-            int steps = Math.Max(
-                1, Math.Abs(e.Delta) / 120);
-
-            int direction = e.Delta > 0 ? -1 : 1;
-
-            ScrollRows(direction * steps * 3);
-        }
-
-        QueueScrollbarRefresh();
-    }
-
     protected override void OnSelectionChanged(EventArgs e)
     {
         base.OnSelectionChanged(e);
@@ -242,63 +227,39 @@ public sealed class ThemedDataGridView : DataGridView
         base.OnCellMouseDown(e);
     }
 
-    private void ScrollRows(int amount)
+    private void HandleVerticalValueChanged(
+        object? sender, EventArgs e)
     {
-        if (Rows.Count == 0)
+        if (_syncingScrollbars || Rows.Count == 0)
             return;
-
-        int first = FirstDisplayedScrollingRowIndex;
-
-        if (first < 0)
-            first = 0;
 
         int target = Math.Clamp(
-            first + amount,
+            _verticalBar.Value,
             0,
-            Math.Max(0, Rows.Count - 1));
+            Rows.Count - 1);
 
-        SetFirstVisibleRow(target);
-    }
-
-    private void SetFirstVisibleRow(int target)
-    {
-        if (Rows.Count == 0)
-            return;
-
-        int index = Math.Clamp(
-            target, 0, Rows.Count - 1);
-
-        // Skip rows that cannot be displayed.
-        while (index < Rows.Count &&
-               !Rows[index].Visible)
+        while (target < Rows.Count &&
+               !Rows[target].Visible)
         {
-            index++;
+            target++;
         }
 
-        if (index >= Rows.Count)
+        if (target >= Rows.Count)
             return;
 
         try
         {
-            FirstDisplayedScrollingRowIndex = index;
+            FirstDisplayedScrollingRowIndex = target;
         }
         catch (InvalidOperationException)
         {
-            // Grid is not ready to scroll.
+            // Grid may be resizing or rebinding.
         }
         catch (ArgumentOutOfRangeException)
         {
-            // Data may have changed during scrolling.
+            // Row positions may have changed.
         }
-    }
 
-    private void HandleVerticalValueChanged(
-        object? sender, EventArgs e)
-    {
-        if (_syncingScrollbars)
-            return;
-
-        SetFirstVisibleRow(_verticalBar.Value);
         QueueScrollbarRefresh();
     }
 
@@ -315,7 +276,7 @@ public sealed class ThemedDataGridView : DataGridView
         }
         catch (ArgumentOutOfRangeException)
         {
-            // Column sizes may have changed.
+            // Columns may have changed.
         }
 
         QueueScrollbarRefresh();
@@ -363,132 +324,104 @@ public sealed class ThemedDataGridView : DataGridView
 
         try
         {
-            int totalRows = Rows
-                .Cast<DataGridViewRow>()
-                .Count(row => row.Visible);
+            // Locate the real Windows scrollbar controls.
+            // Their bounds already account for the grid's
+            // headers, viewport, and opposite scrollbar.
+            HScrollBar? nativeHorizontal =
+                Controls.OfType<HScrollBar>()
+                    .FirstOrDefault();
 
-            int visibleRows = Math.Max(
-                1, DisplayedRowCount(false));
-
-            int totalColumnWidth = Columns
-                .Cast<DataGridViewColumn>()
-                .Where(column => column.Visible)
-                .Sum(column => column.Width);
-
-            int availableWidth = Math.Max(
-                1, ClientSize.Width);
-
-            int availableHeight = Math.Max(
-                1, ClientSize.Height -
-                   ColumnHeadersHeight);
-
-            bool needsVertical =
-                totalRows > visibleRows;
+            VScrollBar? nativeVertical =
+                Controls.OfType<VScrollBar>()
+                    .FirstOrDefault();
 
             bool needsHorizontal =
-                totalColumnWidth > availableWidth;
+                nativeHorizontal is not null &&
+                nativeHorizontal.Visible &&
+                nativeHorizontal.Width > 0;
 
-            // A scrollbar consumes space that may
-            // cause the other scrollbar to be needed.
-            for (int i = 0; i < 2; i++)
+            bool needsVertical =
+                nativeVertical is not null &&
+                nativeVertical.Visible &&
+                nativeVertical.Height > 0;
+
+            _horizontalBar.Visible = needsHorizontal;
+            _verticalBar.Visible = needsVertical;
+
+            if (needsHorizontal &&
+                nativeHorizontal is not null)
             {
-                int effectiveWidth =
-                    availableWidth -
-                    (needsVertical
-                        ? ScrollbarThickness : 0);
+                _horizontalBar.Bounds =
+                    nativeHorizontal.Bounds;
 
-                int effectiveHeight =
-                    availableHeight -
-                    (needsHorizontal
-                        ? ScrollbarThickness : 0);
+                int totalWidth = Columns
+                    .Cast<DataGridViewColumn>()
+                    .Where(column => column.Visible)
+                    .Sum(column => column.Width);
 
-                needsHorizontal =
-                    totalColumnWidth > effectiveWidth;
+                int viewportWidth = Math.Max(
+                    1,
+                    nativeHorizontal.Width);
 
-                int rowHeight = Math.Max(
-                    1, RowTemplate.Height);
+                _horizontalBar.SetRange(
+                    Math.Max(totalWidth, viewportWidth),
+                    viewportWidth);
 
-                needsVertical =
-                    totalRows * rowHeight >
-                    effectiveHeight;
+                _horizontalBar.SetValue(
+                    HorizontalScrollingOffset);
             }
 
-            int barWidth =
-                needsVertical
-                    ? ScrollbarThickness : 0;
+            if (needsVertical &&
+                nativeVertical is not null)
+            {
+                _verticalBar.Bounds =
+                    nativeVertical.Bounds;
 
-            int barHeight =
-                needsHorizontal
-                    ? ScrollbarThickness : 0;
+                int totalRows = Rows
+                    .Cast<DataGridViewRow>()
+                    .Count(row => row.Visible);
 
-            _verticalBar.SetBounds(
-                Math.Max(
-                    0,
-                    ClientSize.Width - ScrollbarThickness),
-                0,
-                ScrollbarThickness,
-                Math.Max(
-                    0,
-                    ClientSize.Height - barHeight));
+                int visibleRows = Math.Max(
+                    1,
+                    DisplayedRowCount(false));
 
-            _horizontalBar.SetBounds(
-                0,
-                Math.Max(
-                    0,
-                    ClientSize.Height - ScrollbarThickness),
-                Math.Max(
-                    0,
-                    ClientSize.Width - barWidth),
-                ScrollbarThickness);
+                _verticalBar.SetRange(
+                    Math.Max(totalRows, visibleRows),
+                    visibleRows);
 
-            _corner.SetBounds(
-                Math.Max(
-                    0,
-                    ClientSize.Width - ScrollbarThickness),
-                Math.Max(
-                    0,
-                    ClientSize.Height - ScrollbarThickness),
-                ScrollbarThickness,
-                ScrollbarThickness);
+                int firstRow =
+                    FirstDisplayedScrollingRowIndex;
 
-            _verticalBar.Visible = needsVertical;
-            _horizontalBar.Visible = needsHorizontal;
+                _verticalBar.SetValue(
+                    Math.Max(0, firstRow));
+            }
 
             _corner.Visible =
-                needsVertical && needsHorizontal;
+                needsHorizontal && needsVertical;
 
-            int horizontalViewport = Math.Max(
-                1,
-                ClientSize.Width - barWidth);
+            if (_corner.Visible &&
+                nativeHorizontal is not null &&
+                nativeVertical is not null)
+            {
+                _corner.SetBounds(
+                    nativeVertical.Left,
+                    nativeHorizontal.Top,
+                    nativeVertical.Width,
+                    nativeHorizontal.Height);
+            }
 
-            _horizontalBar.SetRange(
-                Math.Max(
-                    horizontalViewport,
-                    totalColumnWidth),
-                horizontalViewport);
+            _corner.BackColor =
+                Theme.Colors.SurfaceAlt;
 
-            _horizontalBar.SetValue(
-                HorizontalScrollingOffset);
+            // Overlay the native scrollbars.
+            if (needsHorizontal)
+                _horizontalBar.BringToFront();
 
-            int verticalViewport = Math.Max(
-                1,
-                DisplayedRowCount(false));
+            if (needsVertical)
+                _verticalBar.BringToFront();
 
-            _verticalBar.SetRange(
-                Math.Max(
-                    verticalViewport,
-                    totalRows),
-                verticalViewport);
-
-            int firstRow =
-                FirstDisplayedScrollingRowIndex;
-
-            _verticalBar.SetValue(
-                Math.Max(0, firstRow));
-
-            _verticalBar.BringToFront();
-            _horizontalBar.BringToFront();
-            _corner.BringToFront();
+            if (_corner.Visible)
+                _corner.BringToFront();
         }
         finally
         {
@@ -525,8 +458,7 @@ public sealed class ThemedDataGridView : DataGridView
                 SelectionForeColor = c.Text,
                 Font = Theme.Body,
 
-                Padding = new Padding(
-                    10, 4, 10, 4),
+                Padding = new Padding(10, 4, 10, 4),
 
                 Alignment =
                     DataGridViewContentAlignment.MiddleLeft
@@ -552,14 +484,11 @@ public sealed class ThemedDataGridView : DataGridView
                 {
                     BackColor = c.SurfaceAlt,
                     ForeColor = c.Text,
-
                     SelectionBackColor = c.SurfaceAlt,
                     SelectionForeColor = c.Text,
-
                     Font = Theme.BodyStrong,
 
-                    Padding = new Padding(
-                        10, 4, 10, 4),
+                    Padding = new Padding(10, 4, 10, 4),
 
                     Alignment =
                         DataGridViewContentAlignment.MiddleLeft
@@ -570,16 +499,12 @@ public sealed class ThemedDataGridView : DataGridView
                 {
                     BackColor = c.SurfaceAlt,
                     ForeColor = c.Text,
-
                     SelectionBackColor = c.SurfaceAlt,
                     SelectionForeColor = c.Text
                 };
 
-            RowsDefaultCellStyle.BackColor =
-                c.Surface;
-
-            RowsDefaultCellStyle.ForeColor =
-                c.Text;
+            RowsDefaultCellStyle.BackColor = c.Surface;
+            RowsDefaultCellStyle.ForeColor = c.Text;
 
             _corner.BackColor = c.SurfaceAlt;
 
