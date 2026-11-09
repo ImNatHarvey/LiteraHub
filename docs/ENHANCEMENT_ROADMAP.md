@@ -263,3 +263,95 @@ Library theme before resuming Step 5A.4B.
 
 Step 5A.4B remains the next Categories implementation:
 connect navigation and load real SQL Server categories.
+
+
+## 15. Nine-Preset Appearance System
+
+The application will support nine named presets:
+
+| Preset | Background | Surface | Accent | Text | Style |
+|---|---|---|---|---|---|
+| Classic Light | #FAFAF8 | #FFFFFF | #536C9B | #242B35 | Light |
+| Midnight Library | #171C29 | #232B3B | #8BA4F5 | #E9EDF7 | Dark |
+| Sepia Paper | #F4E8D1 | #FAF0DD | #8B6746 | #483C30 | Light |
+| Forest Scholar | #17231F | #24352E | #83B89B | #E6F0E9 | Dark |
+| Slate & Teal | #181F28 | #263340 | #57C2BE | #E8F0F2 | Dark |
+| Lavender Dusk | #242034 | #342D48 | #C2A9F5 | #F0EAF9 | Dark |
+| Ocean Breeze | #EAF4F8 | #F7FCFE | #287A9A | #233E50 | Light |
+| Rosewood | #2D2028 | #3D2C35 | #E7A3B8 | #F8E9EF | Dark |
+| Graphite | #1C1E22 | #2A2D33 | #B5C0D0 | #F0F2F5 | Dark |
+
+These are design targets. Remaining palette tokens,
+contrast, and native-control styling must be tested.
+
+### Application Appearance
+
+Requirements:
+- Select any of the nine presets.
+- Apply changes immediately.
+- Save the selected preset locally.
+- Restore the selection on application startup.
+- Provide a clearly marked selected state.
+- Preserve readable controls and navigation.
+- Support light and dark native scrollbars.
+
+### Reader Appearance
+
+Planned requirements:
+- Independent theme selection.
+- The same nine presets.
+- Font family and size.
+- Line spacing and margins.
+- Reading progress persistence.
+- Distraction-free reading mode.
+
+Reader settings will be implemented when the
+digital reader is developed.
+
+### Preference Storage
+
+Initial implementation:
+- Local application preferences.
+- No database migration required.
+- No API credentials.
+- Graceful fallback when settings are invalid.
+
+Future implementation:
+- Optional per-account synchronization.
+- Separate application and reader settings.
+
+### Theme Compatibility
+
+Existing code uses:
+- Theme.Colors
+- Theme.Mode
+- Theme.SetMode(...)
+- Theme.Changed
+
+The migration must preserve compatibility or update
+every caller together in the same implementation batch.
+
+NativeTheme and ThemedDataGridView must correctly
+handle light and dark preset families.
+
+### Acceptance Criteria
+
+- All nine presets are selectable.
+- Theme switching works without restarting.
+- Settings survive an application restart.
+- No orange accent remains in the new presets.
+- Login, navigation, logout, and Categories layout
+  continue working.
+- Existing database behavior is unchanged.
+
+## 16. Updated Immediate Development Sequence
+
+P1 — Documentation updates.
+P2 — Nine-preset theme engine.
+P3 — Theme selection UI and persistence.
+P4 — Appearance and regression testing.
+
+Then resume Step 5A.4B.
+
+Optional reading, AI, and catalog enhancements remain
+scheduled for later phases unless reprioritized.

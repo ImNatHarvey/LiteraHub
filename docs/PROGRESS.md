@@ -1,43 +1,112 @@
-﻿# LiteraHub — Development Progress
+﻿
+# LiteraHub — Development Progress
 
-**Last updated:** 2026-11-09  
-**Current phase:** Step 4D — Documentation Reconciliation  
-**Next implementation:** Step 5A — Shared CRUD Infrastructure and Categories
+**Last updated:** 2026-11-10
+**Current phase:** Enhancement checkpoint P1
+**Paused implementation:** Step 5A.4B
+**Next implementation:** Nine-preset theme system
 
 ## 1. Completed Milestones
 
 | Step | Description | Status |
 |---|---|---|
-| 1 | Solution, four projects, NuGet packages, configuration, documentation | Implemented |
-| 2 | Database bootstrapper, migrations, seed data | Tested — user reported |
-| 3 | Authentication, password changes, RBAC, permissions | Tested — user reported |
-| 4A | Application shell, light/dark themes, icons, DPI behavior | Tested — user reported |
-| 4B | Custom dark scrollbars and scrolling controls | Tested — user reported |
-| 4C | Loading indicators, skeletons, busy buttons | Tested — user reported |
-| 4D | Documentation reconciliation | In progress |
-| 5A | Shared CRUD infrastructure and Categories | Not started |
-| 5B | Authors CRUD | Not started |
-| 5C | Students CRUD | Not started |
-| 5D | Books CRUD and search | Not started |
-| 6 | Borrow and Return workflows | Not started |
-| 7 | Summary reports | Not started |
-| 8 | Final testing, performance review, release | Not started |
+| 1 | Solution and project setup | Implemented |
+| 2 | Database bootstrapper and migrations | Tested — developer |
+| 3 | Authentication and permissions | Tested — developer |
+| 4A | Application shell and themes | Tested — developer |
+| 4B | Dark scrollbars and scrolling | Tested — developer |
+| 4C | Loading states and busy buttons | Tested — developer |
+| 4D | Documentation reconciliation | Previously completed; ongoing updates |
+| 5A.1 | NativeTheme helper | Tested — developer |
+| 5A.2 | ThemedDataGridView | Tested — developer |
+| 5A.3A | Category models and repository contract | Tested — developer |
+| 5A.3B | CategoryRepository | Tested — developer |
+| 5A.3C | CategoryService | Tested — developer |
+| 5A.3D | Category dependency wiring | Tested — developer |
+| 5A.4A | Categories page foundation | Source pushed; runtime tests not separately confirmed |
+| 5A.4B | Categories navigation and data loading | Paused |
+| 5A.4C | Category add/edit forms | Pending |
+| 5A.4D | Category status and search | Pending |
+| 5A.5 | Categories integration testing | Pending |
+| 5B | Authors CRUD | Pending |
+| 5C | Students CRUD | Pending |
+| 5D | Books CRUD | Pending |
+| 6 | Borrow and Return | Pending |
+| 7 | Reports | Pending |
+| 8 | Final testing and release | Pending |
 
-Runtime test results are reported by the developer. The source files have been inspected, but the application has not been independently executed by ChatGPT.
+Runtime tests are reported by the developer.
+GitHub source verification does not constitute runtime testing.
 
-## 2. Verified Architecture
+## 2. Enhancement Checkpoint
 
-- **Framework:** .NET 10
-- **Desktop UI:** Windows Forms, programmatic controls
-- **Database:** SQL Server Express
-- **Data access:** Dapper
-- **Architecture:** Core, Data, Services, WinForms
-- **Version control:** Git and GitHub
-- **Project knowledge:** Obsidian PARA Knowledge Base
+| Step | Description | Status |
+|---|---|---|
+| P1 | Document new product goals and theme presets | In progress |
+| P2 | Implement nine-preset theme engine | Pending |
+| P3 | Theme selector and local persistence | Pending |
+| P4 | Theme regression testing | Pending |
 
-## 3. NuGet Package Versions
+After P4, resume Step 5A.4B.
 
-Verified from the repository project files:
+## 3. Nine Appearance Presets
+
+1. Classic Light
+2. Midnight Library
+3. Sepia Paper
+4. Forest Scholar
+5. Slate & Teal
+6. Lavender Dusk
+7. Ocean Breeze
+8. Rosewood
+9. Graphite
+
+Midnight Library is the default dark preset.
+
+Application and digital reader preferences will be
+independent. Reader appearance is a future feature.
+
+## 4. Planned Product Enhancements
+
+### Practical Enhancements
+- ISBN metadata lookup
+- Automatic book cover retrieval
+- Member book requests
+- Admin/Librarian approval workflow
+- Physical and digital book catalog
+
+### Digital Reader
+- PDF and EPUB support
+- Nine reading themes
+- Font and layout customization
+- Bookmarks, highlights, and notes
+- Reading progress
+- Parallel Read
+
+### Optional Intelligent Features
+- AI-assisted descriptions
+- AI recommendations
+- Wikipedia lookup
+- DeepL translation
+- Text-to-speech
+
+These are planned, not implemented.
+
+See ENHANCEMENT_ROADMAP.md.
+
+## 5. Verified Architecture
+
+- .NET 10
+- Windows Forms
+- SQL Server Express
+- Dapper
+- Programmatic C# interface
+- LiteraHub.Core
+- LiteraHub.Data
+- LiteraHub.Services
+- LiteraHub.WinForms
+
+## 6. Dependencies
 
 | Package | Version | Project |
 |---|---|---|
@@ -48,61 +117,37 @@ Verified from the repository project files:
 | FontAwesome.Sharp | 6.6.0 | WinForms |
 | Microsoft.Extensions.Configuration.Json | 10.0.14 | WinForms |
 
-## 4. Development Environment
+## 7. Known Limitations
 
-- Visual Studio Community
-- .NET SDK 10.0.402 (previously reported)
-- SQL Server Express instance: `.\SQLEXPRESS`
-- LocalDB tool unavailable in earlier environment testing
-- Windows Forms with PerMonitorV2 DPI awareness
-
-## 5. Step 4C Verification
-
-Developer reported tests 1–7 passed.
-
-Optional test #8 involving Windows animation effects was skipped.
-
-Temporary `LoadingDemoPage.cs` and its navigation entry were removed in the previously inspected ZIP snapshot.
-
-The application retains `LoadingHost`, `SkeletonView`, `BusyButton`, `Gfx`, and the shell's page-swapping functionality.
-
-## 6. Known Issues and Documentation Debt
-
-- `SCHEMA.md` is outdated and requires reconciliation against the actual migrations.
-- `FILES.md` contains outdated paths and filenames.
-- A potential overlapping-request race condition in `LoadingHost` requires investigation; it is not a confirmed runtime bug.
-- No other runtime bugs have been confirmed in the current handoff.
-
-## 7. Next Development Steps
-
-### Step 4D — Documentation
-
-- [x] Create and commit `SESSION_HANDOFF.md`
-- [ ] Update and verify `PROGRESS.md`
-- [ ] Reconcile `SCHEMA.md` with actual migrations
-- [ ] Reconcile `FILES.md` with current source paths
-- [ ] Confirm documentation updates are committed
-
-### Step 5A — CRUD Foundation
-
-- [ ] Inspect current theme and UI controls
-- [ ] Implement shared native-control theming
-- [ ] Implement a reusable themed DataGridView
-- [ ] Establish Categories data and service contracts
-- [ ] Implement Categories CRUD interface
-- [ ] Test validation, permissions, database persistence, and theme switching
+- CategoriesPage is not yet connected to navigation.
+- Category data loading is not yet implemented in the UI.
+- Borrower portal remains disabled.
+- Digital reading is not implemented.
+- AI integrations are not implemented.
+- LoadingHost overlapping-request behavior needs
+  investigation; no confirmed runtime bug.
+- Dark native-control compatibility on Windows 10
+  remains unverified.
 
 ## 8. Development Rules
 
-1. Implement one testable step at a time.
-2. Provide complete file contents and exact paths.
-3. Avoid unnecessary dependencies.
-4. Keep database queries outside Windows Forms.
-5. Enforce permissions in the service layer.
-6. Follow the official case study before optional features.
-7. Update documentation after each verified milestone.
-8. Do not advance until the developer confirms the current step passes.
+1. Work in cohesive, testable batches.
+2. Inspect current GitHub files before modifications.
+3. Provide full replacement files where practical.
+4. Preserve the official school requirements.
+5. Keep SQL queries outside Windows Forms.
+6. Enforce permissions in the service layer.
+7. Do not modify applied migrations.
+8. Test before committing and proceeding.
+9. Use Visual Studio Git Changes for commits.
+10. Keep progress and decisions documentation current.
 
-## 9. Session Reference
+## 9. Next Work
 
-See `SESSION_HANDOFF.md` for the latest project handoff, source verification notes, and next development instructions.
+1. Finish enhancement documentation.
+2. Implement the nine-preset theme engine.
+3. Implement the selector and local persistence.
+4. Test all nine themes.
+5. Resume Categories Step 5A.4B.
+
+See SESSION_HANDOFF.md for handoff context.
