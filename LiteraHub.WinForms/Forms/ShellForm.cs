@@ -25,7 +25,7 @@ public sealed class ShellForm : Form
 
         new("books", "Books", AppIcons.Books,
             Permission.ViewCatalog,
-            "Books module: CRUD and search. Step 5."),
+            "Books catalog and management."),
 
         new("authors", "Authors", AppIcons.Authors,
             Permission.ViewCatalog,
@@ -56,6 +56,7 @@ public sealed class ShellForm : Form
     private readonly IPermissionService _permissions;
     private readonly IAuthService _auth;
     private readonly ICategoryService _categories;
+    private readonly IBookService _books;
 
     private readonly List<PageDef> _pages;
 
@@ -111,7 +112,8 @@ public sealed class ShellForm : Form
         ISessionContext session,
         IPermissionService permissions,
         IAuthService auth,
-        ICategoryService categories)
+        ICategoryService categories,
+        IBookService books)
     {
         _session = session ??
             throw new ArgumentNullException(nameof(session));
@@ -124,6 +126,9 @@ public sealed class ShellForm : Form
 
         _categories = categories ??
             throw new ArgumentNullException(nameof(categories));
+
+        _books = books ??
+            throw new ArgumentNullException(nameof(books));
 
         _pages = AllPages
             .Where(p => permissions.Can(p.Permission))
@@ -362,6 +367,12 @@ public sealed class ShellForm : Form
         {
             next = new CategoriesPage(
                 _categories,
+                _permissions);
+        }
+        else if (key == "books")
+        {
+            next = new BooksPage(
+                _books,
                 _permissions);
         }
         else

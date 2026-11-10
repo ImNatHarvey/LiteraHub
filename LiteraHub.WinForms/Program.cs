@@ -5,6 +5,7 @@ using LiteraHub.Core.Settings;
 using LiteraHub.Data;
 using LiteraHub.Data.Bootstrap;
 using LiteraHub.Data.Repositories;
+using LiteraHub.Services.Books;
 using LiteraHub.Services.Categories;
 using LiteraHub.Services.Security;
 using LiteraHub.WinForms.Forms;
@@ -90,6 +91,7 @@ internal static class Program
         var auth =
             new AuthService(users, hasher, session);
 
+        // Categories module.
         var categoryRepository =
             new CategoryRepository(connectionFactory);
 
@@ -98,18 +100,29 @@ internal static class Program
                 categoryRepository,
                 permissions);
 
+        // Books module.
+        var bookRepository =
+            new BookRepository(connectionFactory);
+
+        IBookService books =
+            new BookService(
+                bookRepository,
+                permissions);
+
         RunSessions(
             auth,
             permissions,
             session,
-            categories);
+            categories,
+            books);
     }
 
     private static void RunSessions(
         IAuthService auth,
         IPermissionService permissions,
         ISessionContext session,
-        ICategoryService categories)
+        ICategoryService categories,
+        IBookService books)
     {
         while (true)
         {
@@ -144,7 +157,8 @@ internal static class Program
                 session,
                 permissions,
                 auth,
-                categories);
+                categories,
+                books);
 
             shell.ShowDialog();
 
