@@ -307,8 +307,16 @@ public sealed class CategoriesPage : ThemedUserControl
         _layout.RowStyles.Add(
             new RowStyle(SizeType.Percent, 100));
 
+        _pagination.Padding = new Padding(0, 12, 0, 0);
+
+        _pageInfo.TextAlign = ContentAlignment.MiddleLeft;
+        _pageInfo.Dock = DockStyle.Fill;
+
+        _pageControls.Dock = DockStyle.Fill;
+        _pageControls.Padding = Padding.Empty;
+
         _layout.RowStyles.Add(
-            new RowStyle(SizeType.Absolute, 48));
+            new RowStyle(SizeType.Absolute, 60));
 
         _toolbar.RowStyles.Add(
             new RowStyle(SizeType.Percent, 100));
@@ -322,11 +330,11 @@ public sealed class CategoriesPage : ThemedUserControl
         _pagination.RowStyles.Add(
             new RowStyle(SizeType.Percent, 100));
 
-        _previous.Margin = new Padding(4, 4, 0, 0);
-        _next.Margin = new Padding(4, 4, 0, 0);
-        _pageNumber.Margin = new Padding(4, 4, 0, 0);
-        _rowsLabel.Margin = new Padding(4, 4, 0, 0);
-        _pageSizeFilter.Margin = new Padding(4, 4, 0, 0);
+        _previous.Margin = new Padding(4, 8, 0, 0);
+        _next.Margin = new Padding(4, 8, 0, 0);
+        _pageNumber.Margin = new Padding(4, 8, 0, 0);
+        _rowsLabel.Margin = new Padding(4, 8, 0, 0);
+        _pageSizeFilter.Margin = new Padding(4, 8, 0, 0);
 
         _pageControls.Controls.Add(_next);
         _pageControls.Controls.Add(_pageNumber);
