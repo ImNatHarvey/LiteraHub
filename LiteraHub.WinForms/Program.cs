@@ -5,6 +5,7 @@ using LiteraHub.Core.Settings;
 using LiteraHub.Data;
 using LiteraHub.Data.Bootstrap;
 using LiteraHub.Data.Repositories;
+using LiteraHub.Services.Authors;
 using LiteraHub.Services.Books;
 using LiteraHub.Services.Categories;
 using LiteraHub.Services.Security;
@@ -20,7 +21,6 @@ internal static class Program
     static void Main()
     {
         ApplicationConfiguration.Initialize();
-
         ThemePreferences.Load();
 
         BootstrapResult bootstrap;
@@ -37,18 +37,14 @@ internal static class Program
             {
                 Server =
                     config["Database:Server"] ?? ".\\SQLEXPRESS",
-
                 FallbackServer =
                     config["Database:FallbackServer"],
-
                 Name =
                     config["Database:Name"] ?? "LiteraHub"
             };
 
             bootstrap = Task.Run(() =>
-                    DatabaseBootstrapper.RunAsync(
-                        options,
-                        hasher))
+                    DatabaseBootstrapper.RunAsync(options, hasher))
                 .GetAwaiter()
                 .GetResult();
         }
@@ -59,7 +55,6 @@ internal static class Program
                 "LiteraHub: database error",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
-
             return;
         }
         catch (Exception ex)
@@ -71,50 +66,47 @@ internal static class Program
                 "LiteraHub: startup error",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
-
             return;
         }
 
-        // Composition root.
         var connectionFactory =
-            new SqlConnectionFactory(
-                bootstrap.ConnectionString);
+            new SqlConnectionFactory(bootstrap.ConnectionString);
 
         var session = new SessionContext();
+        var permissions = new PermissionService(session);
 
-        var permissions =
-            new PermissionService(session);
+        var users = new UserRepository(connectionFactory);
+        var auth = new AuthService(users, hasher, session);
 
-        var users =
-            new UserRepository(connectionFactory);
-
-        var auth =
-            new AuthService(users, hasher, session);
-
-        // Categories module.
         var categoryRepository =
             new CategoryRepository(connectionFactory);
 
         ICategoryService categories =
-            new CategoryService(
-                categoryRepository,
-                permissions);
+            new CategoryService(categoryRepository, permissions);
 
-        // Books module.
         var bookRepository =
             new BookRepository(connectionFactory);
 
         IBookService books =
-            new BookService(
-                bookRepository,
-                permissions);
+            new BookService(bookRepository, permissions);
+
+        var authorRepository =
+            new AuthorCreationRepository(connectionFactory);
+
+        IAuthorCreationService authors =
+            new AuthorCreationService(authorRepository, permissions);
+
+        IBookMetadataService metadata =
+            new OpenLibraryMetadataService();
 
         RunSessions(
             auth,
             permissions,
             session,
             categories,
-            books);
+            books,
+            authors,
+            metadata);
     }
 
     private static void RunSessions(
@@ -122,7 +114,9 @@ internal static class Program
         IPermissionService permissions,
         ISessionContext session,
         ICategoryService categories,
-        IBookService books)
+        IBookService books,
+        IAuthorCreationService authors,
+        IBookMetadataService metadata)
     {
         while (true)
         {
@@ -158,10 +152,11 @@ internal static class Program
                 permissions,
                 auth,
                 categories,
-                books);
+                books,
+                authors,
+                metadata);
 
             shell.ShowDialog();
-
             auth.Logout();
 
             if (!shell.LoggedOut)

@@ -57,6 +57,8 @@ public sealed class ShellForm : Form
     private readonly IAuthService _auth;
     private readonly ICategoryService _categories;
     private readonly IBookService _books;
+    private readonly IAuthorCreationService _authors;
+    private readonly IBookMetadataService _metadata;
 
     private readonly List<PageDef> _pages;
 
@@ -113,7 +115,9 @@ public sealed class ShellForm : Form
         IPermissionService permissions,
         IAuthService auth,
         ICategoryService categories,
-        IBookService books)
+        IBookService books,
+        IAuthorCreationService authors,
+        IBookMetadataService metadata)
     {
         _session = session ??
             throw new ArgumentNullException(nameof(session));
@@ -129,6 +133,12 @@ public sealed class ShellForm : Form
 
         _books = books ??
             throw new ArgumentNullException(nameof(books));
+
+        _authors = authors ??
+            throw new ArgumentNullException(nameof(authors));
+
+        _metadata = metadata ??
+            throw new ArgumentNullException(nameof(metadata));
 
         _pages = AllPages
             .Where(p => permissions.Can(p.Permission))
@@ -284,9 +294,7 @@ public sealed class ShellForm : Form
         themeMenu.DropDownOpening += (_, _) =>
         {
             foreach (var (preset, item) in themeItems)
-            {
                 item.Checked = preset == Theme.Preset;
-            }
         };
 
         _demoMenu.Items.AddRange(
@@ -373,6 +381,9 @@ public sealed class ShellForm : Form
         {
             next = new BooksPage(
                 _books,
+                _categories,
+                _authors,
+                _metadata,
                 _permissions);
         }
         else
@@ -392,7 +403,6 @@ public sealed class ShellForm : Form
     {
         _host.SuspendLayout();
 
-        // Remove the old page before displaying the new one.
         if (_currentPage is not null)
         {
             _host.Controls.Remove(_currentPage);
