@@ -45,22 +45,28 @@ public sealed class CategoriesPage : ThemedUserControl
 
     private readonly ThemedSearchBox _search = new()
     {
-        Dock = DockStyle.Fill
+        Dock = DockStyle.Fill,
+        Margin = new Padding(0, 4, 8, 4)
     };
 
-    private readonly ComboBox _filter = new()
+    private readonly Button _filter = new()
     {
+        Text = "All  ▾",
         Dock = DockStyle.Fill,
-        DropDownStyle = ComboBoxStyle.DropDownList,
-        DrawMode = DrawMode.OwnerDrawFixed,
-        ItemHeight = 24
+        FlatStyle = FlatStyle.Flat,
+        Cursor = Cursors.Hand,
+        Margin = new Padding(0, 4, 8, 4)
     };
+
+    private readonly ContextMenuStrip _filterMenu = new();
 
     private readonly Button _addButton = new()
     {
         Text = "+ Add Category",
         Dock = DockStyle.Fill,
-        FlatStyle = FlatStyle.Flat
+        FlatStyle = FlatStyle.Flat,
+        Cursor = Cursors.Hand,
+        Margin = new Padding(0, 4, 0, 4)
     };
 
     private readonly Label _status = new()
@@ -79,14 +85,24 @@ public sealed class CategoriesPage : ThemedUserControl
     };
 
     private List<Category> _allCategories = new();
-
+    private int _filterIndex;
     private bool _loadStarted;
-    private bool _compact;
     private bool _loadingData;
     private bool _working;
+    private bool _compact;
 
     private bool CanManage =>
         _permissions.Can(Permission.ManageLookups);
+
+    private bool CanDelete =>
+        CanManage && _permissions.Can(Permission.HardDelete);
+
+    private int ActionCount => CanDelete ? 3 : 2;
+
+    private static Color SuccessColor =>
+        Theme.Mode == ThemeMode.Dark
+            ? Color.FromArgb(115, 222, 164)
+            : Color.FromArgb(22, 130, 75);
 
     public CategoriesPage(
         ICategoryService categories,
@@ -106,28 +122,27 @@ public sealed class CategoriesPage : ThemedUserControl
 
         _loading.SetContent(_grid);
 
-        _filter.Items.AddRange(
-            new object[] { "All", "Active", "Inactive" });
-
-        _filter.SelectedIndex = 0;
         _filter.Visible = CanManage;
-
         _addButton.Visible =
             _permissions.Can(Permission.CreateLookups);
 
+        _search.Placeholder = "Search categories...";
         _search.TextChanged += (_, _) => FilterCategories();
 
-        _filter.SelectedIndexChanged += (_, _) =>
-            FilterCategories();
-
-        _filter.DrawItem += DrawFilterItem;
+        _filter.Click += (_, _) =>
+        {
+            BuildFilterMenu();
+            _filterMenu.Show(_filter, new Point(0, _filter.Height));
+        };
 
         _addButton.Click += async (_, _) =>
             await OpenDialogAsync(null);
 
         _grid.CellPainting += PaintSpecialCells;
-        _grid.CellClick += HandleCellClick;
-        _grid.CellToolTipTextNeeded += HandleCellTooltip;
+        _grid.CellMouseUp += HandleActionMouseUp;
+        _grid.CellMouseMove += HandleActionMouseMove;
+        _grid.CellToolTipTextNeeded += HandleTooltip;
+        _grid.KeyDown += HandleGridKeyDown;
 
         _status.Text = "Waiting to load categories...";
 
@@ -141,22 +156,15 @@ public sealed class CategoriesPage : ThemedUserControl
 
         _layout.RowStyles.Add(
             new RowStyle(SizeType.Absolute, 50));
-
         _layout.RowStyles.Add(
             new RowStyle(SizeType.Absolute, 56));
-
         _layout.RowStyles.Add(
             new RowStyle(SizeType.Absolute, 36));
-
         _layout.RowStyles.Add(
             new RowStyle(SizeType.Percent, 100));
 
         _toolbar.RowStyles.Add(
             new RowStyle(SizeType.Percent, 100));
-
-        _search.Margin = new Padding(0, 4, 8, 4);
-        _filter.Margin = new Padding(0, 6, 8, 6);
-        _addButton.Margin = new Padding(0, 4, 0, 4);
 
         _layout.Controls.Add(_heading, 0, 0);
         _layout.Controls.Add(_toolbar, 0, 1);
@@ -178,7 +186,7 @@ public sealed class CategoriesPage : ThemedUserControl
             Name = "Name",
             HeaderText = "Category Name",
             DataPropertyName = nameof(Category.Name),
-            FillWeight = 30,
+            FillWeight = 28,
             MinimumWidth = 115
         });
 
@@ -187,7 +195,7 @@ public sealed class CategoriesPage : ThemedUserControl
             Name = "Description",
             HeaderText = "Description",
             DataPropertyName = nameof(Category.Description),
-            FillWeight = 50,
+            FillWeight = 46,
             MinimumWidth = 150
         });
 
@@ -196,33 +204,65 @@ public sealed class CategoriesPage : ThemedUserControl
             Name = "IsActive",
             HeaderText = "Active",
             DataPropertyName = nameof(Category.IsActive),
-            FillWeight = 12,
-            MinimumWidth = 75
+            FillWeight = 10,
+            MinimumWidth = 75,
+            SortMode = DataGridViewColumnSortMode.NotSortable
         });
 
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = "Actions",
             HeaderText = "Actions",
-            FillWeight = 18,
-            MinimumWidth = 105,
+            FillWeight = 16,
+            MinimumWidth = CanDelete ? 132 : 105,
             Visible = CanManage,
             SortMode = DataGridViewColumnSortMode.NotSortable
         });
 
         foreach (string name in new[] { "IsActive", "Actions" })
         {
-            var column = _grid.Columns[name]!;
-            column.HeaderCell.Style.Alignment =
+            var col = _grid.Columns[name]!;
+            col.HeaderCell.Style.Alignment =
                 DataGridViewContentAlignment.MiddleCenter;
-            column.DefaultCellStyle.Alignment =
+            col.DefaultCellStyle.Alignment =
                 DataGridViewContentAlignment.MiddleCenter;
-            column.HeaderCell.Style.Padding = Padding.Empty;
-            column.DefaultCellStyle.Padding = Padding.Empty;
+            col.HeaderCell.Style.Padding = Padding.Empty;
+            col.DefaultCellStyle.Padding = Padding.Empty;
         }
 
         _grid.DataBindingComplete += (_, _) =>
             _grid.ClearRowSelection();
+    }
+
+    private void BuildFilterMenu()
+    {
+        _filterMenu.Items.Clear();
+
+        string[] options = { "All", "Active", "Inactive" };
+
+        for (int i = 0; i < options.Length; i++)
+        {
+            int index = i;
+
+            var item = new ToolStripMenuItem(options[i])
+            {
+                Checked = _filterIndex == i
+            };
+
+            item.Click += (_, _) =>
+            {
+                _filterIndex = index;
+                _filter.Text = options[index] + "  ▾";
+                FilterCategories();
+            };
+
+            _filterMenu.Items.Add(item);
+        }
+
+        var c = Theme.Colors;
+        _filterMenu.BackColor = c.Surface;
+        _filterMenu.ForeColor = c.Text;
+        _filterMenu.RenderMode = ToolStripRenderMode.Professional;
     }
 
     private void FilterCategories()
@@ -231,13 +271,13 @@ public sealed class CategoriesPage : ThemedUserControl
             return;
 
         string query = _search.Text.Trim();
-        int status = CanManage ? _filter.SelectedIndex : 1;
+        int filter = CanManage ? _filterIndex : 1;
 
         var filtered = _allCategories.Where(c =>
-            (status == 0 ||
-             (status == 1 && c.IsActive) ||
-             (status == 2 && !c.IsActive)) &&
-            (string.IsNullOrEmpty(query) ||
+            (filter == 0 ||
+             (filter == 1 && c.IsActive) ||
+             (filter == 2 && !c.IsActive)) &&
+            (query.Length == 0 ||
              c.Name.Contains(
                  query, StringComparison.OrdinalIgnoreCase) ||
              (c.Description?.Contains(
@@ -292,27 +332,59 @@ public sealed class CategoriesPage : ThemedUserControl
             return;
 
         bool activate = !category.IsActive;
-
         string verb = activate ? "reactivate" : "deactivate";
 
-        var confirmation = MessageBox.Show(
-            FindForm(),
-            $"Do you want to {verb} '{category.Name}'?",
-            "Confirm Category Status",
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Question);
-
-        if (confirmation != DialogResult.Yes)
+        if (MessageBox.Show(
+                FindForm(),
+                $"Do you want to {verb} '{category.Name}'?",
+                "Confirm Category Status",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question) != DialogResult.Yes)
             return;
 
+        await ExecuteMutationAsync(
+            () => _categories.SetActiveAsync(
+                category.CategoryId, activate),
+            "Category Status");
+    }
+
+    private async Task DeleteCategoryAsync(Category category)
+    {
+        if (_working || _loadingData || !CanDelete)
+            return;
+
+        if (MessageBox.Show(
+                FindForm(),
+                $"Permanently delete '{category.Name}'?\n\n" +
+                "This cannot be undone. Categories used by books " +
+                "cannot be deleted.",
+                "Permanently Delete Category",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2)
+            != DialogResult.Yes)
+            return;
+
+        await ExecuteMutationAsync(
+            () => _categories.DeleteAsync(category.CategoryId),
+            "Delete Category");
+    }
+
+    private async Task ExecuteMutationAsync(
+        Func<Task<ServiceResult>> action,
+        string title)
+    {
         _working = true;
         _grid.Enabled = false;
         _addButton.Enabled = false;
+        _status.Text = "Saving changes...";
 
         try
         {
-            var result = await _categories.SetActiveAsync(
-                category.CategoryId, activate);
+            var result = await action();
+
+            if (IsDisposed || Disposing)
+                return;
 
             if (result.Success)
             {
@@ -322,20 +394,25 @@ public sealed class CategoriesPage : ThemedUserControl
             {
                 MessageBox.Show(
                     FindForm(),
-                    result.Error ?? "Unable to change category status.",
-                    "Category Status",
+                    result.Error ?? "Operation failed.",
+                    title,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
+
+                FilterCategories();
             }
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
-                FindForm(),
-                ex.Message,
-                "Category Status Error",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+            if (!IsDisposed && !Disposing)
+            {
+                MessageBox.Show(
+                    FindForm(),
+                    ex.Message,
+                    title,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
         }
         finally
         {
@@ -350,47 +427,94 @@ public sealed class CategoriesPage : ThemedUserControl
         }
     }
 
-    private async void HandleCellClick(
+    private async void HandleActionMouseUp(
         object? sender,
-        DataGridViewCellEventArgs e)
+        DataGridViewCellMouseEventArgs e)
     {
-        if (e.RowIndex < 0 || !CanManage ||
-            _working || _loadingData)
+        if (e.Button != MouseButtons.Left ||
+            e.RowIndex < 0 || e.ColumnIndex < 0 ||
+            _working || _loadingData || !CanManage)
             return;
 
-        if (_grid.Columns[e.ColumnIndex].Name != "Actions")
+        if (_grid.Columns[e.ColumnIndex]?.Name != "Actions")
             return;
 
         if (_grid.Rows[e.RowIndex].DataBoundItem
             is not Category category)
             return;
 
-        var rect = _grid.GetCellDisplayRectangle(
-            e.ColumnIndex, e.RowIndex, false);
+        int slotWidth = _grid.Columns[e.ColumnIndex].Width
+            / ActionCount;
 
-        Point mouse = _grid.PointToClient(Cursor.Position);
-        int relativeX = mouse.X - rect.Left;
+        int slot = Math.Clamp(
+            e.X / Math.Max(1, slotWidth),
+            0,
+            ActionCount - 1);
 
-        if (relativeX < rect.Width / 2)
-            await OpenDialogAsync(category);
-        else
-            await ChangeStatusAsync(category);
+        await RunActionAsync(category, slot);
     }
 
-    private void HandleCellTooltip(
+    private async Task RunActionAsync(Category category, int slot)
+    {
+        switch (slot)
+        {
+            case 0:
+                await OpenDialogAsync(category);
+                break;
+            case 1:
+                await ChangeStatusAsync(category);
+                break;
+            case 2 when CanDelete:
+                await DeleteCategoryAsync(category);
+                break;
+        }
+    }
+
+    private void HandleActionMouseMove(
+        object? sender,
+        DataGridViewCellMouseEventArgs e)
+    {
+        _grid.Cursor =
+            e.RowIndex >= 0 &&
+            e.ColumnIndex >= 0 &&
+            _grid.Columns[e.ColumnIndex]?.Name == "Actions" &&
+            CanManage
+                ? Cursors.Hand
+                : Cursors.Default;
+    }
+
+    private void HandleTooltip(
         object? sender,
         DataGridViewCellToolTipTextNeededEventArgs e)
     {
-        if (e.RowIndex < 0 ||
-            _grid.Columns[e.ColumnIndex].Name != "Actions")
+        if (e.RowIndex < 0 || e.ColumnIndex < 0 ||
+            _grid.Columns[e.ColumnIndex]?.Name != "Actions")
             return;
 
         if (_grid.Rows[e.RowIndex].DataBoundItem
             is Category category)
         {
-            e.ToolTipText = category.IsActive
-                ? "Pencil: Edit | Archive: Deactivate"
-                : "Pencil: Edit | Restore: Reactivate";
+            e.ToolTipText = CanDelete
+                ? $"Edit | {(category.IsActive ? "Deactivate" : "Reactivate")} | Delete"
+                : $"Edit | {(category.IsActive ? "Deactivate" : "Reactivate")}";
+        }
+    }
+
+    private void HandleGridKeyDown(
+        object? sender, KeyEventArgs e)
+    {
+        // Actions remain mouse-driven in read-only display mode.
+        // The keyboard shortcut opens the selected row's Edit dialog
+        // if a row is available.
+        if (e.KeyCode != Keys.F2 || !CanManage)
+            return;
+
+        var category = _grid.CurrentRow?.DataBoundItem as Category;
+
+        if (category is not null)
+        {
+            e.Handled = true;
+            _ = OpenDialogAsync(category);
         }
     }
 
@@ -401,7 +525,7 @@ public sealed class CategoriesPage : ThemedUserControl
         if (e.RowIndex < 0 || e.ColumnIndex < 0)
             return;
 
-        string column = _grid.Columns[e.ColumnIndex].Name;
+        string? column = _grid.Columns[e.ColumnIndex]?.Name;
 
         if (column != "IsActive" && column != "Actions")
             return;
@@ -413,12 +537,10 @@ public sealed class CategoriesPage : ThemedUserControl
         e.PaintBackground(e.CellBounds, false);
 
         var g = e.Graphics;
+        if (g is null) return;
+
         var c = Theme.Colors;
-
-        if (g is null)
-            return;
-
-        var oldSmoothing = g.SmoothingMode;
+        var previous = g.SmoothingMode;
         g.SmoothingMode = SmoothingMode.AntiAlias;
 
         int cy = e.CellBounds.Top + e.CellBounds.Height / 2;
@@ -427,11 +549,8 @@ public sealed class CategoriesPage : ThemedUserControl
         {
             int cx = e.CellBounds.Left + e.CellBounds.Width / 2;
 
-            Color color = category.IsActive
-                ? c.PillGoodText
-                : c.TextMuted;
-
-            using var pen = new Pen(color, 2f);
+            using var pen = new Pen(
+                category.IsActive ? SuccessColor : c.TextMuted, 2f);
 
             g.DrawEllipse(pen, cx - 9, cy - 9, 18, 18);
 
@@ -451,102 +570,67 @@ public sealed class CategoriesPage : ThemedUserControl
         }
         else
         {
-            int quarter = e.CellBounds.Width / 4;
+            int count = ActionCount;
+            int width = e.CellBounds.Width;
 
-            int editX = e.CellBounds.Left + quarter;
-            int statusX = e.CellBounds.Left + quarter * 3;
-
-            using var editPen = new Pen(c.Accent, 2.2f);
-            using var statusPen = new Pen(
-                category.IsActive ? c.Danger : c.PillGoodText,
-                2f);
-
-            // Pencil.
-            g.DrawLine(
-                editPen,
-                editX - 6, cy + 5,
-                editX + 5, cy - 6);
-
-            g.DrawLine(
-                editPen,
-                editX - 8, cy + 8,
-                editX - 3, cy + 7);
-
-            g.DrawLine(
-                editPen,
-                editX + 4, cy - 7,
-                editX + 7, cy - 4);
-
-            // Archive / restore.
-            g.DrawRectangle(
-                statusPen,
-                statusX - 8, cy - 5, 16, 13);
-
-            g.DrawLine(
-                statusPen,
-                statusX - 10, cy - 8,
-                statusX + 10, cy - 8);
-
-            if (category.IsActive)
+            for (int slot = 0; slot < count; slot++)
             {
-                g.DrawLine(
-                    statusPen,
-                    statusX, cy - 2,
-                    statusX, cy + 4);
+                int cx = e.CellBounds.Left +
+                    (int)((slot + 0.5) * width / count);
 
-                g.DrawLines(statusPen, new[]
+                if (slot == 0)
                 {
-                    new Point(statusX - 4, cy + 1),
-                    new Point(statusX, cy + 5),
-                    new Point(statusX + 4, cy + 1)
-                });
-            }
-            else
-            {
-                g.DrawLine(
-                    statusPen,
-                    statusX, cy + 5,
-                    statusX, cy - 2);
+                    // Edit-in-square icon.
+                    using var pen = new Pen(SuccessColor, 2f);
 
-                g.DrawLines(statusPen, new[]
+                    g.DrawLine(pen, cx - 8, cy - 7, cx + 1, cy - 7);
+                    g.DrawLine(pen, cx - 8, cy - 7, cx - 8, cy + 8);
+                    g.DrawLine(pen, cx - 8, cy + 8, cx + 7, cy + 8);
+                    g.DrawLine(pen, cx + 7, cy + 8, cx + 7, cy + 1);
+
+                    g.DrawLine(pen, cx - 2, cy + 3, cx + 8, cy - 7);
+                    g.DrawLine(pen, cx - 3, cy + 5, cx - 2, cy + 3);
+                }
+                else if (slot == 1)
                 {
-                    new Point(statusX - 4, cy + 1),
-                    new Point(statusX, cy - 3),
-                    new Point(statusX + 4, cy + 1)
-                });
+                    using var pen = new Pen(
+                        category.IsActive ? c.TextMuted : SuccessColor,
+                        2f);
+
+                    g.DrawRectangle(pen, cx - 8, cy - 4, 16, 12);
+                    g.DrawLine(pen, cx - 10, cy - 8, cx + 10, cy - 8);
+
+                    int direction = category.IsActive ? 1 : -1;
+
+                    g.DrawLine(
+                        pen, cx, cy - 2, cx, cy + 4 * direction);
+
+                    g.DrawLine(
+                        pen,
+                        cx - 4, cy + direction,
+                        cx, cy + 5 * direction);
+
+                    g.DrawLine(
+                        pen,
+                        cx + 4, cy + direction,
+                        cx, cy + 5 * direction);
+                }
+                else
+                {
+                    // Trash icon.
+                    using var pen = new Pen(c.Danger, 2f);
+
+                    g.DrawLine(pen, cx - 9, cy - 6, cx + 9, cy - 6);
+                    g.DrawLine(pen, cx - 4, cy - 9, cx + 4, cy - 9);
+                    g.DrawRectangle(pen, cx - 7, cy - 3, 14, 12);
+                    g.DrawLine(pen, cx - 3, cy, cx - 3, cy + 6);
+                    g.DrawLine(pen, cx + 3, cy, cx + 3, cy + 6);
+                }
             }
         }
 
-        g.SmoothingMode = oldSmoothing;
+        g.SmoothingMode = previous;
         e.Handled = true;
-    }
-
-    private void DrawFilterItem(
-        object? sender, DrawItemEventArgs e)
-    {
-        if (e.Index < 0) return;
-
-        var c = Theme.Colors;
-        bool selected =
-            (e.State & DrawItemState.Selected) != 0;
-
-        using var brush = new SolidBrush(
-            selected ? c.AccentSoft : c.Surface);
-
-        e.Graphics.FillRectangle(brush, e.Bounds);
-
-        TextRenderer.DrawText(
-            e.Graphics,
-            _filter.Items[e.Index]!.ToString()!,
-            Theme.Body,
-            new Rectangle(
-                e.Bounds.Left + 8,
-                e.Bounds.Top,
-                e.Bounds.Width - 8,
-                e.Bounds.Height),
-            c.Text,
-            TextFormatFlags.VerticalCenter |
-            TextFormatFlags.Left);
     }
 
     private void UpdateResponsiveLayout()
@@ -558,16 +642,21 @@ public sealed class CategoriesPage : ThemedUserControl
             100, ClientSize.Width - Padding.Horizontal);
 
         bool compact = available < 550;
-        _compact = compact;
 
+        if (_compact == compact && _toolbar.Controls.Count == 3)
+            return;
+
+        _compact = compact;
         _toolbar.SuspendLayout();
 
         try
         {
             _toolbar.Controls.Clear();
             _toolbar.ColumnStyles.Clear();
+            _toolbar.RowStyles.Clear();
 
             _toolbar.ColumnCount = 3;
+            _toolbar.RowCount = 1;
 
             _toolbar.ColumnStyles.Add(
                 new ColumnStyle(SizeType.Percent, 100));
@@ -580,6 +669,9 @@ public sealed class CategoriesPage : ThemedUserControl
                 new ColumnStyle(
                     SizeType.Absolute, compact ? 44 : 160));
 
+            _toolbar.RowStyles.Add(
+                new RowStyle(SizeType.Percent, 100));
+
             _toolbar.Controls.Add(_search, 0, 0);
             _toolbar.Controls.Add(_filter, 1, 0);
             _toolbar.Controls.Add(_addButton, 2, 0);
@@ -588,10 +680,6 @@ public sealed class CategoriesPage : ThemedUserControl
 
             _addButton.Text = compact ? "+" : "+ Add Category";
             _addButton.AccessibleName = "Add Category";
-
-            _addButton.Font = compact
-                ? new Font("Segoe UI", 18f)
-                : Theme.BodyStrong;
 
             _grid.AutoSizeColumnsMode = compact
                 ? DataGridViewAutoSizeColumnsMode.None
@@ -602,13 +690,23 @@ public sealed class CategoriesPage : ThemedUserControl
                 _grid.Columns["Name"]!.Width = 140;
                 _grid.Columns["Description"]!.Width = 210;
                 _grid.Columns["IsActive"]!.Width = 80;
-                _grid.Columns["Actions"]!.Width = 110;
+                _grid.Columns["Actions"]!.Width =
+                    CanDelete ? 144 : 110;
             }
+
+            ApplyAddButtonFont();
         }
         finally
         {
             _toolbar.ResumeLayout(true);
         }
+    }
+
+    private void ApplyAddButtonFont()
+    {
+        _addButton.Font = _compact
+            ? new Font("Segoe UI", 18f)
+            : Theme.BodyStrong;
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -678,20 +776,25 @@ public sealed class CategoriesPage : ThemedUserControl
         _layout.BackColor = c.Background;
         _toolbar.BackColor = c.Background;
 
+        _heading.BackColor = c.Background;
         _heading.ForeColor = c.Text;
         _heading.Font = Theme.Title;
 
+        _status.BackColor = c.Background;
         _status.ForeColor = c.TextMuted;
         _status.Font = Theme.Caption;
 
         _filter.BackColor = c.Surface;
         _filter.ForeColor = c.Text;
         _filter.Font = Theme.Body;
-        _filter.Invalidate();
+        _filter.FlatAppearance.BorderColor = c.Border;
+        _filter.FlatAppearance.BorderSize = 1;
 
         _addButton.BackColor = c.Accent;
         _addButton.ForeColor = c.OnAccent;
         _addButton.FlatAppearance.BorderSize = 0;
+
+        ApplyAddButtonFont();
 
         _grid.ApplyTheme();
 
@@ -699,7 +802,7 @@ public sealed class CategoriesPage : ThemedUserControl
         {
             var column = _grid.Columns[name];
 
-            if (column == null) continue;
+            if (column is null) continue;
 
             column.HeaderCell.Style.Alignment =
                 DataGridViewContentAlignment.MiddleCenter;
@@ -714,5 +817,13 @@ public sealed class CategoriesPage : ThemedUserControl
 
         _grid.ClearRowSelection();
         _grid.Invalidate();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            _filterMenu.Dispose();
+
+        base.Dispose(disposing);
     }
 }

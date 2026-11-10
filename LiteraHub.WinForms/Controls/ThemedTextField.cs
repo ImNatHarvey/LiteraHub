@@ -13,14 +13,10 @@ public sealed class ThemedTextField : ThemedUserControl
     private readonly TextBox _input = new()
     {
         BorderStyle = BorderStyle.None,
-        Dock = DockStyle.Fill,
+        Multiline = false,
+        ScrollBars = ScrollBars.None,
+        WordWrap = true,
         Margin = Padding.Empty
-    };
-
-    private readonly Panel _inner = new()
-    {
-        Dock = DockStyle.Fill,
-        Padding = new Padding(12, 9, 12, 9)
     };
 
     private bool _focused;
@@ -33,11 +29,11 @@ public sealed class ThemedTextField : ThemedUserControl
         DesignerSerializationVisibility.Hidden)]
     public override string Text
     {
-        get => _input?.Text ?? string.Empty;
+        get => _input?.Text ?? "";
         set
         {
             if (_input != null)
-                _input.Text = value ?? string.Empty;
+                _input.Text = value ?? "";
         }
     }
 
@@ -58,10 +54,7 @@ public sealed class ThemedTextField : ThemedUserControl
         {
             _multiline = value;
             _input.Multiline = value;
-            _input.ScrollBars = value
-                ? ScrollBars.Vertical
-                : ScrollBars.None;
-
+            _input.ScrollBars = ScrollBars.None;
             LayoutInput();
         }
     }
@@ -76,11 +69,9 @@ public sealed class ThemedTextField : ThemedUserControl
 
         Height = 40;
         MinimumSize = new Size(80, 40);
+        Cursor = Cursors.IBeam;
 
-        Controls.Add(_inner);
-        _inner.Controls.Add(_input);
-
-        Padding = new Padding(1);
+        Controls.Add(_input);
 
         _input.TextChanged += (_, _) =>
             TextChanged?.Invoke(this, EventArgs.Empty);
@@ -98,8 +89,6 @@ public sealed class ThemedTextField : ThemedUserControl
         };
 
         Click += (_, _) => _input.Focus();
-        _inner.Click += (_, _) => _input.Focus();
-
         Resize += (_, _) => LayoutInput();
 
         LayoutInput();
@@ -111,23 +100,28 @@ public sealed class ThemedTextField : ThemedUserControl
     {
         if (IsDisposed || Disposing) return;
 
+        const int left = 12;
+        const int right = 12;
+
+        int width = Math.Max(
+            1, ClientSize.Width - left - right);
+
         if (_multiline)
         {
-            _inner.Padding = new Padding(12, 9, 12, 9);
-            _input.Multiline = true;
-            _input.Dock = DockStyle.Fill;
+            _input.SetBounds(
+                left,
+                10,
+                width,
+                Math.Max(1, ClientSize.Height - 20));
         }
         else
         {
-            _inner.Padding = new Padding(12, 0, 12, 0);
-            _input.Multiline = false;
-            _input.Dock = DockStyle.None;
-
             int height = _input.PreferredHeight;
+
             _input.SetBounds(
-                12,
-                Math.Max(0, (Height - height) / 2),
-                Math.Max(1, Width - 26),
+                left,
+                Math.Max(0, (ClientSize.Height - height) / 2),
+                width,
                 height);
         }
     }
@@ -139,7 +133,6 @@ public sealed class ThemedTextField : ThemedUserControl
         var c = Theme.Colors;
 
         BackColor = c.Surface;
-        _inner.BackColor = c.Surface;
 
         _input.BackColor = c.Surface;
         _input.ForeColor = c.Text;

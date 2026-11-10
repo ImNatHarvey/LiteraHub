@@ -3,6 +3,7 @@ using System;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using LiteraHub.WinForms.Theming;
 
@@ -34,11 +35,11 @@ public sealed class ThemedSearchBox : ThemedUserControl
         DesignerSerializationVisibility.Hidden)]
     public override string Text
     {
-        get => _input?.Text ?? string.Empty;
+        get => _input?.Text ?? "";
         set
         {
             if (_input != null)
-                _input.Text = value ?? string.Empty;
+                _input.Text = value ?? "";
         }
     }
 
@@ -47,7 +48,7 @@ public sealed class ThemedSearchBox : ThemedUserControl
     public string Placeholder
     {
         get => _placeholder.Text;
-        set => _placeholder.Text = value ?? string.Empty;
+        set => _placeholder.Text = value ?? "";
     }
 
     public ThemedSearchBox()
@@ -58,13 +59,12 @@ public sealed class ThemedSearchBox : ThemedUserControl
             ControlStyles.OptimizedDoubleBuffer |
             ControlStyles.ResizeRedraw, true);
 
-        Height = 38;
-        MinimumSize = new Size(80, 38);
-        Margin = Padding.Empty;
+        Height = 40;
+        MinimumSize = new Size(80, 40);
         Cursor = Cursors.IBeam;
 
-        Controls.Add(_input);
         Controls.Add(_placeholder);
+        Controls.Add(_input);
 
         _input.TextChanged += (_, _) =>
         {
@@ -98,6 +98,7 @@ public sealed class ThemedSearchBox : ThemedUserControl
 
     private void UpdatePlaceholder()
     {
+        // The placeholder must never cover the input caret.
         _placeholder.Visible =
             !_focused && string.IsNullOrEmpty(_input.Text);
     }
@@ -106,14 +107,14 @@ public sealed class ThemedSearchBox : ThemedUserControl
     {
         if (IsDisposed || Disposing) return;
 
-        int left = 39;
+        const int left = 40;
         int width = Math.Max(1, ClientSize.Width - left - 12);
         int height = _input.PreferredHeight;
-        int top = Math.Max(0, (ClientSize.Height - height) / 2);
+        int y = Math.Max(0, (ClientSize.Height - height) / 2);
 
-        _input.SetBounds(left, top, width, height);
+        _input.SetBounds(left, y, width, height);
         _placeholder.SetBounds(
-            left, 1, width, Math.Max(1, Height - 2));
+            left, y, width, height);
     }
 
     protected override void ApplyTheme()
@@ -132,6 +133,7 @@ public sealed class ThemedSearchBox : ThemedUserControl
         _placeholder.Font = Theme.Body;
 
         PositionContents();
+        UpdatePlaceholder();
         Invalidate();
     }
 
@@ -140,6 +142,7 @@ public sealed class ThemedSearchBox : ThemedUserControl
         base.OnPaint(e);
 
         var c = Theme.Colors;
+        var g = e.Graphics;
 
         using var border = new Pen(
             _focused ? c.Accent : c.Border);
@@ -149,15 +152,19 @@ public sealed class ThemedSearchBox : ThemedUserControl
         rect.Height--;
 
         if (rect.Width > 0 && rect.Height > 0)
-            e.Graphics.DrawRectangle(border, rect);
+            g.DrawRectangle(border, rect);
 
-        // Draw a magnifying glass with theme-aware GDI+.
-        e.Graphics.SmoothingMode =
-            System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        var old = g.SmoothingMode;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
 
-        using var iconPen = new Pen(c.TextMuted, 1.8f);
+        int cx = 20;
+        int cy = ClientSize.Height / 2;
 
-        e.Graphics.DrawEllipse(iconPen, 13, 12, 11, 11);
-        e.Graphics.DrawLine(iconPen, 22, 21, 28, 27);
+        using var pen = new Pen(c.TextMuted, 1.8f);
+
+        g.DrawEllipse(pen, cx - 7, cy - 8, 12, 12);
+        g.DrawLine(pen, cx + 3, cy + 3, cx + 9, cy + 9);
+
+        g.SmoothingMode = old;
     }
 }

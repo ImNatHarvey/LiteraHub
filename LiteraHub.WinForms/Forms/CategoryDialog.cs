@@ -17,39 +17,45 @@ public sealed class CategoryDialog : Form
 
     private readonly Label _title = new()
     {
-        AutoSize = true
+        AutoSize = false,
+        Dock = DockStyle.Fill,
+        TextAlign = ContentAlignment.MiddleLeft
     };
 
     private readonly Label _nameLabel = new()
     {
         Text = "Category Name *",
-        AutoSize = true
+        Dock = DockStyle.Fill,
+        TextAlign = ContentAlignment.MiddleLeft
     };
 
     private readonly ThemedTextField _name = new()
     {
         MaxLength = 100,
-        Dock = DockStyle.Fill
+        Dock = DockStyle.Fill,
+        Margin = Padding.Empty
     };
 
     private readonly Label _descriptionLabel = new()
     {
         Text = "Description",
-        AutoSize = true
+        Dock = DockStyle.Fill,
+        TextAlign = ContentAlignment.MiddleLeft
     };
 
     private readonly ThemedTextField _description = new()
     {
         Multiline = true,
         MaxLength = 500,
-        Dock = DockStyle.Fill
+        Dock = DockStyle.Fill,
+        Margin = Padding.Empty
     };
 
     private readonly Label _error = new()
     {
-        AutoSize = false,
         Dock = DockStyle.Fill,
-        TextAlign = ContentAlignment.MiddleLeft
+        TextAlign = ContentAlignment.MiddleLeft,
+        AutoEllipsis = true
     };
 
     private readonly BusyButton _save = new()
@@ -86,8 +92,8 @@ public sealed class CategoryDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        ClientSize = new Size(440, 370);
-        MinimumSize = new Size(350, 400);
+        ClientSize = new Size(440, 390);
+        MinimumSize = new Size(350, 420);
         Font = Theme.Body;
 
         BuildLayout();
@@ -129,28 +135,28 @@ public sealed class CategoryDialog : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(24),
+            Padding = new Padding(24, 18, 24, 20),
             ColumnCount = 1,
-            RowCount = 7
+            RowCount = 9,
+            Margin = Padding.Empty
         };
 
         root.ColumnStyles.Add(
             new ColumnStyle(SizeType.Percent, 100));
 
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 12));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 12));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
 
         _title.Font = Theme.Title;
         _nameLabel.Font = Theme.Caption;
         _descriptionLabel.Font = Theme.Caption;
-
-        _name.Margin = new Padding(0, 0, 0, 8);
-        _description.Margin = new Padding(0, 0, 0, 8);
 
         var buttons = new TableLayoutPanel
         {
@@ -178,12 +184,15 @@ public sealed class CategoryDialog : Form
         root.Controls.Add(_title, 0, 0);
         root.Controls.Add(_nameLabel, 0, 1);
         root.Controls.Add(_name, 0, 2);
-        root.Controls.Add(_descriptionLabel, 0, 3);
-        root.Controls.Add(_description, 0, 4);
-        root.Controls.Add(_error, 0, 5);
-        root.Controls.Add(buttons, 0, 6);
+        root.Controls.Add(_descriptionLabel, 0, 4);
+        root.Controls.Add(_description, 0, 5);
+        root.Controls.Add(_error, 0, 7);
+        root.Controls.Add(buttons, 0, 8);
 
         Controls.Add(root);
+
+        AcceptButton = _save;
+        CancelButton = _cancel;
     }
 
     private async Task SaveAsync()
@@ -202,7 +211,7 @@ public sealed class CategoryDialog : Form
         _name.Enabled = false;
         _description.Enabled = false;
         _cancel.Enabled = false;
-        _error.Text = string.Empty;
+        _error.Text = "";
 
         try
         {
