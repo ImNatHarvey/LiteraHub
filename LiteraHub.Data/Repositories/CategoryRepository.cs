@@ -5,10 +5,6 @@ using LiteraHub.Core.Models;
 
 namespace LiteraHub.Data.Repositories;
 
-/// <summary>
-/// Dapper implementation of category database operations.
-/// Business validation and authorization belong in the service layer.
-/// </summary>
 public sealed class CategoryRepository : ICategoryRepository
 {
     private readonly IDbConnectionFactory _factory;
@@ -137,6 +133,35 @@ public sealed class CategoryRepository : ICategoryRepository
                 CategoryId = categoryId,
                 IsActive = isActive
             });
+
+        return affectedRows > 0;
+    }
+
+    public async Task<bool> DeleteIfUnusedAsync(
+        int categoryId)
+    {
+        if (categoryId <= 0)
+            return false;
+
+        await using var conn = _factory.CreateConnection();
+        await conn.OpenAsync();
+
+        // The FK constraint remains the final protection
+        // against concurrent references.
+        const string sql = """
+            DELETE FROM dbo.Categories
+            WHERE CategoryId = @CategoryId
+              AND NOT EXISTS
+              (
+                  SELECT 1
+                  FROM dbo.Books
+                  WHERE CategoryId = @CategoryId
+              );
+            """;
+
+        int affectedRows = await conn.ExecuteAsync(
+            sql,
+            new { CategoryId = categoryId });
 
         return affectedRows > 0;
     }

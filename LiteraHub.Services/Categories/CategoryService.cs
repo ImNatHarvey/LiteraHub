@@ -6,10 +6,6 @@ using LiteraHub.Core.Security;
 
 namespace LiteraHub.Services.Categories;
 
-/// <summary>
-/// Validates category data and enforces role permissions.
-/// Database operations are delegated to ICategoryRepository.
-/// </summary>
 public sealed class CategoryService : ICategoryService
 {
     private readonly ICategoryRepository _repository;
@@ -31,7 +27,6 @@ public sealed class CategoryService : ICategoryService
     {
         _permissions.Demand(Permission.ViewCatalog);
 
-        // Inactive records are administrative data.
         if (includeInactive)
             _permissions.Demand(Permission.ManageLookups);
 
@@ -48,24 +43,23 @@ public sealed class CategoryService : ICategoryService
         return GetVisibleCategoryAsync(categoryId);
     }
 
-    private async Task<Category?> GetVisibleCategoryAsync(int categoryId)
+    private async Task<Category?> GetVisibleCategoryAsync(
+        int categoryId)
     {
         var category = await _repository.GetByIdAsync(categoryId);
 
         if (category is null)
             return null;
 
-        // Non-managers must not retrieve inactive categories.
         if (!category.IsActive &&
             !_permissions.Can(Permission.ManageLookups))
-        {
             return null;
-        }
 
         return category;
     }
 
-    public async Task<ServiceResult> CreateAsync(CategoryInput input)
+    public async Task<ServiceResult> CreateAsync(
+        CategoryInput input)
     {
         _permissions.Demand(Permission.CreateLookups);
 
@@ -76,7 +70,8 @@ public sealed class CategoryService : ICategoryService
 
         var normalized = Normalize(input);
 
-        var duplicate = await _repository.GetByNameAsync(normalized.Name);
+        var duplicate = await _repository.GetByNameAsync(
+            normalized.Name);
 
         if (duplicate is not null)
             return ServiceResult.Fail(
@@ -89,8 +84,6 @@ public sealed class CategoryService : ICategoryService
         }
         catch (DbException)
         {
-            // The database may reject a concurrent duplicate insert
-            // or report another database error.
             return ServiceResult.Fail(
                 "The category could not be saved. " +
                 "Check for a duplicate name or database issue.");
@@ -118,7 +111,8 @@ public sealed class CategoryService : ICategoryService
         if (existing is null)
             return ServiceResult.Fail("Category not found.");
 
-        var duplicate = await _repository.GetByNameAsync(normalized.Name);
+        var duplicate = await _repository.GetByNameAsync(
+            normalized.Name);
 
         if (duplicate is not null &&
             duplicate.CategoryId != categoryId)
@@ -130,8 +124,7 @@ public sealed class CategoryService : ICategoryService
         try
         {
             var updated = await _repository.UpdateAsync(
-                categoryId,
-                normalized);
+                categoryId, normalized);
 
             return updated
                 ? ServiceResult.Ok()
@@ -165,8 +158,7 @@ public sealed class CategoryService : ICategoryService
         try
         {
             var updated = await _repository.SetActiveAsync(
-                categoryId,
-                isActive);
+                categoryId, isActive);
 
             return updated
                 ? ServiceResult.Ok()
@@ -177,6 +169,39 @@ public sealed class CategoryService : ICategoryService
             return ServiceResult.Fail(
                 "The category status could not be updated " +
                 "because of a database issue.");
+        }
+    }
+
+    public async Task<ServiceResult> DeleteAsync(int categoryId)
+    {
+        _permissions.Demand(Permission.HardDelete);
+        _permissions.Demand(Permission.ManageLookups);
+
+        if (categoryId <= 0)
+            return ServiceResult.Fail("Invalid category ID.");
+
+        try
+        {
+            var existing = await _repository.GetByIdAsync(
+                categoryId);
+
+            if (existing is null)
+                return ServiceResult.Fail("Category not found.");
+
+            bool deleted = await _repository.DeleteIfUnusedAsync(
+                categoryId);
+
+            return deleted
+                ? ServiceResult.Ok()
+                : ServiceResult.Fail(
+                    "This category cannot be deleted because " +
+                    "it is referenced by books or is no longer available.");
+        }
+        catch (DbException)
+        {
+            return ServiceResult.Fail(
+                "This category could not be deleted. " +
+                "It may be referenced by another record.");
         }
     }
 
@@ -204,7 +229,6 @@ public sealed class CategoryService : ICategoryService
     private static CategoryInput Normalize(CategoryInput input)
     {
         var name = input.Name.Trim();
-
         var description = input.Description?.Trim();
 
         if (string.IsNullOrEmpty(description))

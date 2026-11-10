@@ -3,9 +3,6 @@ using LiteraHub.Core.Models;
 
 namespace LiteraHub.Core.Interfaces;
 
-/// <summary>
-/// Business operations for managing book categories.
-/// </summary>
 public interface ICategoryService
 {
     Task<IReadOnlyList<Category>> GetAllAsync(
@@ -22,4 +19,6 @@ public interface ICategoryService
     Task<ServiceResult> SetActiveAsync(
         int categoryId,
         bool isActive);
+
+    Task<ServiceResult> DeleteAsync(int categoryId);
 }

@@ -13,10 +13,10 @@ namespace LiteraHub.WinForms.Forms;
 public sealed class CategoryDialog : Form
 {
     private readonly ICategoryService _service;
+    private readonly Category? _existing;
 
     private readonly Label _title = new()
     {
-        Text = "Add Category",
         AutoSize = true
     };
 
@@ -26,7 +26,7 @@ public sealed class CategoryDialog : Form
         AutoSize = true
     };
 
-    private readonly TextBox _name = new()
+    private readonly ThemedTextField _name = new()
     {
         MaxLength = 100,
         Dock = DockStyle.Fill
@@ -38,11 +38,10 @@ public sealed class CategoryDialog : Form
         AutoSize = true
     };
 
-    private readonly TextBox _description = new()
+    private readonly ThemedTextField _description = new()
     {
         Multiline = true,
         MaxLength = 500,
-        ScrollBars = ScrollBars.Vertical,
         Dock = DockStyle.Fill
     };
 
@@ -55,7 +54,6 @@ public sealed class CategoryDialog : Form
 
     private readonly BusyButton _save = new()
     {
-        Text = "Save Category",
         Dock = DockStyle.Fill
     };
 
@@ -68,12 +66,21 @@ public sealed class CategoryDialog : Form
 
     private bool _saving;
 
-    public CategoryDialog(ICategoryService service)
+    public CategoryDialog(
+        ICategoryService service,
+        Category? existing = null)
     {
         _service = service ??
             throw new ArgumentNullException(nameof(service));
 
-        Text = "Add Category";
+        _existing = existing;
+
+        bool editing = existing is not null;
+
+        Text = editing ? "Edit Category" : "Add Category";
+        _title.Text = Text;
+        _save.Text = editing ? "Save Changes" : "Save Category";
+
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -84,16 +91,20 @@ public sealed class CategoryDialog : Form
         Font = Theme.Body;
 
         BuildLayout();
-        ApplyTheme();
 
+        if (existing is not null)
+        {
+            _name.Text = existing.Name;
+            _description.Text = existing.Description ?? "";
+        }
+
+        ApplyTheme();
         Theme.Changed += OnThemeChanged;
 
         _save.Click += async (_, _) =>
         {
-            if (_saving)
-                return;
-
-            await SaveAsync();
+            if (!_saving)
+                await SaveAsync();
         };
 
         _cancel.Click += (_, _) =>
@@ -107,11 +118,10 @@ public sealed class CategoryDialog : Form
 
         FormClosing += (_, e) =>
         {
-            if (_saving)
-                e.Cancel = true;
+            if (_saving) e.Cancel = true;
         };
 
-        Shown += (_, _) => _name.Focus();
+        Shown += (_, _) => _name.FocusInput();
     }
 
     private void BuildLayout()
@@ -152,8 +162,10 @@ public sealed class CategoryDialog : Form
 
         buttons.ColumnStyles.Add(
             new ColumnStyle(SizeType.Percent, 40));
+
         buttons.ColumnStyles.Add(
             new ColumnStyle(SizeType.Percent, 60));
+
         buttons.RowStyles.Add(
             new RowStyle(SizeType.Percent, 100));
 
@@ -172,9 +184,6 @@ public sealed class CategoryDialog : Form
         root.Controls.Add(buttons, 0, 6);
 
         Controls.Add(root);
-
-        AcceptButton = _save;
-        CancelButton = _cancel;
     }
 
     private async Task SaveAsync()
@@ -185,7 +194,7 @@ public sealed class CategoryDialog : Form
         if (string.IsNullOrWhiteSpace(name))
         {
             _error.Text = "Category name is required.";
-            _name.Focus();
+            _name.FocusInput();
             return;
         }
 
@@ -201,22 +210,23 @@ public sealed class CategoryDialog : Form
 
             await _save.RunAsync(async () =>
             {
-                var result = await _service.CreateAsync(
-                    new CategoryInput(
-                        name,
-                        string.IsNullOrWhiteSpace(description)
-                            ? null
-                            : description));
+                var input = new CategoryInput(
+                    name,
+                    string.IsNullOrWhiteSpace(description)
+                        ? null
+                        : description);
+
+                var result = _existing is null
+                    ? await _service.CreateAsync(input)
+                    : await _service.UpdateAsync(
+                        _existing.CategoryId, input);
 
                 if (result.Success)
-                {
                     saved = true;
-                }
                 else
-                {
                     _error.Text =
                         result.Error ?? "Unable to save category.";
-                }
+
             }, "Saving...");
 
             if (saved)
@@ -228,8 +238,7 @@ public sealed class CategoryDialog : Form
         }
         catch (Exception ex)
         {
-            _error.Text =
-                "Unable to save category: " + ex.Message;
+            _error.Text = "Unable to save: " + ex.Message;
         }
         finally
         {
@@ -260,17 +269,14 @@ public sealed class CategoryDialog : Form
         _nameLabel.ForeColor = c.TextMuted;
         _descriptionLabel.ForeColor = c.TextMuted;
 
-        _name.BackColor = c.Surface;
-        _name.ForeColor = c.Text;
-
-        _description.BackColor = c.Surface;
-        _description.ForeColor = c.Text;
-
-        _error.ForeColor = Color.Firebrick;
+        _error.ForeColor = c.Danger;
 
         _cancel.BackColor = c.Surface;
         _cancel.ForeColor = c.Text;
         _cancel.FlatAppearance.BorderColor = c.Border;
+
+        _name.Invalidate();
+        _description.Invalidate();
     }
 
     protected override void Dispose(bool disposing)

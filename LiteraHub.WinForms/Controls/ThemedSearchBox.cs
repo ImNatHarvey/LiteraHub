@@ -14,9 +14,7 @@ public sealed class ThemedSearchBox : ThemedUserControl
     {
         BorderStyle = BorderStyle.None,
         Multiline = false,
-        ReadOnly = false,
-        TabStop = true,
-        Font = Theme.Body
+        TabStop = true
     };
 
     private readonly Label _placeholder = new()
@@ -24,9 +22,10 @@ public sealed class ThemedSearchBox : ThemedUserControl
         Text = "Search categories...",
         AutoSize = false,
         TextAlign = ContentAlignment.MiddleLeft,
-        Font = Theme.Body,
         Cursor = Cursors.IBeam
     };
+
+    private bool _focused;
 
     public new event EventHandler? TextChanged;
 
@@ -38,7 +37,7 @@ public sealed class ThemedSearchBox : ThemedUserControl
         get => _input?.Text ?? string.Empty;
         set
         {
-            if (_input is not null)
+            if (_input != null)
                 _input.Text = value ?? string.Empty;
         }
     }
@@ -54,24 +53,18 @@ public sealed class ThemedSearchBox : ThemedUserControl
     public ThemedSearchBox()
     {
         SetStyle(
+            ControlStyles.UserPaint |
             ControlStyles.AllPaintingInWmPaint |
             ControlStyles.OptimizedDoubleBuffer |
-            ControlStyles.UserPaint |
-            ControlStyles.ResizeRedraw,
-            true);
+            ControlStyles.ResizeRedraw, true);
 
         Height = 38;
-        MinimumSize = new Size(100, 38);
+        MinimumSize = new Size(80, 38);
         Margin = Padding.Empty;
+        Cursor = Cursors.IBeam;
 
         Controls.Add(_input);
         Controls.Add(_placeholder);
-
-        _placeholder.BringToFront();
-
-        Resize += (_, _) => PositionContents();
-
-        _placeholder.Click += (_, _) => _input.Focus();
 
         _input.TextChanged += (_, _) =>
         {
@@ -79,8 +72,23 @@ public sealed class ThemedSearchBox : ThemedUserControl
             TextChanged?.Invoke(this, EventArgs.Empty);
         };
 
-        _input.GotFocus += (_, _) => UpdatePlaceholder();
-        _input.LostFocus += (_, _) => UpdatePlaceholder();
+        _input.GotFocus += (_, _) =>
+        {
+            _focused = true;
+            UpdatePlaceholder();
+            Invalidate();
+        };
+
+        _input.LostFocus += (_, _) =>
+        {
+            _focused = false;
+            UpdatePlaceholder();
+            Invalidate();
+        };
+
+        _placeholder.Click += (_, _) => _input.Focus();
+        Click += (_, _) => _input.Focus();
+        Resize += (_, _) => PositionContents();
 
         PositionContents();
         UpdatePlaceholder();
@@ -91,40 +99,21 @@ public sealed class ThemedSearchBox : ThemedUserControl
     private void UpdatePlaceholder()
     {
         _placeholder.Visible =
-            string.IsNullOrEmpty(_input.Text);
-
-        if (_placeholder.Visible)
-            _placeholder.BringToFront();
+            !_focused && string.IsNullOrEmpty(_input.Text);
     }
 
     private void PositionContents()
     {
-        if (IsDisposed || Disposing)
-            return;
+        if (IsDisposed || Disposing) return;
 
-        const int horizontalPadding = 12;
+        int left = 39;
+        int width = Math.Max(1, ClientSize.Width - left - 12);
+        int height = _input.PreferredHeight;
+        int top = Math.Max(0, (ClientSize.Height - height) / 2);
 
-        int contentWidth = Math.Max(
-            1,
-            ClientSize.Width - horizontalPadding * 2);
-
-        int textHeight = _input.PreferredHeight;
-
-        int textY = Math.Max(
-            0,
-            (ClientSize.Height - textHeight) / 2);
-
-        _input.SetBounds(
-            horizontalPadding,
-            textY,
-            contentWidth,
-            textHeight);
-
+        _input.SetBounds(left, top, width, height);
         _placeholder.SetBounds(
-            horizontalPadding,
-            1,
-            contentWidth,
-            Math.Max(1, ClientSize.Height - 2));
+            left, 1, width, Math.Max(1, Height - 2));
     }
 
     protected override void ApplyTheme()
@@ -132,7 +121,6 @@ public sealed class ThemedSearchBox : ThemedUserControl
         base.ApplyTheme();
 
         var c = Theme.Colors;
-
         BackColor = c.Surface;
 
         _input.BackColor = c.Surface;
@@ -151,13 +139,25 @@ public sealed class ThemedSearchBox : ThemedUserControl
     {
         base.OnPaint(e);
 
-        using var pen = new Pen(Theme.Colors.Border);
+        var c = Theme.Colors;
+
+        using var border = new Pen(
+            _focused ? c.Accent : c.Border);
 
         var rect = ClientRectangle;
         rect.Width--;
         rect.Height--;
 
         if (rect.Width > 0 && rect.Height > 0)
-            e.Graphics.DrawRectangle(pen, rect);
+            e.Graphics.DrawRectangle(border, rect);
+
+        // Draw a magnifying glass with theme-aware GDI+.
+        e.Graphics.SmoothingMode =
+            System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+        using var iconPen = new Pen(c.TextMuted, 1.8f);
+
+        e.Graphics.DrawEllipse(iconPen, 13, 12, 11, 11);
+        e.Graphics.DrawLine(iconPen, 22, 21, 28, 27);
     }
 }
