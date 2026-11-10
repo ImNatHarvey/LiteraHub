@@ -1,5 +1,6 @@
 ﻿
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Threading.Tasks;
@@ -8,6 +9,7 @@ using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
 using LiteraHub.Core.Security;
 using LiteraHub.WinForms.Controls;
+using LiteraHub.WinForms.Forms;
 using LiteraHub.WinForms.Theming;
 
 namespace LiteraHub.WinForms.Pages;
@@ -65,8 +67,19 @@ public sealed class CategoriesPage : ThemedUserControl
 
     private readonly ThemedDataGridView _grid = new();
 
+    private readonly LoadingHost _loading = new()
+    {
+        Dock = DockStyle.Fill,
+        SkeletonStyle = SkeletonStyle.Rows,
+        Margin = Padding.Empty
+    };
+
+    private List<Category> _allCategories = new();
+
     private bool _loadStarted;
     private bool _compact;
+    private bool _loadingData;
+    private bool _adding;
 
     public CategoriesPage(
         ICategoryService categories,
@@ -84,10 +97,15 @@ public sealed class CategoriesPage : ThemedUserControl
         BuildLayout();
         ConfigureGrid();
 
-        // Add action is not implemented yet.
-        _addButton.Enabled = false;
+        _loading.SetContent(_grid);
+
         _addButton.Visible =
             _permissions.Can(Permission.CreateLookups);
+
+        _search.TextChanged += (_, _) => FilterCategories();
+
+        _addButton.Click += async (_, _) =>
+            await OpenAddDialogAsync();
 
         _status.Text = "Waiting to load categories...";
 
@@ -128,7 +146,7 @@ public sealed class CategoriesPage : ThemedUserControl
         _layout.Controls.Add(_heading, 0, 0);
         _layout.Controls.Add(_toolbar, 0, 1);
         _layout.Controls.Add(_status, 0, 2);
-        _layout.Controls.Add(_grid, 0, 3);
+        _layout.Controls.Add(_loading, 0, 3);
 
         Controls.Add(_layout);
     }
@@ -138,6 +156,7 @@ public sealed class CategoriesPage : ThemedUserControl
         _grid.ReadOnlyDisplayMode = true;
         _grid.ReadOnly = true;
         _grid.MultiSelect = false;
+        _grid.AutoGenerateColumns = false;
 
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
@@ -192,6 +211,80 @@ public sealed class CategoriesPage : ThemedUserControl
         _grid.ClearRowSelection();
     }
 
+    private void FilterCategories()
+    {
+        if (IsDisposed || Disposing || _loadingData)
+            return;
+
+        string query = _search.Text.Trim();
+
+        var filtered = string.IsNullOrWhiteSpace(query)
+            ? _allCategories.ToList()
+            : _allCategories.Where(c =>
+                c.Name.Contains(
+                    query,
+                    StringComparison.OrdinalIgnoreCase) ||
+                (c.Description?.Contains(
+                    query,
+                    StringComparison.OrdinalIgnoreCase) ?? false))
+                .ToList();
+
+        _grid.DataSource = filtered;
+        _grid.ClearRowSelection();
+
+        if (_allCategories.Count == 0)
+        {
+            _status.Text = "No categories found.";
+        }
+        else if (filtered.Count == 0)
+        {
+            _status.Text = "No matching categories.";
+        }
+        else if (string.IsNullOrWhiteSpace(query))
+        {
+            _status.Text =
+                $"{filtered.Count} " +
+                (filtered.Count == 1
+                    ? "category loaded."
+                    : "categories loaded.");
+        }
+        else
+        {
+            _status.Text =
+                $"{filtered.Count} of " +
+                $"{_allCategories.Count} categories shown.";
+        }
+    }
+
+    private async Task OpenAddDialogAsync()
+    {
+        if (_adding || _loadingData ||
+            !_permissions.Can(Permission.CreateLookups))
+            return;
+
+        _adding = true;
+        _addButton.Enabled = false;
+
+        try
+        {
+            using var dialog = new CategoryDialog(_categories);
+
+            var result = dialog.ShowDialog(FindForm());
+
+            if (result == DialogResult.OK)
+            {
+                await LoadCategoriesAsync();
+            }
+        }
+        finally
+        {
+            _adding = false;
+
+            if (!IsDisposed && !Disposing)
+                _addButton.Enabled = true;
+        }
+    }
+
     private void UpdateResponsiveLayout()
     {
         if (IsDisposed || Disposing)
@@ -217,7 +310,6 @@ public sealed class CategoriesPage : ThemedUserControl
             _toolbar.ColumnStyles.Clear();
             _toolbar.RowStyles.Clear();
 
-            // Always use one row.
             _toolbar.ColumnCount = 2;
             _toolbar.RowCount = 1;
 
@@ -229,7 +321,6 @@ public sealed class CategoriesPage : ThemedUserControl
 
             if (compact)
             {
-                // Compact icon-only button.
                 _toolbar.ColumnStyles.Add(
                     new ColumnStyle(SizeType.Absolute, 44));
 
@@ -310,39 +401,36 @@ public sealed class CategoriesPage : ThemedUserControl
 
     private async Task LoadCategoriesAsync()
     {
-        if (IsDisposed || Disposing)
+        if (IsDisposed || Disposing || _loadingData)
             return;
 
+        _loadingData = true;
         _status.Text = "Loading categories...";
         _grid.Enabled = false;
+        _addButton.Enabled = false;
 
         try
         {
             bool includeInactive =
                 _permissions.Can(Permission.ManageLookups);
 
-            var categories =
-                await _categories.GetAllAsync(includeInactive);
+            var categories = await _loading.RunAsync(
+                () => _categories.GetAllAsync(includeInactive));
 
             if (IsDisposed || Disposing)
                 return;
 
-            var rows = categories.ToList();
+            _allCategories = categories.ToList();
 
-            _grid.DataSource = rows;
-            _grid.ClearRowSelection();
-
-            _status.Text = rows.Count == 0
-                ? "No categories found."
-                : $"{rows.Count} categor" +
-                  (rows.Count == 1 ? "y" : "ies") +
-                  " loaded.";
+            _loadingData = false;
+            FilterCategories();
         }
         catch (Exception ex)
         {
             if (IsDisposed || Disposing)
                 return;
 
+            _allCategories.Clear();
             _grid.DataSource = null;
 
             _status.Text =
@@ -350,9 +438,14 @@ public sealed class CategoriesPage : ThemedUserControl
         }
         finally
         {
+            _loadingData = false;
+
             if (!IsDisposed && !Disposing)
             {
                 _grid.Enabled = true;
+                _addButton.Enabled =
+                    _permissions.Can(Permission.CreateLookups);
+
                 _grid.ClearRowSelection();
             }
         }

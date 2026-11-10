@@ -1,23 +1,21 @@
 ﻿
 using System;
+using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Windows.Forms;
 using LiteraHub.WinForms.Theming;
 
 namespace LiteraHub.WinForms.Controls;
 
-/// <summary>
-/// A themed, padded search field with vertically centered text.
-/// Search is intentionally read-only until implemented.
-/// </summary>
 public sealed class ThemedSearchBox : ThemedUserControl
 {
     private readonly TextBox _input = new()
     {
         BorderStyle = BorderStyle.None,
         Multiline = false,
-        ReadOnly = true,
-        TabStop = false,
+        ReadOnly = false,
+        TabStop = true,
         Font = Theme.Body
     };
 
@@ -26,9 +24,32 @@ public sealed class ThemedSearchBox : ThemedUserControl
         Text = "Search categories...",
         AutoSize = false,
         TextAlign = ContentAlignment.MiddleLeft,
-        Cursor = Cursors.Default,
-        Font = Theme.Body
+        Font = Theme.Body,
+        Cursor = Cursors.IBeam
     };
+
+    public new event EventHandler? TextChanged;
+
+    [AllowNull]
+    [DesignerSerializationVisibility(
+        DesignerSerializationVisibility.Hidden)]
+    public override string Text
+    {
+        get => _input?.Text ?? string.Empty;
+        set
+        {
+            if (_input is not null)
+                _input.Text = value ?? string.Empty;
+        }
+    }
+
+    [DesignerSerializationVisibility(
+        DesignerSerializationVisibility.Hidden)]
+    public string Placeholder
+    {
+        get => _placeholder.Text;
+        set => _placeholder.Text = value ?? string.Empty;
+    }
 
     public ThemedSearchBox()
     {
@@ -42,7 +63,6 @@ public sealed class ThemedSearchBox : ThemedUserControl
         Height = 38;
         MinimumSize = new Size(100, 38);
         Margin = Padding.Empty;
-        TabStop = false;
 
         Controls.Add(_input);
         Controls.Add(_placeholder);
@@ -51,17 +71,30 @@ public sealed class ThemedSearchBox : ThemedUserControl
 
         Resize += (_, _) => PositionContents();
 
+        _placeholder.Click += (_, _) => _input.Focus();
+
         _input.TextChanged += (_, _) =>
         {
-            _placeholder.Visible =
-                string.IsNullOrEmpty(_input.Text);
+            UpdatePlaceholder();
+            TextChanged?.Invoke(this, EventArgs.Empty);
         };
 
-        _input.GotFocus += (_, _) =>
-            _placeholder.Visible =
-                string.IsNullOrEmpty(_input.Text);
+        _input.GotFocus += (_, _) => UpdatePlaceholder();
+        _input.LostFocus += (_, _) => UpdatePlaceholder();
 
         PositionContents();
+        UpdatePlaceholder();
+    }
+
+    public void FocusInput() => _input.Focus();
+
+    private void UpdatePlaceholder()
+    {
+        _placeholder.Visible =
+            string.IsNullOrEmpty(_input.Text);
+
+        if (_placeholder.Visible)
+            _placeholder.BringToFront();
     }
 
     private void PositionContents()
@@ -121,7 +154,6 @@ public sealed class ThemedSearchBox : ThemedUserControl
         using var pen = new Pen(Theme.Colors.Border);
 
         var rect = ClientRectangle;
-
         rect.Width--;
         rect.Height--;
 
