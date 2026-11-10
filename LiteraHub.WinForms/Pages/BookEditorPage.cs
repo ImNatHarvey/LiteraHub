@@ -1,6 +1,7 @@
 ﻿
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using LiteraHub.Core.Models;
 using LiteraHub.WinForms.Controls;
@@ -28,20 +29,17 @@ public sealed class BookEditorPage : ThemedUserControl
         Margin = Padding.Empty
     };
 
-    private readonly Button _back = new()
-    {
-        Text = "‹  Back to Books",
-        Dock = DockStyle.Fill,
-        FlatStyle = FlatStyle.Flat,
-        TextAlign = ContentAlignment.MiddleLeft,
-        Cursor = Cursors.Hand,
-        Margin = new Padding(0, 4, 12, 4)
-    };
-
     private readonly Label _heading = new()
     {
         Dock = DockStyle.Fill,
-        TextAlign = ContentAlignment.MiddleLeft
+        TextAlign = ContentAlignment.MiddleLeft,
+        Margin = Padding.Empty
+    };
+
+    private readonly BackButton _back = new()
+    {
+        Dock = DockStyle.Fill,
+        Margin = new Padding(8, 4, 2, 4)
     };
 
     private readonly Label _description = new()
@@ -111,17 +109,19 @@ public sealed class BookEditorPage : ThemedUserControl
         _layout.RowStyles.Add(
             new RowStyle(SizeType.Percent, 100));
 
-        _header.ColumnStyles.Add(
-            new ColumnStyle(SizeType.Absolute, 150));
-
+        // Heading expands on the left.
         _header.ColumnStyles.Add(
             new ColumnStyle(SizeType.Percent, 100));
+
+        // Back button stays anchored to the right.
+        _header.ColumnStyles.Add(
+            new ColumnStyle(SizeType.Absolute, 100));
 
         _header.RowStyles.Add(
             new RowStyle(SizeType.Percent, 100));
 
-        _header.Controls.Add(_back, 0, 0);
-        _header.Controls.Add(_heading, 1, 0);
+        _header.Controls.Add(_heading, 0, 0);
+        _header.Controls.Add(_back, 1, 0);
 
         _preview.Controls.Add(_previewText);
 
@@ -136,12 +136,8 @@ public sealed class BookEditorPage : ThemedUserControl
     {
         bool compact = Width < 480;
 
-        _header.ColumnStyles[0].Width =
-            compact ? 100 : 150;
-
-        _back.Text = compact
-            ? "‹ Back"
-            : "‹  Back to Books";
+        _header.ColumnStyles[1].Width =
+            compact ? 88 : 100;
 
         _heading.Font = compact
             ? Theme.BodyStrong
@@ -173,12 +169,138 @@ public sealed class BookEditorPage : ThemedUserControl
         _previewText.ForeColor = c.TextMuted;
         _previewText.Font = Theme.Body;
 
-        _back.BackColor = c.Surface;
-        _back.ForeColor = c.Text;
-        _back.Font = Theme.Body;
-        _back.FlatAppearance.BorderColor = c.Border;
-        _back.FlatAppearance.BorderSize = 1;
+        _back.ApplyCurrentTheme();
 
         UpdateResponsiveLayout();
+    }
+
+    private sealed class BackButton : Control
+    {
+        private bool _hovered;
+
+        public BackButton()
+        {
+            SetStyle(
+                ControlStyles.UserPaint |
+                ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.ResizeRedraw |
+                ControlStyles.Selectable,
+                true);
+
+            Text = "Back";
+            Cursor = Cursors.Hand;
+            TabStop = true;
+            AccessibleName = "Back to Books";
+        }
+
+        public void ApplyCurrentTheme()
+        {
+            BackColor = Theme.Colors.Surface;
+            ForeColor = Theme.Colors.Text;
+            Font = Theme.Body;
+            Invalidate();
+        }
+
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            base.OnMouseEnter(e);
+            _hovered = true;
+            Invalidate();
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            base.OnMouseLeave(e);
+            _hovered = false;
+            Invalidate();
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+
+            if (e.KeyCode == Keys.Enter ||
+                e.KeyCode == Keys.Space)
+            {
+                OnClick(EventArgs.Empty);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+
+            var c = Theme.Colors;
+            var g = e.Graphics;
+
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            using var background = new SolidBrush(
+                _hovered ? c.SurfaceAlt : c.Surface);
+
+            g.FillRectangle(
+                background,
+                ClientRectangle);
+
+            using var border = new Pen(c.Border);
+
+            g.DrawRectangle(
+                border,
+                0,
+                0,
+                Math.Max(0, Width - 1),
+                Math.Max(0, Height - 1));
+
+            int iconX = 18;
+            int iconY = Height / 2;
+
+            using var iconPen = new Pen(
+                c.Accent,
+                2.2f)
+            {
+                StartCap = LineCap.Round,
+                EndCap = LineCap.Round,
+                LineJoin = LineJoin.Round
+            };
+
+            g.DrawLines(
+                iconPen,
+                new[]
+                {
+                    new Point(iconX + 4, iconY - 6),
+                    new Point(iconX - 2, iconY),
+                    new Point(iconX + 4, iconY + 6)
+                });
+
+            var textBounds = new Rectangle(
+                31,
+                0,
+                Math.Max(0, Width - 34),
+                Height);
+
+            TextRenderer.DrawText(
+                g,
+                "Back",
+                Font,
+                textBounds,
+                c.Text,
+                TextFormatFlags.Left |
+                TextFormatFlags.VerticalCenter |
+                TextFormatFlags.EndEllipsis);
+
+            if (Focused && ShowFocusCues)
+            {
+                ControlPaint.DrawFocusRectangle(
+                    g,
+                    new Rectangle(
+                        3,
+                        3,
+                        Math.Max(0, Width - 6),
+                        Math.Max(0, Height - 6)));
+            }
+        }
     }
 }

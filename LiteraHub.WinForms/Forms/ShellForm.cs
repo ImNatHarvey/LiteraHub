@@ -76,18 +76,13 @@ public sealed class ShellForm : Form
         RowCount = 2
     };
 
+    // The top bar remains for the Demo/settings controls.
+    // Its duplicate page-title label has been removed.
     private readonly TableLayoutPanel _topBar = new()
     {
         Dock = DockStyle.Fill,
         ColumnCount = 2,
         RowCount = 1
-    };
-
-    private readonly Label _pageTitle = new()
-    {
-        Dock = DockStyle.Fill,
-        TextAlign = ContentAlignment.MiddleLeft,
-        Padding = new Padding(Space.XL, 0, 0, 0)
     };
 
     private readonly IconButton _demoButton = new();
@@ -173,11 +168,15 @@ public sealed class ShellForm : Form
         _main.RowStyles.Add(
             new RowStyle(SizeType.Percent, 100));
 
+        // Flexible empty space on the left, Demo on the right.
         _topBar.ColumnStyles.Add(
             new ColumnStyle(SizeType.Percent, 100));
 
         _topBar.ColumnStyles.Add(
             new ColumnStyle(SizeType.AutoSize));
+
+        _topBar.RowStyles.Add(
+            new RowStyle(SizeType.Percent, 100));
 
         _demoButton.Text = "  Demo";
         _demoButton.IconChar = AppIcons.Demo;
@@ -211,7 +210,7 @@ public sealed class ShellForm : Form
             Close();
         };
 
-        _topBar.Controls.Add(_pageTitle, 0, 0);
+        // No page-title label in the upper header.
         _topBar.Controls.Add(_demoButton, 1, 0);
 
         _main.Controls.Add(_topBar, 0, 0);
@@ -395,11 +394,11 @@ public sealed class ShellForm : Form
 
         next.Dock = DockStyle.Fill;
 
-        SwapPage(next, page.Title);
+        SwapPage(next);
         _nav.SelectItem(page.Key);
     }
 
-    private void SwapPage(Control next, string title)
+    private void SwapPage(Control next)
     {
         _host.SuspendLayout();
 
@@ -413,8 +412,6 @@ public sealed class ShellForm : Form
         _currentPage = next;
 
         _host.ResumeLayout(performLayout: true);
-
-        _pageTitle.Text = title;
     }
 
     private void OnThemeChanged(
@@ -437,10 +434,6 @@ public sealed class ShellForm : Form
         _main.BackColor = c.Background;
         _host.BackColor = c.Background;
         _topBar.BackColor = c.Surface;
-
-        _pageTitle.BackColor = c.Surface;
-        _pageTitle.ForeColor = c.Text;
-        _pageTitle.Font = Theme.Title;
 
         _demoButton.BackColor = c.SurfaceAlt;
         _demoButton.ForeColor = c.Text;
