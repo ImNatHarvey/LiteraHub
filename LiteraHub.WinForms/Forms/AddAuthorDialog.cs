@@ -100,8 +100,8 @@ public sealed class AddAuthorDialog : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
 
-        ClientSize = new Size(440, 440);
-        MinimumSize = new Size(350, 465);
+        ClientSize = new Size(440, 545);
+        MinimumSize = new Size(350, 575);
         Font = Theme.Body;
 
         BuildLayout();
@@ -119,7 +119,8 @@ public sealed class AddAuthorDialog : Form
 
         _cancel.Click += (_, _) =>
         {
-            if (_saving) return;
+            if (_saving)
+                return;
 
             DialogResult = DialogResult.Cancel;
             Close();
@@ -141,7 +142,7 @@ public sealed class AddAuthorDialog : Form
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 14,
-            Padding = new Padding(24, 14, 24, 18),
+            Padding = new Padding(24, 18, 24, 20),
             Margin = Padding.Empty
         };
 
@@ -149,12 +150,12 @@ public sealed class AddAuthorDialog : Form
             new ColumnStyle(SizeType.Percent, 100));
 
         root.RowStyles.Add(
-            new RowStyle(SizeType.Absolute, 42));
+            new RowStyle(SizeType.Absolute, 48));
 
         for (int i = 0; i < 5; i++)
         {
             root.RowStyles.Add(
-                new RowStyle(SizeType.Absolute, 22));
+                new RowStyle(SizeType.Absolute, 32));
 
             root.RowStyles.Add(
                 new RowStyle(SizeType.Absolute, 40));
@@ -170,14 +171,23 @@ public sealed class AddAuthorDialog : Form
             new RowStyle(SizeType.Absolute, 46));
 
         root.Controls.Add(_title, 0, 0);
-        root.Controls.Add(FieldLabel("First Name *"), 0, 1);
+
+        root.Controls.Add(
+            FieldLabel("First Name *"), 0, 1);
         root.Controls.Add(_first, 0, 2);
-        root.Controls.Add(FieldLabel("Middle Name"), 0, 3);
+
+        root.Controls.Add(
+            FieldLabel("Middle Name"), 0, 3);
         root.Controls.Add(_middle, 0, 4);
-        root.Controls.Add(FieldLabel("Last Name *"), 0, 5);
+
+        root.Controls.Add(
+            FieldLabel("Last Name *"), 0, 5);
         root.Controls.Add(_last, 0, 6);
-        root.Controls.Add(FieldLabel("Gender *"), 0, 7);
+
+        root.Controls.Add(
+            FieldLabel("Gender *"), 0, 7);
         root.Controls.Add(_gender, 0, 8);
+
         root.Controls.Add(
             FieldLabel("Birth Date (optional) — YYYY-MM-DD"),
             0, 9);
@@ -244,7 +254,8 @@ public sealed class AddAuthorDialog : Form
 
     private void OpenCalendar()
     {
-        if (_saving) return;
+        if (_saving)
+            return;
 
         DateTime initial = DateTime.Today;
 
@@ -374,8 +385,10 @@ public sealed class AddAuthorDialog : Form
         catch (Exception ex)
         {
             if (!IsDisposed && !Disposing)
+            {
                 _error.Text =
                     "Unable to save: " + ex.Message;
+            }
         }
         finally
         {
@@ -432,8 +445,7 @@ public sealed class AddAuthorDialog : Form
         foreach (Control child in parent.Controls)
         {
             if (child is Label label &&
-                label.Text != "Add Author" &&
-                label != null)
+                label.Text != "Add Author")
             {
                 label.ForeColor =
                     Theme.Colors.TextMuted;

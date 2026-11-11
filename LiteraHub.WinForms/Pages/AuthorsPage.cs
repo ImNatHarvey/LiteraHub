@@ -149,8 +149,12 @@ public sealed class AuthorsPage : ThemedUserControl
     private bool _working;
     private bool _compact;
 
-    private bool CanManage => _permissions.Can(Permission.ManageLookups);
-    private bool CanDelete => CanManage && _permissions.Can(Permission.HardDelete);
+    private bool CanManage =>
+        _permissions.Can(Permission.ManageLookups);
+
+    private bool CanDelete =>
+        CanManage && _permissions.Can(Permission.HardDelete);
+
     private int ActionCount => CanDelete ? 3 : 2;
 
     private int TotalPages =>
@@ -174,8 +178,7 @@ public sealed class AuthorsPage : ThemedUserControl
         _loading.SetContent(_grid);
         _search.Placeholder = "Search authors...";
 
-        _filter.Visible =
-            _permissions.Can(Permission.ManageLookups);
+        _filter.Visible = CanManage;
 
         _add.Visible =
             _permissions.Can(Permission.CreateLookups);
@@ -242,8 +245,10 @@ public sealed class AuthorsPage : ThemedUserControl
             new ColumnStyle(SizeType.Percent, 100));
 
         foreach (int height in new[] { 50, 56, 36 })
+        {
             _layout.RowStyles.Add(
                 new RowStyle(SizeType.Absolute, height));
+        }
 
         _layout.RowStyles.Add(
             new RowStyle(SizeType.Percent, 100));
@@ -325,8 +330,9 @@ public sealed class AuthorsPage : ThemedUserControl
         {
             Name = "Status",
             HeaderText = "Status",
-            FillWeight = 20,
-            MinimumWidth = 100
+            FillWeight = 10,
+            MinimumWidth = 75,
+            SortMode = DataGridViewColumnSortMode.NotSortable
         });
 
         _grid.Columns.Add(new DataGridViewTextBoxColumn
@@ -339,103 +345,305 @@ public sealed class AuthorsPage : ThemedUserControl
             SortMode = DataGridViewColumnSortMode.NotSortable
         });
 
-        _grid.Columns["Status"]!
-            .DefaultCellStyle.Alignment =
-            DataGridViewContentAlignment.MiddleCenter;
+        foreach (string name in new[] { "Status", "Actions" })
+        {
+            var column = _grid.Columns[name]!;
 
-        _grid.Columns["Actions"]!
-            .DefaultCellStyle.Alignment =
-            DataGridViewContentAlignment.MiddleCenter;
+            column.HeaderCell.Style.Alignment =
+                DataGridViewContentAlignment.MiddleCenter;
+
+            column.DefaultCellStyle.Alignment =
+                DataGridViewContentAlignment.MiddleCenter;
+
+            column.HeaderCell.Style.Padding = Padding.Empty;
+            column.DefaultCellStyle.Padding = Padding.Empty;
+        }
 
         _grid.DataBindingComplete += (_, _) =>
             _grid.ClearRowSelection();
     }
 
-    private void PaintSpecialCells(object? sender, DataGridViewCellPaintingEventArgs e)
+    private void PaintSpecialCells(
+        object? sender,
+        DataGridViewCellPaintingEventArgs e)
     {
-        if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+        if (e.RowIndex < 0 || e.ColumnIndex < 0)
+            return;
+
         string? column = _grid.Columns[e.ColumnIndex].Name;
-        if (column != "Status" && column != "Actions") return;
+
+        if (column != "Status" && column != "Actions")
+            return;
+
         e.PaintBackground(e.CellBounds, false);
+
         var g = e.Graphics;
-        if (g is null) return;
+
+        if (g is null)
+            return;
+
         var old = g.SmoothingMode;
         g.SmoothingMode = SmoothingMode.AntiAlias;
+
         int cy = e.CellBounds.Top + e.CellBounds.Height / 2;
-        bool active = string.Equals(Convert.ToString(_grid.Rows[e.RowIndex].Cells["Status"].Value), "Active", StringComparison.OrdinalIgnoreCase);
+
+        bool active = string.Equals(
+            Convert.ToString(
+                _grid.Rows[e.RowIndex].Cells["Status"].Value),
+            "Active",
+            StringComparison.OrdinalIgnoreCase);
+
         var c = Theme.Colors;
+
         if (column == "Status")
         {
-            int cx = e.CellBounds.Left + e.CellBounds.Width / 2;
-            using var pen = new Pen(active ? c.PillGoodText : c.TextMuted, 2f);
-            g.DrawEllipse(pen, cx - 9, cy - 9, 18, 18);
+            int cx =
+                e.CellBounds.Left + e.CellBounds.Width / 2;
+
+            using var pen = new Pen(
+                active ? c.PillGoodText : c.TextMuted,
+                2f);
+
+            g.DrawEllipse(
+                pen,
+                cx - 9,
+                cy - 9,
+                18,
+                18);
+
             if (active)
-                g.DrawLines(pen, new[] { new Point(cx - 5, cy), new Point(cx - 1, cy + 4), new Point(cx + 6, cy - 4) });
+            {
+                g.DrawLines(pen, new[]
+                {
+                    new Point(cx - 5, cy),
+                    new Point(cx - 1, cy + 4),
+                    new Point(cx + 6, cy - 4)
+                });
+            }
             else
-                g.DrawLine(pen, cx - 4, cy, cx + 4, cy);
+            {
+                g.DrawLine(
+                    pen,
+                    cx - 4,
+                    cy,
+                    cx + 4,
+                    cy);
+            }
         }
         else
         {
             for (int slot = 0; slot < ActionCount; slot++)
             {
-                int cx = e.CellBounds.Left + (int)((slot + 0.5) * e.CellBounds.Width / ActionCount);
-                using var pen = new Pen(slot == 2 ? c.Danger : slot == 0 || !active ? c.PillGoodText : c.TextMuted, 2f);
+                int cx = e.CellBounds.Left +
+                    (int)((slot + 0.5) *
+                    e.CellBounds.Width / ActionCount);
+
+                using var pen = new Pen(
+                    slot == 2
+                        ? c.Danger
+                        : slot == 0 || !active
+                            ? c.PillGoodText
+                            : c.TextMuted,
+                    2f);
+
                 if (slot == 0)
                 {
-                    g.DrawLine(pen, cx - 8, cy - 7, cx + 1, cy - 7);
-                    g.DrawLine(pen, cx - 8, cy - 7, cx - 8, cy + 8);
-                    g.DrawLine(pen, cx - 8, cy + 8, cx + 7, cy + 8);
-                    g.DrawLine(pen, cx + 7, cy + 8, cx + 7, cy + 1);
-                    g.DrawLine(pen, cx - 2, cy + 3, cx + 8, cy - 7);
-                    g.DrawLine(pen, cx - 3, cy + 5, cx - 2, cy + 3);
+                    // Edit icon
+                    g.DrawLine(
+                        pen,
+                        cx - 8,
+                        cy - 7,
+                        cx + 1,
+                        cy - 7);
+
+                    g.DrawLine(
+                        pen,
+                        cx - 8,
+                        cy - 7,
+                        cx - 8,
+                        cy + 8);
+
+                    g.DrawLine(
+                        pen,
+                        cx - 8,
+                        cy + 8,
+                        cx + 7,
+                        cy + 8);
+
+                    g.DrawLine(
+                        pen,
+                        cx + 7,
+                        cy + 8,
+                        cx + 7,
+                        cy + 1);
+
+                    g.DrawLine(
+                        pen,
+                        cx - 2,
+                        cy + 3,
+                        cx + 8,
+                        cy - 7);
+
+                    g.DrawLine(
+                        pen,
+                        cx - 3,
+                        cy + 5,
+                        cx - 2,
+                        cy + 3);
                 }
                 else if (slot == 1)
                 {
-                    g.DrawRectangle(pen, cx - 8, cy - 4, 16, 12);
-                    g.DrawLine(pen, cx - 10, cy - 8, cx + 10, cy - 8);
+                    // Archive / Restore icon
+                    g.DrawRectangle(
+                        pen,
+                        cx - 8,
+                        cy - 4,
+                        16,
+                        12);
+
+                    g.DrawLine(
+                        pen,
+                        cx - 10,
+                        cy - 8,
+                        cx + 10,
+                        cy - 8);
+
                     if (active)
                     {
-                        g.DrawLine(pen, cx, cy - 2, cx, cy + 4);
-                        g.DrawLine(pen, cx - 4, cy + 1, cx, cy + 5);
-                        g.DrawLine(pen, cx, cy + 5, cx + 4, cy + 1);
+                        g.DrawLine(
+                            pen,
+                            cx,
+                            cy - 2,
+                            cx,
+                            cy + 4);
+
+                        g.DrawLine(
+                            pen,
+                            cx - 4,
+                            cy + 1,
+                            cx,
+                            cy + 5);
+
+                        g.DrawLine(
+                            pen,
+                            cx,
+                            cy + 5,
+                            cx + 4,
+                            cy + 1);
                     }
                     else
                     {
-                        g.DrawLine(pen, cx, cy + 5, cx, cy - 2);
-                        g.DrawLine(pen, cx - 4, cy + 1, cx, cy - 3);
-                        g.DrawLine(pen, cx, cy - 3, cx + 4, cy + 1);
+                        g.DrawLine(
+                            pen,
+                            cx,
+                            cy + 5,
+                            cx,
+                            cy - 2);
+
+                        g.DrawLine(
+                            pen,
+                            cx - 4,
+                            cy + 1,
+                            cx,
+                            cy - 3);
+
+                        g.DrawLine(
+                            pen,
+                            cx,
+                            cy - 3,
+                            cx + 4,
+                            cy + 1);
                     }
                 }
                 else
                 {
-                    g.DrawLine(pen, cx - 9, cy - 6, cx + 9, cy - 6);
-                    g.DrawLine(pen, cx - 4, cy - 9, cx + 4, cy - 9);
-                    g.DrawRectangle(pen, cx - 7, cy - 3, 14, 12);
-                    g.DrawLine(pen, cx - 3, cy, cx - 3, cy + 6);
-                    g.DrawLine(pen, cx + 3, cy, cx + 3, cy + 6);
+                    // Delete icon
+                    g.DrawLine(
+                        pen,
+                        cx - 9,
+                        cy - 6,
+                        cx + 9,
+                        cy - 6);
+
+                    g.DrawLine(
+                        pen,
+                        cx - 4,
+                        cy - 9,
+                        cx + 4,
+                        cy - 9);
+
+                    g.DrawRectangle(
+                        pen,
+                        cx - 7,
+                        cy - 3,
+                        14,
+                        12);
+
+                    g.DrawLine(
+                        pen,
+                        cx - 3,
+                        cy,
+                        cx - 3,
+                        cy + 6);
+
+                    g.DrawLine(
+                        pen,
+                        cx + 3,
+                        cy,
+                        cx + 3,
+                        cy + 6);
                 }
             }
         }
+
         g.SmoothingMode = old;
         e.Handled = true;
     }
 
-    private void HandleActionMouseUp(object? sender, DataGridViewCellMouseEventArgs e)
+    private void HandleActionMouseUp(
+        object? sender,
+        DataGridViewCellMouseEventArgs e)
     {
-        if (e.Button != MouseButtons.Left || e.RowIndex < 0 || e.ColumnIndex < 0 ||
-            !CanManage || _working || _loadingData || _grid.Columns[e.ColumnIndex].Name != "Actions") return;
-        int slot = Math.Clamp(e.X * ActionCount / Math.Max(1, _grid.Columns[e.ColumnIndex].Width), 0, ActionCount - 1);
-        string name = Convert.ToString(_grid.Rows[e.RowIndex].Cells["Name"].Value) ?? "";
-        string action = slot switch { 0 => "Edit", 1 => "Archive / Restore", _ => "Delete" };
-        ThemedMessageDialog.ShowAlert(FindForm(), "Author Management",
-            $"{action}: {name}\n\nThis action requires the Authors CRUD service. No data was changed.");
+        if (e.Button != MouseButtons.Left ||
+            e.RowIndex < 0 ||
+            e.ColumnIndex < 0 ||
+            !CanManage ||
+            _working ||
+            _loadingData ||
+            _grid.Columns[e.ColumnIndex].Name != "Actions")
+            return;
+
+        int slot = Math.Clamp(
+            e.X * ActionCount /
+                Math.Max(1, _grid.Columns[e.ColumnIndex].Width),
+            0,
+            ActionCount - 1);
+
+        string name = Convert.ToString(
+            _grid.Rows[e.RowIndex].Cells["Name"].Value) ?? "";
+
+        string action = slot switch
+        {
+            0 => "Edit",
+            1 => "Archive / Restore",
+            _ => "Delete"
+        };
+
+        ThemedMessageDialog.ShowAlert(
+            FindForm(),
+            "Author Management",
+            $"{action}: {name}\n\n" +
+            "This action requires the Authors CRUD service. " +
+            "No data was changed.");
     }
 
     protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
 
-        if (_loadStarted) return;
+        if (_loadStarted)
+            return;
+
         _loadStarted = true;
 
         await LoadAuthorsAsync();
@@ -443,7 +651,8 @@ public sealed class AuthorsPage : ThemedUserControl
 
     private async Task LoadAuthorsAsync()
     {
-        if (_loadingData || IsDisposed) return;
+        if (_loadingData || IsDisposed)
+            return;
 
         _loadingData = true;
         _add.Enabled = false;
@@ -454,7 +663,8 @@ public sealed class AuthorsPage : ThemedUserControl
             var result = await _loading.RunAsync(
                 () => _books.GetAuthorsAsync());
 
-            if (IsDisposed || Disposing) return;
+            if (IsDisposed || Disposing)
+                return;
 
             _authors = result
                 .OrderBy(a => a.Name)
@@ -465,11 +675,13 @@ public sealed class AuthorsPage : ThemedUserControl
         catch (Exception ex)
         {
             if (!IsDisposed && !Disposing)
+            {
                 ThemedMessageDialog.ShowAlert(
                     FindForm(),
                     "Authors",
                     ex.Message,
                     danger: true);
+            }
         }
         finally
         {
@@ -487,7 +699,8 @@ public sealed class AuthorsPage : ThemedUserControl
 
     private void RenderRows()
     {
-        if (IsDisposed || Disposing) return;
+        if (IsDisposed || Disposing)
+            return;
 
         string query = _search.Text.Trim();
 
@@ -547,15 +760,20 @@ public sealed class AuthorsPage : ThemedUserControl
     private void UpdatePagination()
     {
         _pageNumber.Text = $"{_page} / {TotalPages}";
-        _previous.Enabled = !_loadingData && _page > 1;
+
+        _previous.Enabled =
+            !_loadingData && _page > 1;
+
         _next.Enabled =
             !_loadingData && _page < TotalPages;
+
         _pageSize.Enabled = !_loadingData;
     }
 
     private async Task OpenAddDialogAsync()
     {
-        if (_working || _loadingData ||
+        if (_working ||
+            _loadingData ||
             !_permissions.Can(Permission.CreateLookups))
             return;
 
@@ -564,7 +782,8 @@ public sealed class AuthorsPage : ThemedUserControl
 
         try
         {
-            using var dialog = new AddAuthorDialog(_creation);
+            using var dialog =
+                new AddAuthorDialog(_creation);
 
             if (dialog.ShowDialog(FindForm()) ==
                 DialogResult.OK)
@@ -577,14 +796,17 @@ public sealed class AuthorsPage : ThemedUserControl
             _working = false;
 
             if (!IsDisposed && !Disposing)
+            {
                 _add.Enabled =
                     _permissions.Can(Permission.CreateLookups);
+            }
         }
     }
 
     private void UpdateResponsiveLayout()
     {
-        if (IsDisposed || Disposing) return;
+        if (IsDisposed || Disposing)
+            return;
 
         int available = Math.Max(
             100,
@@ -608,7 +830,8 @@ public sealed class AuthorsPage : ThemedUserControl
             _toolbar.ColumnStyles[2].Width =
                 compact ? 44 : 160;
 
-            _add.Text = compact ? "+" : "+ Add Author";
+            _add.Text =
+                compact ? "+" : "+ Add Author";
 
             _grid.AutoSizeColumnsMode = compact
                 ? DataGridViewAutoSizeColumnsMode.None
@@ -619,7 +842,8 @@ public sealed class AuthorsPage : ThemedUserControl
                 _grid.Columns["Id"]!.Width = 60;
                 _grid.Columns["Name"]!.Width = 180;
                 _grid.Columns["Status"]!.Width = 100;
-                _grid.Columns["Actions"]!.Width = CanDelete ? 144 : 110;
+                _grid.Columns["Actions"]!.Width =
+                    CanDelete ? 144 : 110;
             }
 
             _pagination.ColumnStyles[1].Width =
