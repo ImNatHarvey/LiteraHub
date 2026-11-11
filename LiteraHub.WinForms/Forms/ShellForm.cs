@@ -385,6 +385,15 @@ public sealed class ShellForm : Form
                 _metadata,
                 _permissions);
         }
+
+        else if (key == "authors")
+        {
+            next = new AuthorsPage(
+                _books,
+                _authors,
+                _permissions);
+        }
+
         else
         {
             next = new PlaceholderPage(
