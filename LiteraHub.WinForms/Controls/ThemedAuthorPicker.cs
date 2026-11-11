@@ -18,6 +18,7 @@ public sealed class ThemedAuthorPicker : Button
     private readonly List<BookLookupOption> _authors = new();
     private readonly HashSet<int> _selected = new();
     private Form? _popup;
+    private string _suggestedSearch = "";
 
     public event EventHandler? SelectionChanged;
 
@@ -34,6 +35,12 @@ public sealed class ThemedAuthorPicker : Button
         TabStop = true;
         Theme.Changed += ThemeChanged;
         Click += (_, _) => OpenPicker();
+        KeyPress += (_, e) =>
+        {
+            if (char.IsControl(e.KeyChar)) return;
+            OpenPicker(e.KeyChar.ToString());
+            e.Handled = true;
+        };
         ApplyTheme();
         UpdateCaption();
     }
@@ -84,6 +91,7 @@ public sealed class ThemedAuthorPicker : Button
             UpdateCaption();
             SelectionChanged?.Invoke(this, EventArgs.Empty);
         }
+        _suggestedSearch = unmatched.Count > 0 ? unmatched[0] : "";
         return unmatched;
     }
 
@@ -109,11 +117,13 @@ public sealed class ThemedAuthorPicker : Button
         AccessibleName = "Authors: " + Text;
     }
 
-    private void OpenPicker()
+    private void OpenPicker(string initialSearch = "")
     {
         if (_popup is not null || _authors.Count == 0 || !Enabled)
             return;
 
+        if (initialSearch.Length == 0 && _suggestedSearch.Length > 0)
+            initialSearch = _suggestedSearch;
         var c = Theme.Colors;
         var popup = new Form
         {
@@ -142,6 +152,8 @@ public sealed class ThemedAuthorPicker : Button
             Dock = DockStyle.Fill,
             Margin = new Padding(0, 0, 0, 8)
         };
+
+
         var scroll = new ScrollHost
         {
             Dock = DockStyle.Fill,
@@ -149,10 +161,27 @@ public sealed class ThemedAuthorPicker : Button
         };
 
         scroll.UseSurfaceBackground();
-        var selector = new ThemedAuthorSelector();
-        scroll.SetContent(selector);
-        // Keep the popup compact for short lists, while retaining themed scrolling
-        // for long author lists. Never leave a large empty dropdown panel.
+
+        var selector = new ThemedAuthorSelector
+        {
+            Margin = Padding.Empty
+        };
+
+        // Use a plain surface panel for short author lists.
+        // This prevents the custom scroll host from showing
+        // an unnecessary scrollbar under one or two authors.
+        var simpleHost = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = c.Surface,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            AutoScroll = false
+        };
+
+        simpleHost.Controls.Add(selector);
+        selector.Dock = DockStyle.Fill;
+
 
         void RefreshRows()
         {
@@ -160,9 +189,42 @@ public sealed class ThemedAuthorPicker : Button
                 a.Name.Contains(search.Text.Trim(),
                     StringComparison.OrdinalIgnoreCase)).ToArray();
             selector.SetAuthors(filtered, _selected);
-            selector.Height = Math.Max(80, filtered.Length * 44 + 4);
-            popup.Height = Math.Clamp(108 + filtered.Length * 44, 154, 310);
-            scroll.RefreshMetrics();
+
+            int rowHeight = 44;
+            int contentHeight = Math.Max(48, filtered.Length * rowHeight);
+
+            popup.Height = Math.Clamp(
+                108 + contentHeight,
+                154,
+                310);
+
+            bool needsScroll = filtered.Length > 4;
+            scroll.Visible = needsScroll;
+            simpleHost.Visible = !needsScroll;
+
+            if (needsScroll)
+            {
+                if (!ReferenceEquals(selector.Parent, scroll))
+                {
+                    simpleHost.Controls.Remove(selector);
+                    selector.Dock = DockStyle.None;
+                    scroll.SetContent(selector);
+                }
+
+                selector.Height = contentHeight;
+                scroll.RefreshMetrics();
+            }
+            else
+            {
+                if (!ReferenceEquals(selector.Parent, simpleHost))
+                {
+                    scroll.Controls.Remove(selector);
+                    simpleHost.Controls.Add(selector);
+                }
+
+                selector.Dock = DockStyle.Fill;
+            }
+
         }
 
         selector.SelectionChanged += (_, _) =>
@@ -180,8 +242,26 @@ public sealed class ThemedAuthorPicker : Button
         };
 
         search.TextChanged += (_, _) => RefreshRows();
+        if (initialSearch.Length > 0)
+            search.Text = initialSearch;
         layout.Controls.Add(search, 0, 0);
-        layout.Controls.Add(scroll, 0, 1);
+
+        var listContainer = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = c.Surface
+        };
+
+        listContainer.Controls.Add(simpleHost);
+        listContainer.Controls.Add(scroll);
+
+        scroll.Visible = false;
+        simpleHost.Visible = true;
+
+        layout.Controls.Add(listContainer, 0, 1);
+
         popup.Controls.Add(layout);
         _popup = popup;
         popup.Deactivate += (_, _) => popup.Close();

@@ -12,6 +12,7 @@ using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using LiteraHub.Core.Models;
 using LiteraHub.WinForms.Controls;
+using LiteraHub.WinForms.Forms;
 using LiteraHub.WinForms.Theming;
 
 namespace LiteraHub.WinForms.Pages;
@@ -98,7 +99,7 @@ public sealed class BookEditorPage : ThemedUserControl
     private ThemedFilterDropdown _category =
         new(new[] { "Select category" });
 
-    private readonly ThemedFilterDropdown _condition =
+    private ThemedFilterDropdown _condition =
         new(new[] { "Good", "Damaged" });
 
     private readonly NumberField _total = new();
@@ -108,10 +109,31 @@ public sealed class BookEditorPage : ThemedUserControl
 
     private readonly Button _save = new()
     {
-        Text = "Save Book",
+        Text = "✎  Save Book",
         FlatStyle = FlatStyle.Flat,
         Enabled = false
     };
+
+    private readonly Button _archive = new()
+    {
+        Text = "▣  Archive Book",
+        FlatStyle = FlatStyle.Flat,
+        Visible = false
+    };
+
+    private readonly Button _delete = new()
+    {
+        Text = "✕  Delete Permanently",
+        FlatStyle = FlatStyle.Flat,
+        Visible = false
+    };
+
+    private bool _saving;
+    private bool _canHardDelete;
+    private bool _statusesLoaded;
+    private int[] _statusIds = Array.Empty<int>();
+    private string? _coverPath;
+    public event EventHandler? Saved;
 
     private readonly Label _coverLabel;
     private readonly Label _bookSection;
@@ -151,8 +173,10 @@ public sealed class BookEditorPage : ThemedUserControl
     public void ConfigureServices(
         ICategoryService categories,
         IBookMetadataService metadata,
-        IBookService books)
+        IBookService books,
+        bool canHardDelete)
     {
+        _canHardDelete = canHardDelete;
         _categoryService = categories ??
             throw new ArgumentNullException(nameof(categories));
         _metadataService = metadata ??
@@ -165,6 +189,7 @@ public sealed class BookEditorPage : ThemedUserControl
         {
             _ = LoadCategoriesAsync();
             _ = LoadAuthorsAsync();
+            _ = LoadStatusesAsync();
         }
         else
             HandleCreated += HandleEditorCreated;
@@ -175,6 +200,50 @@ public sealed class BookEditorPage : ThemedUserControl
         HandleCreated -= HandleEditorCreated;
         _ = LoadCategoriesAsync();
         _ = LoadAuthorsAsync();
+        _ = LoadStatusesAsync();
+    }
+
+    private async Task LoadStatusesAsync()
+    {
+        if (_bookService is null || _statusesLoaded)
+            return;
+
+        try
+        {
+            var statuses = await _bookService.GetStatusesAsync();
+            if (IsDisposed || Disposing) return;
+
+            var options = statuses.Where(x => x.IsActive)
+                .OrderBy(x => x.Name).ToArray();
+
+            _statusIds = options.Select(x => x.Id).ToArray();
+            if (options.Length == 0)
+            {
+                _description.Text = "No active book statuses are available.";
+                return;
+            }
+            var previous = _condition;
+            var replacement = new ThemedFilterDropdown(
+                options.Select(x => x.Name).ToArray());
+            _condition = replacement;
+            _content.Controls.Add(replacement);
+            previous.Dispose();
+            replacement.ApplyTheme();
+            _statusesLoaded = true;
+            ArrangeForm();
+
+            if (_existing is not null)
+            {
+                int index = Array.IndexOf(_statusIds, _existing.StatusId);
+                if (index >= 0) _condition.SelectedIndex = index;
+            }
+            _save.Enabled = _authorsLoaded && _categoryIds.Length > 1;
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && !Disposing)
+                _description.Text = "Unable to load book statuses: " + ex.Message;
+        }
     }
 
     private async Task LoadAuthorsAsync()
@@ -190,6 +259,7 @@ public sealed class BookEditorPage : ThemedUserControl
 
             _authors.SetAuthors(authors, _existing?.AuthorIds);
             _authorsLoaded = true;
+            _save.Enabled = _statusesLoaded && _categoryIds.Length > 1;
 
             if (_pendingMetadataAuthors.Count > 0)
             {
@@ -237,6 +307,7 @@ public sealed class BookEditorPage : ThemedUserControl
             var replacement = new ThemedFilterDropdown(options);
             _category = replacement;
             _categoryIds = ids;
+            _save.Enabled = _authorsLoaded && _statusesLoaded;
             _content.Controls.Add(replacement);
             previous.Dispose();
             if (_existing is not null)
@@ -287,6 +358,7 @@ public sealed class BookEditorPage : ThemedUserControl
             var book = result.Metadata;
             _title.Text = book.Title;
             _bookDescription.Text = book.Description ?? string.Empty;
+            _coverPath = book.CoverUrl;
             _ = LoadCoverAsync(book.CoverUrl);
             if (_authorsLoaded)
             {
@@ -464,6 +536,8 @@ public sealed class BookEditorPage : ThemedUserControl
             _total,
             _availableLabel,
             _available,
+            _archive,
+            _delete,
             _save
         });
 
@@ -484,6 +558,9 @@ public sealed class BookEditorPage : ThemedUserControl
             BackRequested?.Invoke(this, EventArgs.Empty);
 
         _lookup.Click += async (_, _) => await LookupIsbnAsync();
+        _save.Click += async (_, _) => await SaveAsync();
+        _archive.Click += async (_, _) => await ChangeActiveAsync();
+        _delete.Click += async (_, _) => await DeleteAsync();
 
         _title.TextChanged += (_, _) =>
         {
@@ -527,6 +604,11 @@ public sealed class BookEditorPage : ThemedUserControl
 
         _bookDescription.Text =
             _existing.Description ?? "";
+        _coverPath = _existing.CoverPath;
+        _ = LoadCoverAsync(_coverPath);
+        _archive.Visible = true;
+        _archive.Text = _existing.IsActive ? "▣  Archive Book" : "↶  Restore Book";
+        _delete.Visible = _canHardDelete;
 
         // Author IDs are restored once the database author list loads.
 
@@ -539,9 +621,7 @@ public sealed class BookEditorPage : ThemedUserControl
         // Existing category is displayed as read-only text until
         // category lookup is connected in the next checkpoint.
         // The themed category dropdown currently has one option.
-        _condition.SelectedIndex =
-            string.Equals(_existing.StatusName, "Damaged",
-                StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        // The actual StatusId is selected after statuses load.
 
         string title = _existing.Title?.Trim() ?? "";
 
@@ -717,8 +797,7 @@ public sealed class BookEditorPage : ThemedUserControl
                 Math.Min(280, Math.Max(120, viewportHeight / 3)),
                 labelGap, fieldGap);
 
-            _save.SetBounds(Math.Max(pad, width - pad - 124),
-                actionY, 124, 40);
+            PositionActions(width, pad, actionY);
             return Math.Max(viewportHeight,
                 Math.Max(leftY, rightY) + pad);
         }
@@ -776,8 +855,7 @@ public sealed class BookEditorPage : ThemedUserControl
         Field(_titleLabel, _title, bookX, ref bookY,
             columnWidth, 36, labelGap, fieldGap);
 
-        _save.SetBounds(Math.Max(pad, width - pad - 124),
-            actionY, 124, 40);
+        PositionActions(width, pad, actionY);
         return Math.Max(viewportHeight,
             Math.Max(bookY, classificationY) + pad);
     }
@@ -818,8 +896,165 @@ public sealed class BookEditorPage : ThemedUserControl
         Field(_descriptionLabel, _bookDescription,
             x, ref y, fieldWidth, 90);
         y += 8;
+        if (_existing is not null)
+        {
+            _archive.SetBounds(x, y, fieldWidth, 40);
+            y += 48;
+            _delete.SetBounds(x, y, fieldWidth, 40);
+            y += 48;
+        }
         _save.SetBounds(x, y, fieldWidth, 40);
         return y + 40 + pad;
+    }
+
+    private void PositionActions(int width, int pad, int y)
+    {
+        const int gap = 8;
+        const int saveWidth = 136;
+        const int archiveWidth = 148;
+        const int deleteWidth = 172;
+        int right = width - pad;
+        _save.SetBounds(Math.Max(pad, right - saveWidth), y, saveWidth, 40);
+        if (_existing is null) return;
+
+        // Keep destructive controls adjacent to Save; no invisible gap
+        // when HardDelete is not granted.
+        int cursor = _save.Left - gap;
+        _archive.SetBounds(Math.Max(pad, cursor - archiveWidth),
+            y, archiveWidth, 40);
+        cursor = _archive.Left - gap;
+        if (_delete.Visible)
+            _delete.SetBounds(Math.Max(pad, cursor - deleteWidth),
+                y, deleteWidth, 40);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving || _bookService is null || !_authorsLoaded || !_statusesLoaded)
+            return;
+        int statusIndex = _condition.SelectedIndex;
+        if (statusIndex < 0 || statusIndex >= _statusIds.Length)
+        {
+            _description.Text = "Select a valid book condition.";
+            return;
+        }
+
+        if (_authors.SelectedAuthorIds.Count == 0)
+        {
+            _description.Text = "Select an author, or select an existing " +
+                "'Unknown Author' record if the author is genuinely unknown.";
+            return;
+        }
+
+        var input = new BookInput(
+            _isbn.Text.Trim(),
+            _title.Text.Trim(),
+            _bookDescription.Text,
+            SelectedCategoryId,
+            _statusIds[statusIndex],
+            _total.Value,
+            _available.Value,
+            _coverPath,
+            _authors.SelectedAuthorIds);
+
+        _saving = true;
+        _save.Enabled = false;
+        _archive.Enabled = false;
+        _delete.Enabled = false;
+        _description.Text = "Saving book...";
+        try
+        {
+            var result = _existing is null
+                ? await _bookService.CreateAsync(input)
+                : await _bookService.UpdateAsync(_existing.BookId, input);
+            if (IsDisposed || Disposing) return;
+            if (!result.Success)
+            {
+                _description.Text = result.Error ?? "Unable to save book.";
+                ThemedMessageDialog.ShowAlert(FindForm(),
+                    "Book Validation", _description.Text);
+                return;
+            }
+            Saved?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && !Disposing)
+                MessageBox.Show(FindForm(), ex.Message,
+                    "Unable to save book", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            _saving = false;
+            if (!IsDisposed && !Disposing)
+            {
+                _save.Enabled = true;
+                _archive.Enabled = true;
+                _delete.Enabled = true;
+            }
+        }
+    }
+
+    private async Task ChangeActiveAsync()
+    {
+        if (_saving || _existing is null || _bookService is null) return;
+        bool activate = !_existing.IsActive;
+        string verb = activate ? "restore" : "archive";
+        if (!ThemedMessageDialog.Confirm(FindForm(),
+                activate ? "Restore Book" : "Archive Book",
+                $"Are you sure you want to {verb} this book?",
+                danger: !activate,
+                confirmText: activate ? "Restore" : "Archive"))
+            return;
+        await RunLifecycleAsync(
+            () => _bookService.SetActiveAsync(_existing.BookId, activate));
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_saving || _existing is null || _bookService is null) return;
+        if (!ThemedMessageDialog.Confirm(FindForm(),
+                "Delete Book Permanently",
+                "This action cannot be undone. Books with borrowing " +
+                "history cannot be deleted.",
+                danger: true,
+                confirmText: "Delete"))
+            return;
+        await RunLifecycleAsync(
+            () => _bookService.DeleteAsync(_existing.BookId));
+    }
+
+    private async Task RunLifecycleAsync(Func<Task<ServiceResult>> action)
+    {
+        _saving = true;
+        _save.Enabled = false;
+        _archive.Enabled = false;
+        _delete.Enabled = false;
+        try
+        {
+            var result = await action();
+            if (IsDisposed || Disposing) return;
+            if (result.Success) Saved?.Invoke(this, EventArgs.Empty);
+            else ThemedMessageDialog.ShowAlert(FindForm(),
+                "Book Operation",
+                result.Error ?? "The operation could not be completed.");
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && !Disposing)
+                MessageBox.Show(FindForm(), ex.Message,
+                    "LiteraHub", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            _saving = false;
+            if (!IsDisposed && !Disposing)
+            {
+                _save.Enabled = true;
+                _archive.Enabled = true;
+                _delete.Enabled = true;
+            }
+        }
     }
 
     private static void Section(
@@ -935,6 +1170,16 @@ public sealed class BookEditorPage : ThemedUserControl
         _save.ForeColor = Color.White;
         _save.Font = Theme.BodyStrong;
         _save.FlatAppearance.BorderSize = 0;
+
+        foreach (var action in new[] { _archive, _delete })
+        {
+            action.BackColor = c.Surface;
+            action.ForeColor = c.Text;
+            action.Font = Theme.BodyStrong;
+            action.FlatAppearance.BorderSize = 1;
+            action.FlatAppearance.BorderColor = c.Border;
+            action.Cursor = Cursors.Hand;
+        }
 
         _cover.RefreshTheme();
         _lookup.RefreshTheme();

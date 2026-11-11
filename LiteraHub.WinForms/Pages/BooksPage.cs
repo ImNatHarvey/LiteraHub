@@ -675,12 +675,17 @@ public sealed class BooksPage : ThemedUserControl
                 return;
 
             var editor = new BookEditorPage(existing);
-            editor.ConfigureServices(_categories, _metadata, _books);
-            {
-                Dock = DockStyle.Fill;
-            };
+            editor.Dock = DockStyle.Fill;
+            editor.ConfigureServices(
+                _categories, _metadata, _books,
+                _permissions.Can(Permission.HardDelete));
 
             editor.BackRequested += HandleBackRequested;
+            editor.Saved += async (_, _) =>
+            {
+                HandleBackRequested(editor, EventArgs.Empty);
+                await LoadBooksAsync();
+            };
 
             _editor = editor;
             _layout.Visible = false;
