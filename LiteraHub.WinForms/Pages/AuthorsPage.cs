@@ -236,15 +236,25 @@ public sealed class AuthorsPage : ThemedUserControl
 
         // Match the Categories pagination layout.
         // Remove the extra top padding that clips the text.
-        _pagination.Padding = Padding.Empty;
-        _pagination.Margin = Padding.Empty;
 
+        // Exact Categories pagination layout.
+        _pagination.Padding = new Padding(0, 12, 0, 0);
+        _pagination.Margin = new Padding(2, 0, 0, 0);
+
+        _pageInfo.Dock = DockStyle.Fill;
         _pageInfo.Margin = Padding.Empty;
         _pageInfo.Padding = Padding.Empty;
         _pageInfo.AutoEllipsis = true;
         _pageInfo.TextAlign = ContentAlignment.MiddleLeft;
 
+        _pageControls.Dock = DockStyle.Fill;
+        _pageControls.Margin = Padding.Empty;
         _pageControls.Padding = Padding.Empty;
+
+        _pagination.RowStyles.Clear();
+        _pagination.RowStyles.Add(
+            new RowStyle(SizeType.Percent, 100));
+
 
         // Match Categories action tooltips.
         _grid.ShowCellToolTips = false;
