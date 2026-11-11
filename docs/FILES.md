@@ -1,174 +1,69 @@
-﻿# LiteraHub — Project File Structure
+# LiteraHub — Project Files and Responsibilities
 
-**Last reviewed:** 2026-11-09  
-**Source:** GitHub repository `ImNatHarvey/LiteraHub`  
-**Current phase:** Step 4D — Documentation Reconciliation
+**Updated:** 2026-11-12  
+**Repository:** https://github.com/ImNatHarvey/LiteraHub
 
-## 1. Project Location
-
-Local development folder:
-
-`Documents/Knowledge Base/1 - Projects/LiteraHub/`
-
-GitHub repository:
-
-https://github.com/ImNatHarvey/LiteraHub
-
-The project is stored inside the Obsidian PARA vault but maintained as an independent Git repository.
-
-## 2. Solution Structure
+## Solution
 
 ```text
 LiteraHub/
 ├── LiteraHub.slnx
-├── LiteraHub.md
 ├── LiteraHub.Core/
 ├── LiteraHub.Data/
 ├── LiteraHub.Services/
 ├── LiteraHub.WinForms/
 └── docs/
+    ├── DECISIONS.md
+    ├── ENHANCEMENT_ROADMAP.md
+    ├── FILES.md
+    ├── OPEN_QUESTIONS.md
+    ├── PROGRESS.md
+    ├── PROJECT_BRIEF.md
+    ├── SCHEMA.md
+    └── SESSION_HANDOFF.md
 ```
 
-All four projects target .NET 10, with the WinForms project targeting `net10.0-windows`.
+## Project boundaries
 
-## 3. LiteraHub.Core
-
-Contains shared domain models, contracts, security definitions, and configuration models.
-
-```text
-LiteraHub.Core/
-├── Interfaces/
-│   ├── IAuthServices.cs
-│   ├── IDbConnectionFactory.cs
-│   ├── IPasswordHasher.cs
-│   └── IUserRepository.cs
-├── Models/
-│   ├── ResultModels.cs
-│   └── UserModels.cs
-├── Security/
-│   └── AccessControl.cs
-├── Settings/
-│   └── DatabaseOptions.cs
-└── LiteraHub.Core.csproj
-```
-
-## 4. LiteraHub.Data
-
-Contains database initialization, SQL Server connection handling, and Dapper repositories.
-
-```text
-LiteraHub.Data/
-├── Bootstrap/
-│   ├── BootstrapModels.cs
-│   ├── DatabaseBootstrapper.cs
-│   └── Migrations.cs
-├── Repositories/
-│   ├── SqlConnectionFactory.cs
-│   └── UserRepository.cs
-└── LiteraHub.Data.csproj
-```
-
-The database migrations define the existing application schema and seed data.
-
-## 5. LiteraHub.Services
-
-Contains application services, authentication, password hashing, and authorization.
-
-```text
-LiteraHub.Services/
-├── Security/
-│   ├── AuthService.cs
-│   ├── BcryptPasswordHasher.cs
-│   ├── PasswordPolicy.cs
-│   ├── PermissionService.cs
-│   └── SessionContext.cs
-└── LiteraHub.Services.csproj
-```
-
-Business permissions must be enforced in the service layer, not only through UI visibility.
-
-## 6. LiteraHub.WinForms
-
-Contains the application entry point, windows, reusable controls, navigation, and theming.
-
-```text
-LiteraHub.WinForms/
-├── Controls/
-│   ├── BusyButtons.cs
-│   ├── LoadingHost.cs
-│   ├── ScrollHost.cs
-│   ├── SidebarNav.cs
-│   ├── SkeletonView.cs
-│   ├── ThemedUserControl.cs
-│   └── ThinScrollBar.cs
-├── Forms/
-│   ├── ChangePasswordForm.cs
-│   ├── LoginForm.cs
-│   └── ShellForm.cs
-├── Pages/
-│   └── PlaceholderPage.cs
-├── Theming/
-│   ├── AppIcons.cs
-│   ├── Gfx.cs
-│   └── Theme.cs
-├── Program.cs
-├── appsettings.json
-└── LiteraHub.WinForms.csproj
-```
-
-All application UI is created programmatically in C#, without Windows Forms Designer files.
-
-`BusyButtons.cs` contains the `BusyButton` implementation. The temporary loading demonstration page has been removed.
-
-## 7. Project Documentation
-
-```text
-docs/
-├── DECISIONS.md
-├── FILES.md
-├── OPEN_QUESTIONS.md
-├── PROGRESS.md
-├── PROJECT_BRIEF.md
-├── SCHEMA.md
-└── SESSION_HANDOFF.md
-```
-
-| Document | Purpose |
+| Project | Responsibility |
 |---|---|
-| DECISIONS.md | Architecture and design decisions |
-| FILES.md | Repository structure and file responsibilities |
-| OPEN_QUESTIONS.md | Unresolved development questions |
-| PROGRESS.md | Development milestones and testing status |
-| PROJECT_BRIEF.md | Official case-study requirements |
-| SCHEMA.md | Database structure and migration reference |
-| SESSION_HANDOFF.md | Current development context for future sessions |
+| `LiteraHub.Core` | Models, contracts, security and shared definitions |
+| `LiteraHub.Data` | SQL Server bootstrap/migrations, Dapper repositories |
+| `LiteraHub.Services` | Business logic, authentication, authorization and validation |
+| `LiteraHub.WinForms` | Programmatic UI, forms, pages, custom controls, theme engine |
 
-## 8. Planned Step 5 Files
+## Known Books and Categories files
 
-The following are planned components, not existing source files:
+Exact locations and method signatures must be checked against the current repository before editing.
 
-- Shared native-control theming
-- Reusable themed DataGridView
-- Category models and repository contracts
-- Category repository implementation
-- Category service and validation
-- Categories management page
+- `LiteraHub.WinForms/Pages/BooksPage.cs` — Books catalog and editor navigation.
+- `LiteraHub.WinForms/Pages/BookEditorPage.cs` — Add/Edit Book UI, ISBN lookup, inventory validation, cover preview.
+- `LiteraHub.WinForms/Pages/CategoriesPage.cs` — Categories management UI.
+- `LiteraHub.WinForms/Controls/ThemedFilterDropdown.cs` — Theme-aware dropdown reused for category/condition.
+- `LiteraHub.WinForms/Controls/ThemedAuthorSelector.cs` — Author selector foundation; integration pending.
+- `LiteraHub.Core/Models/BookMetadata.cs` — External bibliographic metadata.
+- `LiteraHub.Core/Interfaces/IBookMetadataService.cs` — Metadata service contract.
+- `LiteraHub.Services/.../OpenLibraryMetadataService.cs` — Open Library integration (verify exact path).
+- `BookModels.cs`, `IBookRepository.cs`, `IBookService.cs`, `BookRepository.cs`, `BookService.cs` — Books domain/data/service layer (verify exact paths).
+- `LiteraHub.Data/Bootstrap/Migrations.cs` — Authoritative schema migration definitions.
 
-Exact filenames and namespaces will be finalized after inspecting the relevant existing source code.
+## Documentation purposes
 
-## 9. Development Conventions
+| File | Responsibility |
+|---|---|
+| `DECISIONS.md` | Architectural and product decisions |
+| `ENHANCEMENT_ROADMAP.md` | Planned enhancements and sequencing |
+| `FILES.md` | Structure and file ownership |
+| `OPEN_QUESTIONS.md` | Unresolved decisions and unverified behavior |
+| `PROGRESS.md` | Implemented/tested/pending milestones |
+| `PROJECT_BRIEF.md` | Case Study #5 mandatory scope |
+| `SCHEMA.md` | SQL schema and constraints |
+| `SESSION_HANDOFF.md` | Restart context and next coding batch |
 
-- Keep domain models and interfaces in Core.
-- Keep SQL queries and repositories in Data.
-- Keep business rules and authorization in Services.
-- Keep presentation and UI interactions in WinForms.
-- Use relative project references.
-- Use asynchronous database operations where appropriate.
-- Provide full source files for changes.
-- Update documentation after completed milestones.
+## Development conventions
 
-## 10. Maintenance
-
-This document records the repository file tree inspected on 2026-11-09.
-
-Update it when files are added, renamed, moved, or removed. Do not list planned files as implemented.
+- All UI is programmatic WinForms; no designer files.
+- Keep SQL out of forms and permissions enforced in services.
+- Do not restore discarded `BookDialog.cs` and `AuthorQuickAddDialog.cs` without explicit approval.
+- Update this document when files are added, renamed, or removed.
+- Do not confuse planned components with implemented components.

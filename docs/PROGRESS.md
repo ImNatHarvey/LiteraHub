@@ -1,158 +1,63 @@
-﻿
 # LiteraHub — Development Progress
 
-**Last updated:** 2026-11-10
-**Current phase:** Enhancement checkpoint P4
-**Paused implementation:** Step 5A.4B
-**Next implementation:** Categories navigation and database loading
+**Updated:** 2026-11-12  
+**Repository:** `ImNatHarvey/LiteraHub`  
+**Latest verified remote commit:** `8b17ad3847bb5dce6e71cb27792762e1245cc50b`  
+**Current checkpoint:** Step 5B.3C — Book Editor integrations
 
-## 1. Completed Milestones
+> Status convention: **Developer-tested** means the developer reported successful local tests. **Source verified** means the implementation was inspected in GitHub; it does not mean ChatGPT compiled or executed it.
 
-| Step | Description | Status |
+## Completed or developer-tested
+
+| Workstream | Status | Notes |
 |---|---|---|
-| 1 | Solution and project setup | Implemented |
-| 2 | Database bootstrapper and migrations | Tested — developer |
-| 3 | Authentication and permissions | Tested — developer |
-| 4A | Application shell and themes | Tested — developer |
-| 4B | Dark scrollbars and scrolling | Tested — developer |
-| 4C | Loading states and busy buttons | Tested — developer |
-| 4D | Documentation reconciliation | Previously completed; ongoing updates |
-| 5A.1 | NativeTheme helper | Tested — developer |
-| 5A.2 | ThemedDataGridView | Tested — developer |
-| 5A.3A | Category models and repository contract | Tested — developer |
-| 5A.3B | CategoryRepository | Tested — developer |
-| 5A.3C | CategoryService | Tested — developer |
-| 5A.3D | Category dependency wiring | Tested — developer |
-| 5A.4A | Categories page foundation | Source pushed; runtime tests not separately confirmed |
-| 5A.4B | Categories navigation and data loading | Paused |
-| 5A.4C | Category add/edit forms | Pending |
-| 5A.4D | Category status and search | Pending |
-| 5A.5 | Categories integration testing | Pending |
-| 5B | Authors CRUD | Pending |
-| 5C | Students CRUD | Pending |
-| 5D | Books CRUD | Pending |
-| 6 | Borrow and Return | Pending |
-| 7 | Reports | Pending |
-| 8 | Final testing and release | Pending |
+| Steps 1–4C | Developer-tested | Solution, SQL bootstrap, authentication, shell/themes, scrollbars, loading states |
+| Nine-preset appearance | Developer-tested | Theme selection and responsive theme integration |
+| Categories CRUD | Developer-tested and pushed | Listing, search, filters, pagination, create/edit, archive/delete safeguards |
+| Books backend | Source verified / previously developer-tested | Models, repository, service, lookup options, author relationships |
+| ISBN metadata service | Developer-tested | Open Library lookup; Atomic Habits ISBN `9780735211292` returned title and description |
+| Books catalog | Developer-tested | Search, filter, pagination, themed actions, editor navigation |
+| Dedicated Book Editor | Developer-tested | Add/Edit modes, Back button, responsive layouts, themed fields |
+| Inventory UI validation | Developer-tested | Available <= Total; nonnegative values; spinner and manual-input restrictions |
+| Category dropdown | Developer-tested in UI | Active category options via existing service; category inference from ISBN not implemented |
+| Cover preview | Implementation committed; user confirmed latest designer fix | Remote image retrieval with first-letter fallback; no mandatory cover-path input |
+| Lookup button states | Implementation committed; user confirmed latest designer fix | Hover/pressed/busy styling; `IsBusy` designer serialization issue addressed |
 
-Runtime tests are reported by the developer.
-GitHub source verification does not constitute runtime testing.
+## Current approved Book Editor layout
 
-## 2. Enhancement Checkpoint
+**1280 × 720:** left = Book Information, cover, ISBN, lookup, title; right = Classification, Category, Condition, Inventory, Authors, Description.
 
-| Step | Description | Status |
-|---|---|---|
-| P1 | Document new product goals and theme presets | Completed |
-| P2 | Implement nine-preset theme engine | Tested — developer |
-| P3 | Theme selector and local persistence | Tested — developer |
-| P4 | Theme regression testing | Pending final verification |
+**1920 × 1080:** left = Book Information, cover, ISBN, lookup, title, Classification, Category, Condition; right = Inventory, Authors, Description.
 
-After P4, resume Step 5A.4B.
+**390 × 844:** portrait scrolling supported; themed scrollbars must be retained.
 
-## 3. Nine Appearance Presets
+Both desktop layouts were approved by the developer. Do not redesign without request.
 
-1. Classic Light
-2. Midnight Library
-3. Sepia Paper
-4. Forest Scholar
-5. Slate & Teal
-6. Lavender Dusk
-7. Ocean Breeze
-8. Rosewood
-9. Graphite
+## Pending
 
-Midnight Library is the default dark preset.
+- Author selector connected to real author records; author-name resolution from ISBN metadata.
+- Reliable category matching from external metadata; permission-aware confirmation for new categories.
+- Full Save Book and Edit Book persistence, validation, busy states, error handling, and catalog refresh.
+- Service/database checks for outstanding loans and inventory consistency at save time.
+- Authors, Students, Borrow/Return, Reports, Users UI completion as required by case study.
+- End-to-end regression, packaging, demo machine verification.
 
-Application and digital reader preferences will be
-independent. Reader appearance is a future feature.
+## Important distinction
 
-## 4. Planned Product Enhancements
+The current Book Editor's inventory guard preserves `TotalCopies - AvailableCopies` as an unavailable count for UI editing. This is **not proven to equal active loans**. The service layer must query and enforce actual borrowing constraints when saving.
 
-### Practical Enhancements
-- ISBN metadata lookup
-- Automatic book cover retrieval
-- Member book requests
-- Admin/Librarian approval workflow
-- Physical and digital book catalog
+The presence of the Save Book button does not mean saving is functional. The editor's author names are not yet persisted as author relationships.
 
-### Digital Reader
-- PDF and EPUB support
-- Nine reading themes
-- Font and layout customization
-- Bookmarks, highlights, and notes
-- Reading progress
-- Parallel Read
+## Next implementation
 
-### Optional Intelligent Features
-- AI-assisted descriptions
-- AI recommendations
-- Wikipedia lookup
-- DeepL translation
-- Text-to-speech
+**Step 5B.3C.4 — Author selection and metadata matching.** Inspect `ThemedAuthorSelector`, author service interfaces and the latest `BookEditorPage.cs` before modifying them. Deliver one testable code batch and corresponding documentation update.
 
-These are planned, not implemented.
+## Development protocol
 
-See ENHANCEMENT_ROADMAP.md.
-
-## 5. Verified Architecture
-
-- .NET 10
-- Windows Forms
-- SQL Server Express
-- Dapper
-- Programmatic C# interface
-- LiteraHub.Core
-- LiteraHub.Data
-- LiteraHub.Services
-- LiteraHub.WinForms
-
-## 6. Dependencies
-
-| Package | Version | Project |
-|---|---|---|
-| Dapper | 2.1.89 | Data |
-| Microsoft.Data.SqlClient | 7.1.1 | Data |
-| System.Security.Cryptography.Pkcs | 10.0.14 | Data |
-| BCrypt.Net-Next | 4.2.0 | Services |
-| FontAwesome.Sharp | 6.6.0 | WinForms |
-| Microsoft.Extensions.Configuration.Json | 10.0.14 | WinForms |
-
-## 7. Known Limitations
-
-- CategoriesPage is not yet connected to navigation.
-- Category data loading is not yet implemented in the UI.
-- Borrower portal remains disabled.
-- Digital reading is not implemented.
-- AI integrations are not implemented.
-- LoadingHost overlapping-request behavior needs
-  investigation; no confirmed runtime bug.
-- Dark native-control compatibility on Windows 10
-  remains unverified.
-- Login and password-change forms have not yet
-  been redesigned for the nine-preset theme system.
-- Application appearance is saved locally per
-  Windows profile, not per LiteraHub account.
-- Reader appearance preferences remain planned.
-
-## 8. Development Rules
-
-1. Work in cohesive, testable batches.
-2. Inspect current GitHub files before modifications.
-3. Provide full replacement files where practical.
-4. Preserve the official school requirements.
-5. Keep SQL queries outside Windows Forms.
-6. Enforce permissions in the service layer.
-7. Do not modify applied migrations.
-8. Test before committing and proceeding.
-9. Use Visual Studio Git Changes for commits.
-10. Keep progress and decisions documentation current.
-
-## 9. Next Work
-
-1. Finish enhancement documentation.
-2. Implement the nine-preset theme engine.
-3. Implement the selector and local persistence.
-4. Test all nine themes.
-5. Resume Categories Step 5A.4B.
-
-See SESSION_HANDOFF.md for handoff context.
+1. Check GitHub on each LiteraHub follow-up; prefer uploaded newer local files over older remote files.
+2. Complete replacement `.cs` files by default; precise snippets only for small isolated fixes.
+3. For files around 1,000+ lines, provide downloadable complete source.
+4. No PowerShell replacement scripts.
+5. Code plus documentation in each development batch when possible.
+6. Developer tests before commit; never claim unrun tests passed.
+7. Preserve nine themes, approved responsive layouts, custom controls, permissions, and existing Categories CRUD.
