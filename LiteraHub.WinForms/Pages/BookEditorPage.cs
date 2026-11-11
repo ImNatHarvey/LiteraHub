@@ -1,5 +1,6 @@
 ﻿
 using System;
+using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
@@ -48,17 +49,84 @@ public sealed class BookEditorPage : ThemedUserControl
         TextAlign = ContentAlignment.MiddleLeft
     };
 
-    private readonly Panel _preview = new()
+    private readonly Panel _viewport = new()
     {
         Dock = DockStyle.Fill,
-        Padding = new Padding(20)
+        AutoScroll = false,
+        Margin = Padding.Empty
     };
 
-    private readonly Label _previewText = new()
+    private readonly Panel _content = new()
     {
-        Dock = DockStyle.Fill,
-        TextAlign = ContentAlignment.MiddleCenter
+        Margin = Padding.Empty
     };
+
+    private readonly EditorScrollBar _scrollbar = new()
+    {
+        Dock = DockStyle.Right,
+        Width = 12,
+        Visible = false
+    };
+
+    private readonly CoverPreview _cover = new();
+
+    private readonly ThemedTextField _isbn = new()
+    {
+        MaxLength = 20
+    };
+
+    private readonly ThemedTextField _title = new()
+    {
+        MaxLength = 255
+    };
+
+    private readonly ThemedTextField _bookDescription = new()
+    {
+        Multiline = true
+    };
+
+    private readonly ThemedTextField _authors = new();
+
+    // Reuse the same themed popup dropdown as the Books toolbar.
+    // Category options remain placeholders until database integration.
+    private readonly ThemedFilterDropdown _category =
+        new(new[] { "Select category" });
+
+    private readonly ThemedFilterDropdown _condition =
+        new(new[] { "Good", "Damaged" });
+
+    private readonly NumberField _total = new();
+    private readonly NumberField _available = new();
+
+    private readonly LookupButton _lookup = new()
+    {
+        Enabled = false
+    };
+
+    private readonly Button _save = new()
+    {
+        Text = "Save Book",
+        FlatStyle = FlatStyle.Flat,
+        Enabled = false
+    };
+
+    private readonly Label _coverLabel;
+    private readonly Label _bookSection;
+    private readonly Label _classificationSection;
+    private readonly Label _inventorySection;
+
+    private readonly Label _isbnLabel;
+    private readonly Label _titleLabel;
+    private readonly Label _descriptionLabel;
+    private readonly Label _authorsLabel;
+    private readonly Label _categoryLabel;
+    private readonly Label _conditionLabel;
+    private readonly Label _totalLabel;
+    private readonly Label _availableLabel;
+
+    private int _scrollOffset;
+    private int _contentHeight;
+    private bool _arranging;
 
     public event EventHandler? BackRequested;
 
@@ -77,22 +145,38 @@ public sealed class BookEditorPage : ThemedUserControl
             ? "Create a new book record."
             : $"Editing: {existing.Title}";
 
-        _previewText.Text =
-            "Book Editor page foundation\n\n" +
-            "The full editor fields, ISBN lookup, " +
-            "cover preview, author selection, " +
-            "category, condition, and inventory " +
-            "controls will be added next.\n\n" +
-            "Saving is not enabled in this checkpoint.";
+        _bookSection = MakeLabel("Book Information", true);
+        _classificationSection =
+            MakeLabel("Classification", true);
+        _inventorySection = MakeLabel("Inventory", true);
+
+        _coverLabel = MakeLabel("Cover Preview");
+        _isbnLabel = MakeLabel("ISBN");
+        _titleLabel = MakeLabel("Book Title");
+        _descriptionLabel = MakeLabel("Description");
+        _authorsLabel = MakeLabel("Authors");
+        _categoryLabel = MakeLabel("Category");
+        _conditionLabel = MakeLabel("Condition");
+        _totalLabel = MakeLabel("Total Copies");
+        _availableLabel = MakeLabel("Available Copies");
 
         BuildLayout();
-
-        _back.Click += (_, _) =>
-            BackRequested?.Invoke(this, EventArgs.Empty);
-
-        Resize += (_, _) => UpdateResponsiveLayout();
-
+        PopulateExistingBook();
+        WireEvents();
         ApplyTheme();
+    }
+
+    private static Label MakeLabel(
+        string text,
+        bool section = false)
+    {
+        return new Label
+        {
+            Text = text,
+            AutoSize = false,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Tag = section ? "section" : "field"
+        };
     }
 
     private void BuildLayout()
@@ -109,11 +193,9 @@ public sealed class BookEditorPage : ThemedUserControl
         _layout.RowStyles.Add(
             new RowStyle(SizeType.Percent, 100));
 
-        // Heading expands on the left.
         _header.ColumnStyles.Add(
             new ColumnStyle(SizeType.Percent, 100));
 
-        // Back button stays anchored to the right.
         _header.ColumnStyles.Add(
             new ColumnStyle(SizeType.Absolute, 100));
 
@@ -123,25 +205,422 @@ public sealed class BookEditorPage : ThemedUserControl
         _header.Controls.Add(_heading, 0, 0);
         _header.Controls.Add(_back, 1, 0);
 
-        _preview.Controls.Add(_previewText);
+        _content.Controls.AddRange(new Control[]
+        {
+            _bookSection,
+            _coverLabel,
+            _cover,
+            _isbnLabel,
+            _isbn,
+            _lookup,
+            _titleLabel,
+            _title,
+            _descriptionLabel,
+            _bookDescription,
+            _authorsLabel,
+            _authors,
+            _classificationSection,
+            _categoryLabel,
+            _category,
+            _conditionLabel,
+            _condition,
+            _inventorySection,
+            _totalLabel,
+            _total,
+            _availableLabel,
+            _available,
+            _save
+        });
+
+        _viewport.Controls.Add(_content);
+        _viewport.Controls.Add(_scrollbar);
 
         _layout.Controls.Add(_header, 0, 0);
         _layout.Controls.Add(_description, 0, 1);
-        _layout.Controls.Add(_preview, 0, 2);
+        _layout.Controls.Add(_viewport, 0, 2);
 
         Controls.Add(_layout);
+
     }
 
-    private void UpdateResponsiveLayout()
+    private void WireEvents()
     {
-        bool compact = Width < 480;
+        _back.Click += (_, _) =>
+            BackRequested?.Invoke(this, EventArgs.Empty);
 
-        _header.ColumnStyles[1].Width =
-            compact ? 88 : 100;
+        _title.TextChanged += (_, _) =>
+        {
+            string title = _title.Text.Trim();
 
-        _heading.Font = compact
-            ? Theme.BodyStrong
-            : Theme.Title;
+            _cover.Letter = title.Length == 0
+                ? "?"
+                : title[..1].ToUpperInvariant();
+        };
+
+        Resize += (_, _) => ArrangeForm();
+        _viewport.Resize += (_, _) => ArrangeForm();
+
+        _scrollbar.OffsetRequested += SetScrollOffset;
+
+        _viewport.MouseWheel += HandleWheel;
+        _content.MouseWheel += HandleWheel;
+
+        foreach (Control control in _content.Controls)
+            control.MouseWheel += HandleWheel;
+    }
+
+    private void PopulateExistingBook()
+    {
+        _total.Value = 1;
+        _available.Value = 1;
+
+        if (_existing is null)
+        {
+            _cover.Letter = "?";
+            return;
+        }
+
+        _isbn.Text = _existing.Isbn;
+        _title.Text = _existing.Title;
+
+        _bookDescription.Text =
+            _existing.Description ?? "";
+
+        _authors.Text = _existing.Authors;
+
+        _total.Value = _existing.TotalCopies;
+        _available.Value = _existing.AvailableCopies;
+
+        // Existing category is displayed as read-only text until
+        // category lookup is connected in the next checkpoint.
+        // The themed category dropdown currently has one option.
+        _condition.SelectedIndex =
+            string.Equals(_existing.StatusName, "Damaged",
+                StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+
+        string title = _existing.Title?.Trim() ?? "";
+
+        _cover.Letter = title.Length == 0
+            ? "?"
+            : title[..1].ToUpperInvariant();
+    }
+
+    private void ArrangeForm()
+    {
+        if (_arranging ||
+            _viewport.ClientSize.Width < 1 ||
+            _viewport.ClientSize.Height < 1)
+            return;
+
+        _arranging = true;
+
+        try
+        {
+            bool portrait = Width < 700;
+
+            _header.ColumnStyles[1].Width =
+                portrait ? 88 : 100;
+
+            _heading.Font = portrait
+                ? Theme.BodyStrong
+                : Theme.Title;
+
+            int width = _viewport.ClientSize.Width;
+
+            int height = portrait
+                ? ArrangePortrait(width)
+                : ArrangeDesktop(width);
+
+            // Desktop layouts are designed to fit
+            // without scrolling at 1280x720 and above.
+            bool needsScroll =
+                height > _viewport.ClientSize.Height;
+
+            _scrollbar.Visible = needsScroll;
+
+            if (needsScroll)
+            {
+                width = Math.Max(
+                    1,
+                    _viewport.ClientSize.Width -
+                    _scrollbar.Width);
+
+                height = portrait
+                    ? ArrangePortrait(width)
+                    : ArrangeDesktop(width);
+            }
+
+            _contentHeight = height;
+
+            _scrollOffset = Math.Clamp(
+                _scrollOffset,
+                0,
+                Math.Max(
+                    0,
+                    height - _viewport.ClientSize.Height));
+
+            _content.SetBounds(
+                0,
+                -_scrollOffset,
+                width,
+                height);
+
+            _scrollbar.SetMetrics(
+                height,
+                _viewport.ClientSize.Height,
+                _scrollOffset);
+        }
+        finally
+        {
+            _arranging = false;
+        }
+    }
+
+    private int ArrangeDesktop(int width)
+    {
+        const int pad = 16;
+        const int gap = 22;
+        int viewportHeight = _viewport.ClientSize.Height;
+        int innerWidth = Math.Max(1, width - pad * 2);
+        int columnWidth = Math.Max(80, (innerWidth - gap) / 2);
+        int leftX = pad;
+        int rightX = pad + columnWidth + gap;
+        int actionY = Math.Max(pad, viewportHeight - pad - 40);
+        int fieldBottom = actionY - 12;
+        const int labelGap = 6;
+        const int fieldGap = 7;
+        bool wide = width >= 1200;
+
+        if (wide)
+        {
+            // Wide layout: Book Information and Classification are
+            // stacked in the FIRST column; Description is in the
+            // SECOND column. Avoid the old column reversal.
+            int leftY = pad;
+            int rightY = pad;
+
+            Section(_bookSection, leftX, ref leftY, columnWidth);
+
+            // Keep the large cover, then place Classification
+            // beneath Book Information in the first column.
+            int fixedAfterCover =
+                (19 + labelGap + 36 + fieldGap) + // ISBN
+                (34 + fieldGap) +                 // lookup
+                (19 + labelGap + 36 + fieldGap) + // title
+                33 +                              // classification heading
+                (19 + labelGap + 40 + fieldGap) * 2;
+            int coverHeight = Math.Clamp(
+                fieldBottom - leftY - (19 + labelGap + fieldGap)
+                - fixedAfterCover,
+                85, 230);
+            int coverWidth = Math.Max(55,
+                (int)Math.Round(coverHeight * 0.72));
+
+            Field(_coverLabel, _cover, leftX, ref leftY,
+                coverWidth, coverHeight, labelGap, fieldGap);
+            Field(_isbnLabel, _isbn, leftX, ref leftY,
+                columnWidth, 36, labelGap, fieldGap);
+            _lookup.SetBounds(leftX, leftY, columnWidth, 34);
+            leftY += 34 + fieldGap;
+            Field(_titleLabel, _title, leftX, ref leftY,
+                columnWidth, 36, labelGap, fieldGap);
+            Section(_classificationSection, leftX,
+                ref leftY, columnWidth);
+            Field(_categoryLabel, _category, leftX,
+                ref leftY, columnWidth, 40, labelGap, fieldGap);
+            Field(_conditionLabel, _condition, leftX,
+                ref leftY, columnWidth, 40, labelGap, fieldGap);
+
+            // Second column: Inventory, Authors, and Description.
+            // Description can leave some blank space below it.
+            Section(_inventorySection, rightX,
+                ref rightY, columnWidth);
+            int numberWidth = Math.Max(40, (columnWidth - 12) / 2);
+            int totalY = rightY;
+            int availableY = rightY;
+            Field(_totalLabel, _total, rightX,
+                ref totalY, numberWidth, 40, labelGap, fieldGap);
+            Field(_availableLabel, _available,
+                rightX + numberWidth + 12,
+                ref availableY, numberWidth, 40, labelGap, fieldGap);
+            rightY = Math.Max(totalY, availableY);
+            Field(_authorsLabel, _authors, rightX,
+                ref rightY, columnWidth, 40, labelGap, fieldGap);
+            Field(_descriptionLabel, _bookDescription,
+                rightX, ref rightY, columnWidth,
+                Math.Min(280, Math.Max(120, viewportHeight / 3)),
+                labelGap, fieldGap);
+
+            _save.SetBounds(Math.Max(pad, width - pad - 124),
+                actionY, 124, 40);
+            return Math.Max(viewportHeight,
+                Math.Max(leftY, rightY) + pad);
+        }
+
+        // Preserve the already-approved 1280x720 arrangement exactly.
+        int bookX = leftX;
+        int classificationX = rightX;
+        int bookY = pad;
+        int classificationY = pad;
+
+        Section(_classificationSection, classificationX,
+            ref classificationY, columnWidth);
+        Field(_categoryLabel, _category, classificationX,
+            ref classificationY, columnWidth, 40, labelGap, fieldGap);
+        Field(_conditionLabel, _condition, classificationX,
+            ref classificationY, columnWidth, 40, labelGap, fieldGap);
+        Section(_inventorySection, classificationX,
+            ref classificationY, columnWidth);
+
+        int numericWidth = Math.Max(40, (columnWidth - 12) / 2);
+        int totalRowY = classificationY;
+        int availableRowY = classificationY;
+        Field(_totalLabel, _total, classificationX,
+            ref totalRowY, numericWidth, 40, labelGap, fieldGap);
+        Field(_availableLabel, _available,
+            classificationX + numericWidth + 12,
+            ref availableRowY, numericWidth, 40, labelGap, fieldGap);
+        classificationY = Math.Max(totalRowY, availableRowY);
+        Field(_authorsLabel, _authors, classificationX,
+            ref classificationY, columnWidth, 40, labelGap, fieldGap);
+
+        int descriptionHeight = Math.Max(48,
+            fieldBottom - classificationY - 19 - labelGap);
+        Field(_descriptionLabel, _bookDescription,
+            classificationX, ref classificationY, columnWidth,
+            descriptionHeight, labelGap, 0);
+
+        Section(_bookSection, bookX, ref bookY, columnWidth);
+        int afterCoverHeight =
+            (19 + labelGap + 36 + fieldGap) +
+            (34 + fieldGap) +
+            (19 + labelGap + 36 + fieldGap);
+        int coverLabelAndGap = 19 + labelGap + fieldGap;
+        int coverHeight1280 = Math.Max(78,
+            fieldBottom - bookY - coverLabelAndGap - afterCoverHeight);
+        int coverWidth1280 = Math.Max(55,
+            (int)Math.Round(coverHeight1280 * 0.72));
+
+        Field(_coverLabel, _cover, bookX, ref bookY,
+            coverWidth1280, coverHeight1280, labelGap, fieldGap);
+        Field(_isbnLabel, _isbn, bookX, ref bookY,
+            columnWidth, 36, labelGap, fieldGap);
+        _lookup.SetBounds(bookX, bookY, columnWidth, 34);
+        bookY += 34 + fieldGap;
+        Field(_titleLabel, _title, bookX, ref bookY,
+            columnWidth, 36, labelGap, fieldGap);
+
+        _save.SetBounds(Math.Max(pad, width - pad - 124),
+            actionY, 124, 40);
+        return Math.Max(viewportHeight,
+            Math.Max(bookY, classificationY) + pad);
+    }
+
+    private int ArrangePortrait(int width)
+    {
+        const int pad = 12;
+        int x = pad;
+        int fieldWidth = Math.Max(80, width - pad * 2);
+        int y = pad;
+
+        Section(_bookSection, x, ref y, fieldWidth);
+        Field(_coverLabel, _cover, x, ref y, 88, 124);
+        Field(_isbnLabel, _isbn, x, ref y, fieldWidth, 40);
+        _lookup.SetBounds(x, y, fieldWidth, 36);
+        y += 46;
+        Field(_titleLabel, _title, x, ref y, fieldWidth, 40);
+
+        Section(_classificationSection, x, ref y, fieldWidth);
+        Field(_categoryLabel, _category, x, ref y,
+            fieldWidth, 40);
+        Field(_conditionLabel, _condition, x, ref y,
+            fieldWidth, 40);
+        Section(_inventorySection, x, ref y, fieldWidth);
+
+        int numericWidth = Math.Max(40, (fieldWidth - 12) / 2);
+        int totalY = y;
+        int availableY = y;
+        Field(_totalLabel, _total, x, ref totalY,
+            numericWidth, 40);
+        Field(_availableLabel, _available,
+            x + numericWidth + 12, ref availableY,
+            numericWidth, 40);
+        y = Math.Max(totalY, availableY) + 8;
+
+        Field(_authorsLabel, _authors, x, ref y,
+            fieldWidth, 40);
+        Field(_descriptionLabel, _bookDescription,
+            x, ref y, fieldWidth, 90);
+        y += 8;
+        _save.SetBounds(x, y, fieldWidth, 40);
+        return y + 40 + pad;
+    }
+
+    private static void Section(
+        Label label,
+        int x,
+        ref int y,
+        int width)
+    {
+        label.SetBounds(
+            x, y, width, 25);
+
+        y += 33;
+    }
+
+    private static void Field(
+        Label label,
+        Control input,
+        int x,
+        ref int y,
+        int width,
+        int height,
+        int labelGap = 7,
+        int fieldGap = 10)
+    {
+        label.SetBounds(
+            x, y, width, 19);
+
+        y += 19 + labelGap;
+
+        input.SetBounds(
+            x, y, width, height);
+
+        y += height + fieldGap;
+    }
+
+    private void HandleWheel(
+        object? sender,
+        MouseEventArgs e)
+    {
+        if (!_scrollbar.Visible)
+            return;
+
+        int step = Math.Max(
+            24,
+            SystemInformation.MouseWheelScrollLines * 20);
+
+        SetScrollOffset(
+            _scrollOffset +
+            (e.Delta > 0 ? -step : step));
+    }
+
+    private void SetScrollOffset(int offset)
+    {
+        int max = Math.Max(
+            0,
+            _contentHeight -
+            _viewport.ClientSize.Height);
+
+        _scrollOffset = Math.Clamp(
+            offset, 0, max);
+
+        _content.Top = -_scrollOffset;
+
+        _scrollbar.SetMetrics(
+            _contentHeight,
+            _viewport.ClientSize.Height,
+            _scrollOffset);
     }
 
     protected override void ApplyTheme()
@@ -164,14 +643,511 @@ public sealed class BookEditorPage : ThemedUserControl
         _description.ForeColor = c.TextMuted;
         _description.Font = Theme.Body;
 
-        _preview.BackColor = c.Surface;
-        _previewText.BackColor = c.Surface;
-        _previewText.ForeColor = c.TextMuted;
-        _previewText.Font = Theme.Body;
+        _viewport.BackColor = c.Surface;
+        _content.BackColor = c.Surface;
 
-        _back.ApplyCurrentTheme();
+        foreach (Control control in _content.Controls)
+        {
+            if (control is not Label label)
+                continue;
 
-        UpdateResponsiveLayout();
+            label.BackColor = c.Surface;
+            label.ForeColor = c.Text;
+
+            label.Font = Equals(label.Tag, "section")
+                ? Theme.BodyStrong
+                : Theme.Body;
+        }
+
+        _category.ApplyTheme();
+        _condition.ApplyTheme();
+
+        _save.BackColor =
+            Color.FromArgb(34, 139, 86);
+
+        _save.ForeColor = Color.White;
+        _save.Font = Theme.BodyStrong;
+        _save.FlatAppearance.BorderSize = 0;
+
+        _cover.RefreshTheme();
+        _lookup.RefreshTheme();
+        _total.RefreshTheme();
+        _available.RefreshTheme();
+        _back.RefreshTheme();
+        _scrollbar.RefreshTheme();
+
+        ArrangeForm();
+    }
+
+    private sealed class CoverPreview : Control
+    {
+        private string _letter = "?";
+
+        [DesignerSerializationVisibility(
+            DesignerSerializationVisibility.Hidden)]
+        public string Letter
+        {
+            get => _letter;
+            set
+            {
+                _letter = string.IsNullOrWhiteSpace(value)
+                    ? "?"
+                    : value;
+
+                Invalidate();
+            }
+        }
+
+        public CoverPreview()
+        {
+            SetStyle(
+                ControlStyles.UserPaint |
+                ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.ResizeRedraw,
+                true);
+        }
+
+        public void RefreshTheme()
+        {
+            BackColor = Theme.Colors.AccentSoft;
+            ForeColor = Theme.Colors.Accent;
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+
+            var c = Theme.Colors;
+            var g = e.Graphics;
+
+            g.Clear(c.AccentSoft);
+
+            using var spine = new SolidBrush(
+                Color.FromArgb(35, c.Accent));
+
+            g.FillRectangle(
+                spine,
+                0, 0, 7, Height);
+
+            float fontSize = Math.Clamp(
+                Height * 0.30f,
+                22f,
+                58f);
+
+            using var font = new Font(
+                Theme.Title.FontFamily,
+                fontSize,
+                FontStyle.Bold);
+
+            TextRenderer.DrawText(
+                g,
+                _letter,
+                font,
+                ClientRectangle,
+                c.Accent,
+                TextFormatFlags.HorizontalCenter |
+                TextFormatFlags.VerticalCenter |
+                TextFormatFlags.SingleLine);
+        }
+    }
+
+    private sealed class LookupButton : Control
+    {
+        public LookupButton()
+        {
+            SetStyle(
+                ControlStyles.UserPaint |
+                ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.ResizeRedraw,
+                true);
+
+            Cursor = Cursors.Hand;
+        }
+
+        public void RefreshTheme()
+        {
+            BackColor = Theme.Colors.SurfaceAlt;
+            ForeColor = Theme.Colors.TextMuted;
+            Font = Theme.BodyStrong;
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+
+            var c = Theme.Colors;
+            var g = e.Graphics;
+
+            g.SmoothingMode =
+                SmoothingMode.AntiAlias;
+
+            g.Clear(c.SurfaceAlt);
+
+            using var border = new Pen(c.Border);
+
+            g.DrawRectangle(
+                border,
+                0, 0,
+                Math.Max(0, Width - 1),
+                Math.Max(0, Height - 1));
+
+            const string caption = "Lookup ISBN";
+
+            Size textSize = TextRenderer.MeasureText(
+                g, caption, Font);
+
+            int startX = Math.Max(
+                8,
+                (Width - textSize.Width - 27) / 2);
+
+            int centerY = Height / 2;
+
+            using var pen = new Pen(
+                c.TextMuted, 1.8f);
+
+            g.DrawEllipse(
+                pen,
+                startX,
+                centerY - 8,
+                11,
+                11);
+
+            g.DrawLine(
+                pen,
+                startX + 10,
+                centerY + 2,
+                startX + 17,
+                centerY + 9);
+
+            TextRenderer.DrawText(
+                g,
+                caption,
+                Font,
+                new Rectangle(
+                    startX + 27,
+                    0,
+                    Math.Max(1, Width - startX - 30),
+                    Height),
+                c.TextMuted,
+                TextFormatFlags.Left |
+                TextFormatFlags.VerticalCenter);
+        }
+    }
+
+    private sealed class NumberField : Control
+    {
+        private readonly TextBox _input = new()
+        {
+            BorderStyle = BorderStyle.None,
+            Text = "0"
+        };
+
+        private readonly Button _up = new()
+        {
+            Text = "▲",
+            FlatStyle = FlatStyle.Flat,
+            TabStop = false
+        };
+
+        private readonly Button _down = new()
+        {
+            Text = "▼",
+            FlatStyle = FlatStyle.Flat,
+            TabStop = false
+        };
+
+        private int _lastValidValue;
+
+        [DesignerSerializationVisibility(
+            DesignerSerializationVisibility.Hidden)]
+        public int Value
+        {
+            get => int.TryParse(
+                _input.Text, out int value)
+                ? Math.Clamp(value, 0, 100000)
+                : _lastValidValue;
+
+            set
+            {
+                _lastValidValue = Math.Clamp(
+                    value, 0, 100000);
+
+                _input.Text =
+                    _lastValidValue.ToString();
+            }
+        }
+
+        public NumberField()
+        {
+            SetStyle(
+                ControlStyles.UserPaint |
+                ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.ResizeRedraw,
+                true);
+
+            Controls.AddRange(new Control[]
+            {
+                _input, _up, _down
+            });
+
+            _up.Click += (_, _) =>
+                Value = Math.Min(
+                    100000, Value + 1);
+
+            _down.Click += (_, _) =>
+                Value = Math.Max(
+                    0, Value - 1);
+
+            _input.KeyPress += (_, e) =>
+            {
+                if (!char.IsControl(e.KeyChar) &&
+                    !char.IsDigit(e.KeyChar))
+                    e.Handled = true;
+            };
+
+            _input.TextChanged += (_, _) =>
+            {
+                if (int.TryParse(
+                    _input.Text, out int number))
+                    _lastValidValue = Math.Clamp(
+                        number, 0, 100000);
+            };
+
+            _input.Leave += (_, _) =>
+                Value = Value;
+
+            Resize += (_, _) => LayoutParts();
+        }
+
+        private void LayoutParts()
+        {
+            const int buttonWidth = 24;
+
+            int half = Math.Max(1, Height / 2);
+
+            _input.SetBounds(
+                12,
+                Math.Max(
+                    0,
+                    (Height - _input.PreferredHeight) / 2),
+                Math.Max(
+                    1,
+                    Width - buttonWidth - 24),
+                _input.PreferredHeight);
+
+            _up.SetBounds(
+                Math.Max(0, Width - buttonWidth),
+                0,
+                buttonWidth,
+                half);
+
+            _down.SetBounds(
+                Math.Max(0, Width - buttonWidth),
+                half,
+                buttonWidth,
+                Math.Max(1, Height - half));
+        }
+
+        public void RefreshTheme()
+        {
+            var c = Theme.Colors;
+
+            BackColor = c.Surface;
+
+            _input.BackColor = c.Surface;
+            _input.ForeColor = c.Text;
+            _input.Font = Theme.Body;
+
+            foreach (var button in new[]
+                     {
+                         _up, _down
+                     })
+            {
+                button.BackColor = c.SurfaceAlt;
+                button.ForeColor = c.Text;
+                button.Font = new Font(
+                    Theme.Body.FontFamily,
+                    7);
+
+                button.FlatAppearance.BorderSize = 0;
+                button.FlatAppearance.MouseOverBackColor =
+                    c.AccentSoft;
+            }
+
+            LayoutParts();
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+
+            using var pen = new Pen(
+                Theme.Colors.Border);
+
+            e.Graphics.DrawRectangle(
+                pen,
+                0, 0,
+                Math.Max(0, Width - 1),
+                Math.Max(0, Height - 1));
+        }
+    }
+
+    private sealed class EditorScrollBar : Control
+    {
+        private int _contentHeight = 1;
+        private int _viewportHeight = 1;
+        private int _offset;
+
+        private bool _dragging;
+        private int _dragStartY;
+        private int _dragStartOffset;
+
+        public event Action<int>? OffsetRequested;
+
+        public EditorScrollBar()
+        {
+            SetStyle(
+                ControlStyles.UserPaint |
+                ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.ResizeRedraw,
+                true);
+
+            Cursor = Cursors.Hand;
+        }
+
+        public void RefreshTheme()
+        {
+            BackColor = Theme.Colors.Surface;
+            Invalidate();
+        }
+
+        public void SetMetrics(
+            int contentHeight,
+            int viewportHeight,
+            int offset)
+        {
+            _contentHeight = Math.Max(
+                1, contentHeight);
+
+            _viewportHeight = Math.Max(
+                1, viewportHeight);
+
+            _offset = Math.Max(0, offset);
+
+            Invalidate();
+        }
+
+        private Rectangle ThumbBounds()
+        {
+            int trackHeight = Math.Max(
+                1, Height);
+
+            int thumbHeight = Math.Clamp(
+                (int)Math.Round(
+                    trackHeight *
+                    Math.Min(
+                        1.0,
+                        (double)_viewportHeight /
+                        _contentHeight)),
+                Math.Min(28, trackHeight),
+                trackHeight);
+
+            int travel = trackHeight - thumbHeight;
+
+            int maxOffset = Math.Max(
+                1,
+                _contentHeight - _viewportHeight);
+
+            int thumbY = (int)Math.Round(
+                (double)_offset /
+                maxOffset * travel);
+
+            return new Rectangle(
+                2,
+                thumbY,
+                Math.Max(1, Width - 4),
+                thumbHeight);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+
+            e.Graphics.Clear(
+                Theme.Colors.Surface);
+
+            using var brush = new SolidBrush(
+                Theme.Colors.Border);
+
+            e.Graphics.FillRectangle(
+                brush,
+                ThumbBounds());
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+
+            if (e.Button != MouseButtons.Left)
+                return;
+
+            Rectangle thumb = ThumbBounds();
+
+            if (!thumb.Contains(e.Location))
+            {
+                OffsetRequested?.Invoke(
+                    _offset +
+                    (e.Y < thumb.Top ? -1 : 1) *
+                    _viewportHeight);
+
+                return;
+            }
+
+            _dragging = true;
+            _dragStartY = e.Y;
+            _dragStartOffset = _offset;
+            Capture = true;
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+
+            if (!_dragging)
+                return;
+
+            Rectangle thumb = ThumbBounds();
+
+            int travel = Math.Max(
+                1,
+                Height - thumb.Height);
+
+            int maxOffset = Math.Max(
+                0,
+                _contentHeight - _viewportHeight);
+
+            int delta = (int)Math.Round(
+                (double)(e.Y - _dragStartY) *
+                maxOffset / travel);
+
+            OffsetRequested?.Invoke(
+                _dragStartOffset + delta);
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            base.OnMouseUp(e);
+
+            _dragging = false;
+            Capture = false;
+        }
     }
 
     private sealed class BackButton : Control
@@ -188,13 +1164,12 @@ public sealed class BookEditorPage : ThemedUserControl
                 ControlStyles.Selectable,
                 true);
 
-            Text = "Back";
             Cursor = Cursors.Hand;
             TabStop = true;
             AccessibleName = "Back to Books";
         }
 
-        public void ApplyCurrentTheme()
+        public void RefreshTheme()
         {
             BackColor = Theme.Colors.Surface;
             ForeColor = Theme.Colors.Text;
@@ -220,8 +1195,7 @@ public sealed class BookEditorPage : ThemedUserControl
         {
             base.OnKeyDown(e);
 
-            if (e.KeyCode == Keys.Enter ||
-                e.KeyCode == Keys.Space)
+            if (e.KeyCode is Keys.Enter or Keys.Space)
             {
                 OnClick(EventArgs.Empty);
                 e.Handled = true;
@@ -236,30 +1210,28 @@ public sealed class BookEditorPage : ThemedUserControl
             var c = Theme.Colors;
             var g = e.Graphics;
 
-            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.SmoothingMode =
+                SmoothingMode.AntiAlias;
 
             using var background = new SolidBrush(
                 _hovered ? c.SurfaceAlt : c.Surface);
 
             g.FillRectangle(
-                background,
-                ClientRectangle);
+                background, ClientRectangle);
 
             using var border = new Pen(c.Border);
 
             g.DrawRectangle(
                 border,
-                0,
-                0,
+                0, 0,
                 Math.Max(0, Width - 1),
                 Math.Max(0, Height - 1));
 
             int iconX = 18;
             int iconY = Height / 2;
 
-            using var iconPen = new Pen(
-                c.Accent,
-                2.2f)
+            using var pen = new Pen(
+                c.Accent, 2.2f)
             {
                 StartCap = LineCap.Round,
                 EndCap = LineCap.Round,
@@ -267,7 +1239,7 @@ public sealed class BookEditorPage : ThemedUserControl
             };
 
             g.DrawLines(
-                iconPen,
+                pen,
                 new[]
                 {
                     new Point(iconX + 4, iconY - 6),
@@ -275,21 +1247,18 @@ public sealed class BookEditorPage : ThemedUserControl
                     new Point(iconX + 4, iconY + 6)
                 });
 
-            var textBounds = new Rectangle(
-                31,
-                0,
-                Math.Max(0, Width - 34),
-                Height);
-
             TextRenderer.DrawText(
                 g,
                 "Back",
                 Font,
-                textBounds,
+                new Rectangle(
+                    31,
+                    0,
+                    Math.Max(0, Width - 34),
+                    Height),
                 c.Text,
                 TextFormatFlags.Left |
-                TextFormatFlags.VerticalCenter |
-                TextFormatFlags.EndEllipsis);
+                TextFormatFlags.VerticalCenter);
 
             if (Focused && ShowFocusCues)
             {
