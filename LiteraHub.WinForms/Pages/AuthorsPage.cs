@@ -230,8 +230,178 @@ public sealed class AuthorsPage : ThemedUserControl
         _add.Click += async (_, _) =>
             await OpenAddDialogAsync();
 
+
         _grid.CellMouseUp += HandleActionMouseUp;
         _grid.CellPainting += PaintSpecialCells;
+
+        // Match the Categories pagination layout.
+        // Remove the extra top padding that clips the text.
+        _pagination.Padding = Padding.Empty;
+        _pagination.Margin = Padding.Empty;
+
+        _pageInfo.Margin = Padding.Empty;
+        _pageInfo.Padding = Padding.Empty;
+        _pageInfo.AutoEllipsis = true;
+        _pageInfo.TextAlign = ContentAlignment.MiddleLeft;
+
+        _pageControls.Padding = Padding.Empty;
+
+        // Match Categories action tooltips.
+        _grid.ShowCellToolTips = false;
+
+        var actionTooltip = new ToolTip
+        {
+            InitialDelay = 400,
+            ReshowDelay = 100,
+            AutoPopDelay = 3000,
+            ShowAlways = true
+        };
+
+        var hoverTimer = new System.Windows.Forms.Timer
+        {
+            Interval = 450
+        };
+
+        int hoverRow = -1;
+        int hoverColumn = -1;
+        int hoverSlot = -1;
+
+        void ClearHover()
+        {
+            hoverTimer.Stop();
+            actionTooltip.Hide(_grid);
+
+            hoverRow = -1;
+            hoverColumn = -1;
+            hoverSlot = -1;
+
+            if (!_grid.IsDisposed)
+                _grid.Cursor = Cursors.Default;
+        }
+
+        _grid.MouseMove += (_, e) =>
+        {
+            if (_working || _loadingData || !CanManage)
+            {
+                ClearHover();
+                return;
+            }
+
+            var hit = _grid.HitTest(e.X, e.Y);
+
+            if (hit.Type != DataGridViewHitTestType.Cell ||
+                hit.RowIndex < 0 ||
+                hit.ColumnIndex < 0 ||
+                _grid.Columns[hit.ColumnIndex].Name != "Actions")
+            {
+                ClearHover();
+                return;
+            }
+
+            Rectangle rect = _grid.GetCellDisplayRectangle(
+                hit.ColumnIndex,
+                hit.RowIndex,
+                false);
+
+            int slot = Math.Clamp(
+                (e.X - rect.Left) * ActionCount /
+                    Math.Max(1, rect.Width),
+                0,
+                ActionCount - 1);
+
+            _grid.Cursor = Cursors.Hand;
+
+            if (hoverRow == hit.RowIndex &&
+                hoverColumn == hit.ColumnIndex &&
+                hoverSlot == slot)
+                return;
+
+            actionTooltip.Hide(_grid);
+            hoverTimer.Stop();
+
+            hoverRow = hit.RowIndex;
+            hoverColumn = hit.ColumnIndex;
+            hoverSlot = slot;
+
+            hoverTimer.Start();
+        };
+
+        hoverTimer.Tick += (_, _) =>
+        {
+            hoverTimer.Stop();
+
+            if (hoverRow < 0 ||
+                hoverColumn < 0 ||
+                hoverSlot < 0 ||
+                _working ||
+                _loadingData ||
+                _grid.IsDisposed)
+                return;
+
+            Point mouse = _grid.PointToClient(
+                Control.MousePosition);
+
+            var hit = _grid.HitTest(mouse.X, mouse.Y);
+
+            if (hit.RowIndex != hoverRow ||
+                hit.ColumnIndex != hoverColumn)
+                return;
+
+            Rectangle rect = _grid.GetCellDisplayRectangle(
+                hoverColumn,
+                hoverRow,
+                false);
+
+            int currentSlot = Math.Clamp(
+                (mouse.X - rect.Left) * ActionCount /
+                    Math.Max(1, rect.Width),
+                0,
+                ActionCount - 1);
+
+            if (currentSlot != hoverSlot)
+                return;
+
+            bool active = string.Equals(
+                Convert.ToString(
+                    _grid.Rows[hoverRow].Cells["Status"].Value),
+                "Active",
+                StringComparison.OrdinalIgnoreCase);
+
+            string tooltipText = hoverSlot switch
+            {
+                0 => "Edit Author",
+                1 => active
+                    ? "Archive Author"
+                    : "Restore Author",
+                2 when CanDelete => "Delete Author",
+                _ => ""
+            };
+
+            if (tooltipText.Length == 0)
+                return;
+
+            int centerX = rect.Left +
+                (int)((hoverSlot + 0.5) *
+                    rect.Width / ActionCount);
+
+            actionTooltip.Show(
+                tooltipText,
+                _grid,
+                centerX,
+                rect.Bottom + 3,
+                2500);
+        };
+
+        _grid.MouseLeave += (_, _) => ClearHover();
+        _grid.Scroll += (_, _) => ClearHover();
+
+        Disposed += (_, _) =>
+        {
+            hoverTimer.Stop();
+            hoverTimer.Dispose();
+            actionTooltip.Dispose();
+        };
+
 
         Resize += (_, _) => UpdateResponsiveLayout();
 
