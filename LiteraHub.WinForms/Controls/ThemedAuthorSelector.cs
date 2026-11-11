@@ -97,10 +97,12 @@ public sealed class ThemedAuthorSelector : ThemedUserControl
 
         try
         {
-            foreach (Control control in _items.Controls)
-                control.Dispose();
-
+            // Clear before disposing to avoid mutating the collection
+            // while enumerating its controls during search/filter refreshes.
+            var previousRows = _items.Controls.Cast<Control>().ToArray();
             _items.Controls.Clear();
+            foreach (Control control in previousRows)
+                control.Dispose();
             _buttons.Clear();
 
             foreach (var author in _authors)

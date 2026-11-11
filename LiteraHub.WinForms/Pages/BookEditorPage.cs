@@ -91,7 +91,7 @@ public sealed class BookEditorPage : ThemedUserControl
         Multiline = true
     };
 
-    private readonly ThemedTextField _authors = new();
+    private readonly ThemedAuthorPicker _authors = new();
 
     // Reuse the same themed popup dropdown as the Books toolbar.
     // Category options remain placeholders until database integration.
@@ -129,6 +129,12 @@ public sealed class BookEditorPage : ThemedUserControl
 
     private ICategoryService? _categoryService;
     private IBookMetadataService? _metadataService;
+    private IBookService? _bookService;
+    private bool _authorsLoading;
+    private bool _authorsLoaded;
+    private IReadOnlyList<string> _pendingMetadataAuthors = Array.Empty<string>();
+
+    public IReadOnlyList<int> SelectedAuthorIds => _authors.SelectedAuthorIds;
     private bool _lookupBusy;
     private CancellationTokenSource? _coverLoad;
     private static readonly HttpClient CoverHttp = new() { Timeout = TimeSpan.FromSeconds(12) };
@@ -144,16 +150,22 @@ public sealed class BookEditorPage : ThemedUserControl
 
     public void ConfigureServices(
         ICategoryService categories,
-        IBookMetadataService metadata)
+        IBookMetadataService metadata,
+        IBookService books)
     {
         _categoryService = categories ??
             throw new ArgumentNullException(nameof(categories));
         _metadataService = metadata ??
             throw new ArgumentNullException(nameof(metadata));
+        _bookService = books ??
+            throw new ArgumentNullException(nameof(books));
         _lookup.Enabled = true;
 
         if (IsHandleCreated)
+        {
             _ = LoadCategoriesAsync();
+            _ = LoadAuthorsAsync();
+        }
         else
             HandleCreated += HandleEditorCreated;
     }
@@ -162,6 +174,41 @@ public sealed class BookEditorPage : ThemedUserControl
     {
         HandleCreated -= HandleEditorCreated;
         _ = LoadCategoriesAsync();
+        _ = LoadAuthorsAsync();
+    }
+
+    private async Task LoadAuthorsAsync()
+    {
+        if (_authorsLoading || _bookService is null)
+            return;
+
+        _authorsLoading = true;
+        try
+        {
+            var authors = await _bookService.GetAuthorsAsync();
+            if (IsDisposed || Disposing) return;
+
+            _authors.SetAuthors(authors, _existing?.AuthorIds);
+            _authorsLoaded = true;
+
+            if (_pendingMetadataAuthors.Count > 0)
+            {
+                var unmatched = _authors.MatchMetadataNames(_pendingMetadataAuthors);
+                _description.Text = unmatched.Count == 0
+                    ? "ISBN authors matched to existing author records. Review before saving."
+                    : "Review unmatched author(s): " + string.Join(", ", unmatched);
+                _pendingMetadataAuthors = Array.Empty<string>();
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && !Disposing)
+                _description.Text = "Unable to load authors: " + ex.Message;
+        }
+        finally
+        {
+            _authorsLoading = false;
+        }
     }
 
     private async Task LoadCategoriesAsync()
@@ -240,9 +287,20 @@ public sealed class BookEditorPage : ThemedUserControl
             var book = result.Metadata;
             _title.Text = book.Title;
             _bookDescription.Text = book.Description ?? string.Empty;
-            _authors.Text = string.Join(", ", book.Authors);
             _ = LoadCoverAsync(book.CoverUrl);
-            _description.Text = "Metadata found. Review the fields before saving.";
+            if (_authorsLoaded)
+            {
+                var unmatched = _authors.MatchMetadataNames(book.Authors);
+                _description.Text = unmatched.Count == 0
+                    ? "Metadata found. Existing authors matched; review before saving."
+                    : "Metadata found. Select or create missing author(s): " +
+                      string.Join(", ", unmatched);
+            }
+            else
+            {
+                _pendingMetadataAuthors = book.Authors.ToArray();
+                _description.Text = "Metadata found. Author matching will run after loading.";
+            }
         }
         catch (Exception ex)
         {
@@ -470,7 +528,7 @@ public sealed class BookEditorPage : ThemedUserControl
         _bookDescription.Text =
             _existing.Description ?? "";
 
-        _authors.Text = _existing.Authors;
+        // Author IDs are restored once the database author list loads.
 
         _reservedCopies = Math.Max(0,
             _existing.TotalCopies - _existing.AvailableCopies);
@@ -869,6 +927,7 @@ public sealed class BookEditorPage : ThemedUserControl
 
         _category.ApplyTheme();
         _condition.ApplyTheme();
+        _authors.ApplyTheme();
 
         _save.BackColor =
             Color.FromArgb(34, 139, 86);

@@ -675,7 +675,7 @@ public sealed class BooksPage : ThemedUserControl
                 return;
 
             var editor = new BookEditorPage(existing);
-            editor.ConfigureServices(_categories, _metadata);
+            editor.ConfigureServices(_categories, _metadata, _books);
             {
                 Dock = DockStyle.Fill;
             };

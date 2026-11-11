@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/docs/">
+    <File Path="docs/AUTHOR_SELECTION_BATCH.md" />
     <File Path="docs/DECISIONS.md" />
     <File Path="docs/ENHANCEMENT_ROADMAP.md" />
     <File Path="docs/FILES.md" />
