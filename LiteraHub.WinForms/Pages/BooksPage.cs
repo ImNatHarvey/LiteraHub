@@ -674,9 +674,10 @@ public sealed class BooksPage : ThemedUserControl
             if (IsDisposed || Disposing)
                 return;
 
-            var editor = new BookEditorPage(existing)
+            var editor = new BookEditorPage(existing);
+            editor.ConfigureServices(_categories, _metadata);
             {
-                Dock = DockStyle.Fill
+                Dock = DockStyle.Fill;
             };
 
             editor.BackRequested += HandleBackRequested;

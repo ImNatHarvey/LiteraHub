@@ -1,7 +1,13 @@
 ﻿
 using System;
 using System.ComponentModel;
+using System.IO;
+using System.Net.Http;
+using System.Threading;
 using System.Drawing;
+using System.Linq;
+using System.Threading.Tasks;
+using LiteraHub.Core.Interfaces;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using LiteraHub.Core.Models;
@@ -89,7 +95,7 @@ public sealed class BookEditorPage : ThemedUserControl
 
     // Reuse the same themed popup dropdown as the Books toolbar.
     // Category options remain placeholders until database integration.
-    private readonly ThemedFilterDropdown _category =
+    private ThemedFilterDropdown _category =
         new(new[] { "Select category" });
 
     private readonly ThemedFilterDropdown _condition =
@@ -98,10 +104,7 @@ public sealed class BookEditorPage : ThemedUserControl
     private readonly NumberField _total = new();
     private readonly NumberField _available = new();
 
-    private readonly LookupButton _lookup = new()
-    {
-        Enabled = false
-    };
+    private readonly LookupButton _lookup = new() { Enabled = false };
 
     private readonly Button _save = new()
     {
@@ -124,9 +127,183 @@ public sealed class BookEditorPage : ThemedUserControl
     private readonly Label _totalLabel;
     private readonly Label _availableLabel;
 
+    private ICategoryService? _categoryService;
+    private IBookMetadataService? _metadataService;
+    private bool _lookupBusy;
+    private CancellationTokenSource? _coverLoad;
+    private static readonly HttpClient CoverHttp = new() { Timeout = TimeSpan.FromSeconds(12) };
+    private bool _categoriesLoading;
+    private int[] _categoryIds = Array.Empty<int>();
+
+    // This is populated from the database. Zero means no selection.
+    public int SelectedCategoryId =>
+        _category.SelectedIndex >= 0 &&
+        _category.SelectedIndex < _categoryIds.Length
+            ? _categoryIds[_category.SelectedIndex]
+            : 0;
+
+    public void ConfigureServices(
+        ICategoryService categories,
+        IBookMetadataService metadata)
+    {
+        _categoryService = categories ??
+            throw new ArgumentNullException(nameof(categories));
+        _metadataService = metadata ??
+            throw new ArgumentNullException(nameof(metadata));
+        _lookup.Enabled = true;
+
+        if (IsHandleCreated)
+            _ = LoadCategoriesAsync();
+        else
+            HandleCreated += HandleEditorCreated;
+    }
+
+    private void HandleEditorCreated(object? sender, EventArgs e)
+    {
+        HandleCreated -= HandleEditorCreated;
+        _ = LoadCategoriesAsync();
+    }
+
+    private async Task LoadCategoriesAsync()
+    {
+        if (_categoriesLoading || _categoryService is null)
+            return;
+        _categoriesLoading = true;
+        try
+        {
+            var items = await _categoryService.GetAllAsync(false);
+            if (IsDisposed || Disposing)
+                return;
+
+            var active = items.Where(c => c.IsActive)
+                .OrderBy(c => c.Name).ToArray();
+            string[] options = new string[active.Length + 1];
+            int[] ids = new int[active.Length + 1];
+            options[0] = "Select category";
+            for (int i = 0; i < active.Length; i++)
+            {
+                options[i + 1] = active[i].Name;
+                ids[i + 1] = active[i].CategoryId;
+            }
+
+            var previous = _category;
+            var replacement = new ThemedFilterDropdown(options);
+            _category = replacement;
+            _categoryIds = ids;
+            _content.Controls.Add(replacement);
+            previous.Dispose();
+            if (_existing is not null)
+            {
+                int index = Array.IndexOf(ids, _existing.CategoryId);
+                if (index > 0)
+                    replacement.SelectedIndex = index;
+            }
+            replacement.ApplyTheme();
+            ArrangeForm();
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && !Disposing)
+                _description.Text = "Unable to load categories: " + ex.Message;
+        }
+        finally
+        {
+            _categoriesLoading = false;
+        }
+    }
+
+    private async Task LookupIsbnAsync()
+    {
+        if (_lookupBusy || _metadataService is null)
+            return;
+        string isbn = _isbn.Text.Trim();
+        if (isbn.Length == 0)
+        {
+            _description.Text = "Enter an ISBN before searching.";
+            return;
+        }
+
+        _lookupBusy = true;
+        _lookup.IsBusy = true;
+        _lookup.Enabled = false;
+        _description.Text = "Looking up ISBN...";
+        try
+        {
+            var result = await _metadataService.LookupByIsbnAsync(isbn);
+            if (IsDisposed || Disposing)
+                return;
+            if (!result.Success || result.Metadata is null)
+            {
+                _description.Text = result.Error ?? "ISBN not found.";
+                return;
+            }
+            var book = result.Metadata;
+            _title.Text = book.Title;
+            _bookDescription.Text = book.Description ?? string.Empty;
+            _authors.Text = string.Join(", ", book.Authors);
+            _ = LoadCoverAsync(book.CoverUrl);
+            _description.Text = "Metadata found. Review the fields before saving.";
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && !Disposing)
+                _description.Text = "ISBN lookup failed: " + ex.Message;
+        }
+        finally
+        {
+            _lookupBusy = false;
+            _lookup.IsBusy = false;
+            if (!IsDisposed && !Disposing)
+                _lookup.Enabled = _metadataService is not null;
+        }
+    }
+
+    private async Task LoadCoverAsync(string? coverUrl)
+    {
+        _coverLoad?.Cancel();
+        _coverLoad?.Dispose();
+        _coverLoad = new CancellationTokenSource();
+        var token = _coverLoad.Token;
+        _cover.CoverImage = null;
+
+        // Only fetch the cover from the trusted Open Library image host.
+        if (!Uri.TryCreate(coverUrl, UriKind.Absolute, out var uri) ||
+            uri.Scheme != Uri.UriSchemeHttps ||
+            !uri.Host.Equals("covers.openlibrary.org", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        try
+        {
+            using var response = await CoverHttp.GetAsync(uri,
+                HttpCompletionOption.ResponseHeadersRead, token);
+            response.EnsureSuccessStatusCode();
+            if (response.Content.Headers.ContentLength is > 4_000_000)
+                return;
+            var bytes = await response.Content.ReadAsByteArrayAsync(token);
+            if (bytes.Length > 4_000_000 || token.IsCancellationRequested)
+                return;
+            using var stream = new MemoryStream(bytes);
+            using var loaded = Image.FromStream(stream);
+            var bitmap = new Bitmap(loaded);
+            if (IsDisposed || Disposing || token.IsCancellationRequested)
+            {
+                bitmap.Dispose();
+                return;
+            }
+            _cover.CoverImage = bitmap;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or
+            TaskCanceledException or ArgumentException or OutOfMemoryException)
+        {
+            // Keep the first-letter placeholder if the cover is unavailable.
+        }
+    }
+
     private int _scrollOffset;
     private int _contentHeight;
     private bool _arranging;
+    private bool _syncingInventory;
+    private int _reservedCopies;
 
     public event EventHandler? BackRequested;
 
@@ -248,6 +425,8 @@ public sealed class BookEditorPage : ThemedUserControl
         _back.Click += (_, _) =>
             BackRequested?.Invoke(this, EventArgs.Empty);
 
+        _lookup.Click += async (_, _) => await LookupIsbnAsync();
+
         _title.TextChanged += (_, _) =>
         {
             string title = _title.Text.Trim();
@@ -256,6 +435,9 @@ public sealed class BookEditorPage : ThemedUserControl
                 ? "?"
                 : title[..1].ToUpperInvariant();
         };
+
+        _total.ValueChanged += (_, _) => SyncInventory();
+        _available.ValueChanged += (_, _) => SyncInventory();
 
         Resize += (_, _) => ArrangeForm();
         _viewport.Resize += (_, _) => ArrangeForm();
@@ -276,6 +458,8 @@ public sealed class BookEditorPage : ThemedUserControl
 
         if (_existing is null)
         {
+            _reservedCopies = 0;
+            SyncInventory();
             _cover.Letter = "?";
             return;
         }
@@ -288,8 +472,11 @@ public sealed class BookEditorPage : ThemedUserControl
 
         _authors.Text = _existing.Authors;
 
+        _reservedCopies = Math.Max(0,
+            _existing.TotalCopies - _existing.AvailableCopies);
         _total.Value = _existing.TotalCopies;
         _available.Value = _existing.AvailableCopies;
+        SyncInventory();
 
         // Existing category is displayed as read-only text until
         // category lookup is connected in the next checkpoint.
@@ -303,6 +490,27 @@ public sealed class BookEditorPage : ThemedUserControl
         _cover.Letter = title.Length == 0
             ? "?"
             : title[..1].ToUpperInvariant();
+    }
+
+    // Protect copies that are currently unavailable when editing.
+    // This is a UI guard; the service must recheck persisted loans on save.
+    private void SyncInventory()
+    {
+        if (_syncingInventory)
+            return;
+
+        _syncingInventory = true;
+        try
+        {
+            _total.Minimum = _reservedCopies;
+            int maximumAvailable = Math.Max(
+                0, _total.Value - _reservedCopies);
+            _available.Maximum = maximumAvailable;
+        }
+        finally
+        {
+            _syncingInventory = false;
+        }
     }
 
     private void ArrangeForm()
@@ -679,9 +887,35 @@ public sealed class BookEditorPage : ThemedUserControl
         ArrangeForm();
     }
 
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _coverLoad?.Cancel();
+            _coverLoad?.Dispose();
+            _cover.CoverImage = null;
+        }
+        base.Dispose(disposing);
+    }
+
     private sealed class CoverPreview : Control
     {
         private string _letter = "?";
+        private Image? _coverImage;
+
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public Image? CoverImage
+        {
+            get => _coverImage;
+            set
+            {
+                if (ReferenceEquals(_coverImage, value)) return;
+                var old = _coverImage;
+                _coverImage = value;
+                old?.Dispose();
+                Invalidate();
+            }
+        }
 
         [DesignerSerializationVisibility(
             DesignerSerializationVisibility.Hidden)]
@@ -731,6 +965,15 @@ public sealed class BookEditorPage : ThemedUserControl
                 spine,
                 0, 0, 7, Height);
 
+            if (_coverImage is not null)
+            {
+                var destination = new Rectangle(7, 0,
+                    Math.Max(1, Width - 7), Math.Max(1, Height));
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.DrawImage(_coverImage, destination);
+                return;
+            }
+
             float fontSize = Math.Clamp(
                 Height * 0.30f,
                 22f,
@@ -753,8 +996,25 @@ public sealed class BookEditorPage : ThemedUserControl
         }
     }
 
+    // The cover image belongs to the preview and must be released.
     private sealed class LookupButton : Control
     {
+        private bool _hovered;
+        private bool _pressed;
+        private bool _busy;
+
+        [DesignerSerializationVisibility(
+            DesignerSerializationVisibility.Hidden)]
+        public bool IsBusy
+        {
+            get => _busy;
+            set
+            {
+                _busy = value;
+                Invalidate();
+            }
+        }
+
         public LookupButton()
         {
             SetStyle(
@@ -766,6 +1026,15 @@ public sealed class BookEditorPage : ThemedUserControl
 
             Cursor = Cursors.Hand;
         }
+
+        protected override void OnMouseEnter(EventArgs e)
+        { base.OnMouseEnter(e); _hovered = true; Invalidate(); }
+        protected override void OnMouseLeave(EventArgs e)
+        { base.OnMouseLeave(e); _hovered = false; _pressed = false; Invalidate(); }
+        protected override void OnMouseDown(MouseEventArgs e)
+        { base.OnMouseDown(e); if (e.Button == MouseButtons.Left) { _pressed = true; Invalidate(); } }
+        protected override void OnMouseUp(MouseEventArgs e)
+        { base.OnMouseUp(e); _pressed = false; Invalidate(); }
 
         public void RefreshTheme()
         {
@@ -785,9 +1054,10 @@ public sealed class BookEditorPage : ThemedUserControl
             g.SmoothingMode =
                 SmoothingMode.AntiAlias;
 
-            g.Clear(c.SurfaceAlt);
+            g.Clear(_busy || _pressed ? c.AccentSoft :
+                _hovered && Enabled ? c.AccentSoft : c.SurfaceAlt);
 
-            using var border = new Pen(c.Border);
+            using var border = new Pen(_hovered || _pressed ? c.Accent : c.Border);
 
             g.DrawRectangle(
                 border,
@@ -795,7 +1065,7 @@ public sealed class BookEditorPage : ThemedUserControl
                 Math.Max(0, Width - 1),
                 Math.Max(0, Height - 1));
 
-            const string caption = "Lookup ISBN";
+            string caption = _busy ? "Looking up..." : "Lookup ISBN";
 
             Size textSize = TextRenderer.MeasureText(
                 g, caption, Font);
@@ -807,7 +1077,7 @@ public sealed class BookEditorPage : ThemedUserControl
             int centerY = Height / 2;
 
             using var pen = new Pen(
-                c.TextMuted, 1.8f);
+                _hovered || _busy ? c.Accent : c.TextMuted, 1.8f);
 
             g.DrawEllipse(
                 pen,
@@ -832,7 +1102,7 @@ public sealed class BookEditorPage : ThemedUserControl
                     0,
                     Math.Max(1, Width - startX - 30),
                     Height),
-                c.TextMuted,
+                _hovered || _busy ? c.Text : c.TextMuted,
                 TextFormatFlags.Left |
                 TextFormatFlags.VerticalCenter);
         }
@@ -861,23 +1131,60 @@ public sealed class BookEditorPage : ThemedUserControl
         };
 
         private int _lastValidValue;
+        private int _minimum;
+        private int _maximum = 100000;
+        private bool _normalizing;
+
+        public event EventHandler? ValueChanged;
+
+        [DesignerSerializationVisibility(
+            DesignerSerializationVisibility.Hidden)]
+        public int Minimum
+        {
+            get => _minimum;
+            set
+            {
+                _minimum = Math.Clamp(value, 0, 100000);
+                if (_maximum < _minimum)
+                    _maximum = _minimum;
+                Value = Value;
+            }
+        }
+
+        [DesignerSerializationVisibility(
+            DesignerSerializationVisibility.Hidden)]
+        public int Maximum
+        {
+            get => _maximum;
+            set
+            {
+                _maximum = Math.Clamp(value, 0, 100000);
+                if (_minimum > _maximum)
+                    _minimum = _maximum;
+                Value = Value;
+            }
+        }
 
         [DesignerSerializationVisibility(
             DesignerSerializationVisibility.Hidden)]
         public int Value
         {
-            get => int.TryParse(
-                _input.Text, out int value)
-                ? Math.Clamp(value, 0, 100000)
-                : _lastValidValue;
-
+            get => _lastValidValue;
             set
             {
-                _lastValidValue = Math.Clamp(
-                    value, 0, 100000);
-
-                _input.Text =
-                    _lastValidValue.ToString();
+                int normalized = Math.Clamp(
+                    value, _minimum, _maximum);
+                bool changed = _lastValidValue != normalized;
+                _lastValidValue = normalized;
+                string text = normalized.ToString();
+                if (_input.Text != text)
+                {
+                    _normalizing = true;
+                    try { _input.Text = text; }
+                    finally { _normalizing = false; }
+                }
+                if (changed)
+                    ValueChanged?.Invoke(this, EventArgs.Empty);
             }
         }
 
@@ -896,12 +1203,10 @@ public sealed class BookEditorPage : ThemedUserControl
             });
 
             _up.Click += (_, _) =>
-                Value = Math.Min(
-                    100000, Value + 1);
+                Value = Math.Min(_maximum, Value + 1);
 
             _down.Click += (_, _) =>
-                Value = Math.Max(
-                    0, Value - 1);
+                Value = Math.Max(_minimum, Value - 1);
 
             _input.KeyPress += (_, e) =>
             {
@@ -912,15 +1217,28 @@ public sealed class BookEditorPage : ThemedUserControl
 
             _input.TextChanged += (_, _) =>
             {
-                if (int.TryParse(
-                    _input.Text, out int number))
-                    _lastValidValue = Math.Clamp(
-                        number, 0, 100000);
+                if (_normalizing)
+                    return;
+                if (int.TryParse(_input.Text, out int number))
+                {
+                    // Allow intermediate typing, but never expose an
+                    // out-of-range value to the editor.
+                    int normalized = Math.Clamp(
+                        number, _minimum, _maximum);
+                    if (number > _maximum)
+                    {
+                        Value = normalized;
+                        return;
+                    }
+                    if (normalized != _lastValidValue)
+                    {
+                        _lastValidValue = normalized;
+                        ValueChanged?.Invoke(this, EventArgs.Empty);
+                    }
+                }
             };
 
-            _input.Leave += (_, _) =>
-                Value = Value;
-
+            _input.Leave += (_, _) => Value = Value;
             Resize += (_, _) => LayoutParts();
         }
 
