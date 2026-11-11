@@ -239,7 +239,6 @@ public sealed class AuthorsPage : ThemedUserControl
 
         // Exact Categories pagination layout.
         _pagination.Padding = new Padding(0, 12, 0, 0);
-        _pagination.Margin = new Padding(2, 0, 0, 0);
 
         _pageInfo.Dock = DockStyle.Fill;
         _pageInfo.Margin = Padding.Empty;
@@ -983,6 +982,7 @@ public sealed class AuthorsPage : ThemedUserControl
         }
     }
 
+
     private void UpdateResponsiveLayout()
     {
         if (IsDisposed || Disposing)
@@ -994,13 +994,10 @@ public sealed class AuthorsPage : ThemedUserControl
 
         bool compact = available < 550;
 
-        if (_compact == compact &&
-            _toolbar.Controls.Count == 3)
-            return;
-
         _compact = compact;
 
         _toolbar.SuspendLayout();
+        _pagination.SuspendLayout();
 
         try
         {
@@ -1012,6 +1009,10 @@ public sealed class AuthorsPage : ThemedUserControl
 
             _add.Text =
                 compact ? "+" : "+ Add Author";
+
+            _add.Font = compact
+                ? new Font("Segoe UI", 18f)
+                : Theme.BodyStrong;
 
             _grid.AutoSizeColumnsMode = compact
                 ? DataGridViewAutoSizeColumnsMode.None
@@ -1028,12 +1029,37 @@ public sealed class AuthorsPage : ThemedUserControl
 
             _pagination.ColumnStyles[1].Width =
                 compact ? 245 : 300;
+
+            _pageInfo.Font = compact
+                ? Theme.Caption
+                : Theme.Body;
+
+            // Match CategoriesPage alignment exactly.
+            _toolbar.Margin = Padding.Empty;
+            _loading.Margin = Padding.Empty;
+            _grid.Margin = Padding.Empty;
+            _pagination.Margin = Padding.Empty;
+            _pageControls.Margin = Padding.Empty;
+
+            _layout.Margin = Padding.Empty;
+            _layout.Padding = Padding.Empty;
+
+            _add.Margin = new Padding(0, 4, 0, 4);
+
+            _pagination.Padding = new Padding(0, 12, 0, 0);
+
+            _pageInfo.Margin = Padding.Empty;
+            _pageInfo.Padding = Padding.Empty;
+
+            _pageControls.Padding = Padding.Empty;
         }
         finally
         {
+            _pagination.ResumeLayout(true);
             _toolbar.ResumeLayout(true);
         }
     }
+
 
     protected override void ApplyTheme()
     {
