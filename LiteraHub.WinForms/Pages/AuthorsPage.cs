@@ -138,8 +138,8 @@ public sealed class AuthorsPage : ThemedUserControl
             Size = new Size(68, 32)
         };
 
-    private BookLookupOption[] _authors =
-        Array.Empty<BookLookupOption>();
+    private AuthorRecord[] _authors =
+        Array.Empty<AuthorRecord>();
 
     private int _page = 1;
     private int _rows = 10;
@@ -482,6 +482,7 @@ public sealed class AuthorsPage : ThemedUserControl
         Controls.Add(_layout);
     }
 
+
     private void ConfigureGrid()
     {
         _grid.ReadOnlyDisplayMode = true;
@@ -493,23 +494,39 @@ public sealed class AuthorsPage : ThemedUserControl
         {
             Name = "Id",
             HeaderText = "ID",
-            FillWeight = 15,
-            MinimumWidth = 60
+            FillWeight = 9,
+            MinimumWidth = 55
         });
 
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = "Name",
             HeaderText = "Author Name",
-            FillWeight = 60,
-            MinimumWidth = 160
+            FillWeight = 32,
+            MinimumWidth = 155
+        });
+
+        _grid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            Name = "Gender",
+            HeaderText = "Gender",
+            FillWeight = 13,
+            MinimumWidth = 85
+        });
+
+        _grid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            Name = "BirthDate",
+            HeaderText = "Birth Date",
+            FillWeight = 18,
+            MinimumWidth = 120
         });
 
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = "Status",
             HeaderText = "Status",
-            FillWeight = 10,
+            FillWeight = 11,
             MinimumWidth = 75,
             SortMode = DataGridViewColumnSortMode.NotSortable
         });
@@ -518,12 +535,13 @@ public sealed class AuthorsPage : ThemedUserControl
         {
             Name = "Actions",
             HeaderText = "Actions",
-            FillWeight = 16,
+            FillWeight = 17,
             MinimumWidth = CanDelete ? 132 : 105,
             Visible = CanManage,
             SortMode = DataGridViewColumnSortMode.NotSortable
         });
 
+        // Center the Status and Actions columns.
         foreach (string name in new[] { "Status", "Actions" })
         {
             var column = _grid.Columns[name]!;
@@ -541,6 +559,7 @@ public sealed class AuthorsPage : ThemedUserControl
         _grid.DataBindingComplete += (_, _) =>
             _grid.ClearRowSelection();
     }
+
 
     private void PaintSpecialCells(
         object? sender,
@@ -779,7 +798,8 @@ public sealed class AuthorsPage : ThemedUserControl
         e.Handled = true;
     }
 
-    private void HandleActionMouseUp(
+
+    private async void HandleActionMouseUp(
         object? sender,
         DataGridViewCellMouseEventArgs e)
     {
@@ -792,29 +812,230 @@ public sealed class AuthorsPage : ThemedUserControl
             _grid.Columns[e.ColumnIndex].Name != "Actions")
             return;
 
+        int columnWidth =
+            _grid.Columns[e.ColumnIndex].Width;
+
+        if (e.X < 0 || e.X >= columnWidth)
+            return;
+
         int slot = Math.Clamp(
-            e.X * ActionCount /
-                Math.Max(1, _grid.Columns[e.ColumnIndex].Width),
+            e.X * ActionCount / Math.Max(1, columnWidth),
             0,
             ActionCount - 1);
+
+        if (slot == 2 && !CanDelete)
+            return;
+
+        if (!int.TryParse(
+            Convert.ToString(
+                _grid.Rows[e.RowIndex].Cells["Id"].Value),
+            out int authorId))
+            return;
 
         string name = Convert.ToString(
             _grid.Rows[e.RowIndex].Cells["Name"].Value) ?? "";
 
-        string action = slot switch
-        {
-            0 => "Edit",
-            1 => "Archive / Restore",
-            _ => "Delete"
-        };
+        bool active = string.Equals(
+            Convert.ToString(
+                _grid.Rows[e.RowIndex].Cells["Status"].Value),
+            "Active",
+            StringComparison.OrdinalIgnoreCase);
 
-        ThemedMessageDialog.ShowAlert(
-            FindForm(),
-            "Author Management",
-            $"{action}: {name}\n\n" +
-            "This action requires the Authors CRUD service. " +
-            "No data was changed.");
+        try
+        {
+            switch (slot)
+            {
+                case 0:
+                    await EditAuthorAsync(authorId);
+                    break;
+
+                case 1:
+                    await ChangeAuthorStatusAsync(
+                        authorId, name, active);
+                    break;
+
+                case 2:
+                    await DeleteAuthorAsync(authorId, name);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && !Disposing)
+            {
+                ThemedMessageDialog.ShowAlert(
+                    FindForm(),
+                    "Author Management",
+                    ex.Message,
+                    danger: true);
+            }
+        }
     }
+
+    private async Task EditAuthorAsync(int authorId)
+    {
+        if (_working || _loadingData || !CanManage)
+            return;
+
+        _working = true;
+        _grid.Enabled = false;
+
+        try
+        {
+            var author = await _creation.GetByIdAsync(authorId);
+
+            if (IsDisposed || Disposing)
+                return;
+
+            if (author is null)
+            {
+                ThemedMessageDialog.ShowAlert(
+                    FindForm(),
+                    "Edit Author",
+                    "The selected author could not be found.",
+                    danger: true);
+                return;
+            }
+
+            using var dialog =
+                new AddAuthorDialog(_creation, author);
+
+            if (dialog.ShowDialog(FindForm()) ==
+                DialogResult.OK)
+            {
+                await LoadAuthorsAsync();
+            }
+        }
+        finally
+        {
+            _working = false;
+
+            if (!IsDisposed && !Disposing)
+            {
+                _grid.Enabled = true;
+                UpdatePagination();
+            }
+        }
+    }
+
+    private async Task ChangeAuthorStatusAsync(
+        int authorId,
+        string name,
+        bool currentlyActive)
+    {
+        if (_working || _loadingData || !CanManage)
+            return;
+
+        bool activate = !currentlyActive;
+
+        string title = activate
+            ? "Restore Author"
+            : "Archive Author";
+
+        bool confirmed = ThemedMessageDialog.Confirm(
+            FindForm(),
+            title,
+            activate
+                ? $"Restore '{name}'?\n\n" +
+                  "This author will become active again."
+                : $"Archive '{name}'?\n\n" +
+                  "The author will be marked inactive. " +
+                  "Existing book relationships will be preserved.",
+            danger: !activate,
+            confirmText: activate ? "Restore" : "Archive");
+
+        if (!confirmed)
+            return;
+
+        await ExecuteAuthorMutationAsync(
+            () => _creation.SetActiveAsync(authorId, activate),
+            title);
+    }
+
+    private async Task DeleteAuthorAsync(
+        int authorId,
+        string name)
+    {
+        if (_working || _loadingData || !CanDelete)
+            return;
+
+        bool confirmed = ThemedMessageDialog.Confirm(
+            FindForm(),
+            "Permanently Delete Author",
+            $"Permanently delete '{name}'?\n\n" +
+            "This action cannot be undone. Authors referenced " +
+            "by books cannot be deleted.",
+            danger: true,
+            confirmText: "Delete");
+
+        if (!confirmed)
+            return;
+
+        await ExecuteAuthorMutationAsync(
+            () => _creation.DeleteAsync(authorId),
+            "Delete Author");
+    }
+
+    private async Task ExecuteAuthorMutationAsync(
+        Func<Task<ServiceResult>> action,
+        string title)
+    {
+        if (_working || _loadingData)
+            return;
+
+        _working = true;
+        _grid.Enabled = false;
+        _add.Enabled = false;
+        _status.Text = "Saving changes...";
+
+        UpdatePagination();
+
+        try
+        {
+            ServiceResult result = await action();
+
+            if (IsDisposed || Disposing)
+                return;
+
+            if (result.Success)
+            {
+                await LoadAuthorsAsync();
+            }
+            else
+            {
+                ThemedMessageDialog.ShowAlert(
+                    FindForm(),
+                    title,
+                    result.Error ?? "Operation failed.",
+                    danger: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && !Disposing)
+            {
+                ThemedMessageDialog.ShowAlert(
+                    FindForm(),
+                    title,
+                    ex.Message,
+                    danger: true);
+            }
+        }
+        finally
+        {
+            _working = false;
+
+            if (!IsDisposed && !Disposing)
+            {
+                _grid.Enabled = true;
+                _add.Enabled =
+                    _permissions.Can(Permission.CreateLookups);
+
+                UpdatePagination();
+            }
+        }
+    }
+
 
     protected override async void OnLoad(EventArgs e)
     {
@@ -828,6 +1049,7 @@ public sealed class AuthorsPage : ThemedUserControl
         await LoadAuthorsAsync();
     }
 
+
     private async Task LoadAuthorsAsync()
     {
         if (_loadingData || IsDisposed)
@@ -840,13 +1062,13 @@ public sealed class AuthorsPage : ThemedUserControl
         try
         {
             var result = await _loading.RunAsync(
-                () => _books.GetAuthorsAsync());
+                () => _creation.GetAllAsync(CanManage));
 
             if (IsDisposed || Disposing)
                 return;
 
             _authors = result
-                .OrderBy(a => a.Name)
+                .OrderBy(a => a.FullName)
                 .ToArray();
 
             RenderRows();
@@ -876,6 +1098,8 @@ public sealed class AuthorsPage : ThemedUserControl
         }
     }
 
+
+
     private void RenderRows()
     {
         if (IsDisposed || Disposing)
@@ -893,7 +1117,10 @@ public sealed class AuthorsPage : ThemedUserControl
                  (status == 1 && a.IsActive) ||
                  (status == 2 && !a.IsActive)) &&
                 (query.Length == 0 ||
-                 a.Name.Contains(
+                 a.FullName.Contains(
+                     query,
+                     StringComparison.OrdinalIgnoreCase) ||
+                 a.Gender.Contains(
                      query,
                      StringComparison.OrdinalIgnoreCase)))
             .ToArray();
@@ -910,10 +1137,18 @@ public sealed class AuthorsPage : ThemedUserControl
 
         foreach (var author in visible)
         {
-            _grid.Rows.Add(
-                author.Id,
-                author.Name,
+            int rowIndex = _grid.Rows.Add(
+                author.AuthorId,
+                author.FullName,
+                author.Gender,
+                author.BirthDate?.ToString("MMM dd, yyyy") ?? "—",
                 author.IsActive ? "Active" : "Archived");
+
+            // Dates inherit the same alignment and padding as the Gender column,
+            // so they line up with the "Birth Date" header. Only the empty
+            // placeholder gets extra left padding to sit centered under the dates.
+            if (!author.BirthDate.HasValue)
+                CenterEmptyBirthDate(_grid.Rows[rowIndex].Cells["BirthDate"]);
         }
 
         _grid.ClearRowSelection();
@@ -935,6 +1170,45 @@ public sealed class AuthorsPage : ThemedUserControl
 
         UpdatePagination();
     }
+
+
+    // Centers the "—" placeholder under the width of a typical birth date
+    // ("Mar 28, 2000") while keeping the column's own left alignment and padding.
+    private static void CenterEmptyBirthDate(DataGridViewCell cell)
+    {
+        var inherited = cell.InheritedStyle;
+        var font = inherited.Font ?? cell.DataGridView!.Font;
+
+        const TextFormatFlags flags =
+            TextFormatFlags.NoPadding | TextFormatFlags.SingleLine;
+
+        var unlimited = new Size(int.MaxValue, int.MaxValue);
+
+        int widestDate = 0;
+
+        for (int month = 1; month <= 12; month++)
+        {
+            string sample =
+                new DateTime(2000, month, 28).ToString("MMM dd, yyyy");
+
+            widestDate = Math.Max(
+                widestDate,
+                TextRenderer.MeasureText(sample, font, unlimited, flags).Width);
+        }
+
+        int dashWidth =
+            TextRenderer.MeasureText("—", font, unlimited, flags).Width;
+
+        int offset = Math.Max(0, (widestDate - dashWidth) / 2);
+        var padding = inherited.Padding;
+
+        cell.Style.Padding = new Padding(
+            padding.Left + offset,
+            padding.Top,
+            padding.Right,
+            padding.Bottom);
+    }
+
 
     private void UpdatePagination()
     {
@@ -1022,7 +1296,9 @@ public sealed class AuthorsPage : ThemedUserControl
             {
                 _grid.Columns["Id"]!.Width = 60;
                 _grid.Columns["Name"]!.Width = 180;
-                _grid.Columns["Status"]!.Width = 100;
+                _grid.Columns["Gender"]!.Width = 100;
+                _grid.Columns["BirthDate"]!.Width = 135;
+                _grid.Columns["Status"]!.Width = 85;
                 _grid.Columns["Actions"]!.Width =
                     CanDelete ? 144 : 110;
             }

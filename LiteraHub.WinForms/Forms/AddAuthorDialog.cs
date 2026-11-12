@@ -14,10 +14,10 @@ namespace LiteraHub.WinForms.Forms;
 public sealed class AddAuthorDialog : Form
 {
     private readonly IAuthorCreationService _service;
+    private readonly AuthorRecord? _existing;
 
     private readonly Label _title = new()
     {
-        Text = "Add Author",
         Dock = DockStyle.Fill,
         TextAlign = ContentAlignment.MiddleLeft
     };
@@ -75,7 +75,6 @@ public sealed class AddAuthorDialog : Form
 
     private readonly BusyButton _save = new()
     {
-        Text = "Save Author",
         Dock = DockStyle.Fill
     };
 
@@ -88,12 +87,21 @@ public sealed class AddAuthorDialog : Form
 
     private bool _saving;
 
-    public AddAuthorDialog(IAuthorCreationService service)
+    public AddAuthorDialog(
+        IAuthorCreationService service,
+        AuthorRecord? existing = null)
     {
         _service = service ??
             throw new ArgumentNullException(nameof(service));
 
-        Text = "Add Author";
+        _existing = existing;
+
+        bool editing = existing is not null;
+
+        Text = editing ? "Edit Author" : "Add Author";
+        _title.Text = Text;
+        _save.Text = editing ? "Save Changes" : "Save Author";
+
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -105,8 +113,28 @@ public sealed class AddAuthorDialog : Form
         Font = Theme.Body;
 
         BuildLayout();
-        ApplyTheme();
 
+        if (existing is not null)
+        {
+            _first.Text = existing.FirstName;
+            _middle.Text = existing.MiddleName ?? "";
+            _last.Text = existing.LastName;
+
+            _gender.SelectedIndex = existing.Gender switch
+            {
+                "Male" => 1,
+                "Female" => 2,
+                "Other" => 3,
+                _ => 0
+            };
+
+            _birthDate.Text = existing.BirthDate?
+                .ToString(
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture) ?? "";
+        }
+
+        ApplyTheme();
         Theme.Changed += OnThemeChanged;
 
         _calendar.Click += (_, _) => OpenCalendar();
@@ -330,16 +358,23 @@ public sealed class AddAuthorDialog : Form
             birthDate = parsed.Date;
         }
 
+        var input = new AuthorInput(
+            first,
+            middle.Length == 0 ? null : middle,
+            last,
+            _gender.SelectedIndex switch
+            {
+                1 => "Male",
+                2 => "Female",
+                3 => "Other",
+                _ => "Unknown"
+            },
+            birthDate);
+
         _saving = true;
         _error.Text = "";
 
-        _first.Enabled = false;
-        _middle.Enabled = false;
-        _last.Enabled = false;
-        _gender.Enabled = false;
-        _birthDate.Enabled = false;
-        _calendar.Enabled = false;
-        _cancel.Enabled = false;
+        SetFieldsEnabled(false);
 
         try
         {
@@ -347,32 +382,30 @@ public sealed class AddAuthorDialog : Form
 
             await _save.RunAsync(async () =>
             {
-                var input = new AuthorInput(
-                    first,
-                    middle.Length == 0 ? null : middle,
-                    last,
-                    _gender.SelectedIndex switch
-                    {
-                        1 => "Male",
-                        2 => "Female",
-                        3 => "Other",
-                        _ => "Unknown"
-                    },
-                    birthDate);
-
-                var result =
-                    await _service.CreateAsync(input);
-
-                if (result.Success)
+                if (_existing is null)
                 {
-                    saved = true;
+                    var result =
+                        await _service.CreateAsync(input);
+
+                    saved = result.Success;
+
+                    if (!saved)
+                        _error.Text = result.Error ??
+                            "Unable to create author.";
                 }
                 else
                 {
-                    _error.Text = result.Error ??
-                        "Unable to create author.";
-                }
+                    var result =
+                        await _service.UpdateAsync(
+                            _existing.AuthorId,
+                            input);
 
+                    saved = result.Success;
+
+                    if (!saved)
+                        _error.Text = result.Error ??
+                            "Unable to update author.";
+                }
             }, "Saving...");
 
             if (saved)
@@ -385,26 +418,27 @@ public sealed class AddAuthorDialog : Form
         catch (Exception ex)
         {
             if (!IsDisposed && !Disposing)
-            {
                 _error.Text =
                     "Unable to save: " + ex.Message;
-            }
         }
         finally
         {
             _saving = false;
 
             if (!IsDisposed && !Disposing)
-            {
-                _first.Enabled = true;
-                _middle.Enabled = true;
-                _last.Enabled = true;
-                _gender.Enabled = true;
-                _birthDate.Enabled = true;
-                _calendar.Enabled = true;
-                _cancel.Enabled = true;
-            }
+                SetFieldsEnabled(true);
         }
+    }
+
+    private void SetFieldsEnabled(bool enabled)
+    {
+        _first.Enabled = enabled;
+        _middle.Enabled = enabled;
+        _last.Enabled = enabled;
+        _gender.Enabled = enabled;
+        _birthDate.Enabled = enabled;
+        _calendar.Enabled = enabled;
+        _cancel.Enabled = enabled;
     }
 
     private void OnThemeChanged(
@@ -424,7 +458,6 @@ public sealed class AddAuthorDialog : Form
 
         _title.Font = Theme.Title;
         _title.ForeColor = c.Text;
-        _error.ForeColor = c.Danger;
 
         _cancel.BackColor = c.Surface;
         _cancel.ForeColor = c.Text;
@@ -438,6 +471,8 @@ public sealed class AddAuthorDialog : Form
 
         foreach (Control control in Controls)
             UpdateLabelColors(control);
+
+        _error.ForeColor = c.Danger;
     }
 
     private static void UpdateLabelColors(Control parent)
@@ -445,7 +480,8 @@ public sealed class AddAuthorDialog : Form
         foreach (Control child in parent.Controls)
         {
             if (child is Label label &&
-                label.Text != "Add Author")
+                label.Text != "Add Author" &&
+                label.Text != "Edit Author")
             {
                 label.ForeColor =
                     Theme.Colors.TextMuted;
