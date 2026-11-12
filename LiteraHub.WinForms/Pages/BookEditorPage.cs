@@ -152,6 +152,7 @@ public sealed class BookEditorPage : ThemedUserControl
     private ICategoryService? _categoryService;
     private IBookMetadataService? _metadataService;
     private IBookService? _bookService;
+    private IAuthorCreationService? _authorCreationService;
     private bool _authorsLoading;
     private bool _authorsLoaded;
     private IReadOnlyList<string> _pendingMetadataAuthors = Array.Empty<string>();
@@ -174,7 +175,9 @@ public sealed class BookEditorPage : ThemedUserControl
         ICategoryService categories,
         IBookMetadataService metadata,
         IBookService books,
-        bool canHardDelete)
+        bool canHardDelete,
+        IAuthorCreationService authorCreation,
+        bool canCreateAuthors)
     {
         _canHardDelete = canHardDelete;
         _categoryService = categories ??
@@ -183,6 +186,12 @@ public sealed class BookEditorPage : ThemedUserControl
             throw new ArgumentNullException(nameof(metadata));
         _bookService = books ??
             throw new ArgumentNullException(nameof(books));
+        _authorCreationService = authorCreation ??
+            throw new ArgumentNullException(nameof(authorCreation));
+
+        _authors.AllowCreateAuthor = canCreateAuthors;
+        _authors.AddAuthorRequested -= HandleAddAuthorRequested;
+        _authors.AddAuthorRequested += HandleAddAuthorRequested;
         _lookup.Enabled = true;
 
         if (IsHandleCreated)
@@ -192,7 +201,9 @@ public sealed class BookEditorPage : ThemedUserControl
             _ = LoadStatusesAsync();
         }
         else
+        {
             HandleCreated += HandleEditorCreated;
+        }
     }
 
     private void HandleEditorCreated(object? sender, EventArgs e)
@@ -246,7 +257,53 @@ public sealed class BookEditorPage : ThemedUserControl
         }
     }
 
-    private async Task LoadAuthorsAsync()
+    private async void HandleAddAuthorRequested(
+        object? sender, EventArgs e)
+    {
+        try
+        {
+            await OpenAddAuthorAsync();
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && !Disposing)
+                ThemedMessageDialog.ShowAlert(
+                    FindForm(), "Add Author", ex.Message, danger: true);
+        }
+    }
+
+    private async Task OpenAddAuthorAsync()
+    {
+        if (_saving || _authorCreationService is null ||
+            !_authors.AllowCreateAuthor || _authorsLoading)
+            return;
+
+        _authors.Enabled = false;
+        try
+        {
+            using var dialog = new AddAuthorDialog(
+                _authorCreationService,
+                suggestedName: _authors.RequestedAuthorName);
+
+            if (dialog.ShowDialog(FindForm()) != DialogResult.OK)
+                return;
+
+            if (dialog.CreatedAuthorId is int authorId)
+                await LoadAuthorsAsync(authorId);
+            else
+            {
+                await LoadAuthorsAsync();
+                _description.Text = "Author saved but its ID was not returned. Reopen author selection.";
+            }
+        }
+        finally
+        {
+            if (!IsDisposed && !Disposing)
+                _authors.Enabled = true;
+        }
+    }
+
+    private async Task LoadAuthorsAsync(int? selectAuthorId = null)
     {
         if (_authorsLoading || _bookService is null)
             return;
@@ -254,20 +311,38 @@ public sealed class BookEditorPage : ThemedUserControl
         _authorsLoading = true;
         try
         {
-            var authors = await _bookService.GetAuthorsAsync();
-            if (IsDisposed || Disposing) return;
+            var records = await _bookService.GetAuthorsAsync();
+            if (IsDisposed || Disposing)
+                return;
 
-            _authors.SetAuthors(authors, _existing?.AuthorIds);
+            var selected = _authors.SelectedAuthorIds.ToHashSet();
+            if (!_authorsLoaded && _existing is not null)
+                selected.UnionWith(_existing.AuthorIds);
+            if (selectAuthorId.HasValue)
+                selected.Add(selectAuthorId.Value);
+
+            _authors.SetAuthors(records, selected);
             _authorsLoaded = true;
-            _save.Enabled = _statusesLoaded && _categoryIds.Length > 1;
+            _save.Enabled = _statusesLoaded &&
+                _categoryIds.Length > 1 && !_saving;
 
             if (_pendingMetadataAuthors.Count > 0)
             {
-                var unmatched = _authors.MatchMetadataNames(_pendingMetadataAuthors);
+                var unmatched = _authors.MatchMetadataNames(
+                    _pendingMetadataAuthors);
                 _description.Text = unmatched.Count == 0
-                    ? "ISBN authors matched to existing author records. Review before saving."
-                    : "Review unmatched author(s): " + string.Join(", ", unmatched);
+                    ? "ISBN authors matched to existing records. Review before saving."
+                    : "Review unmatched author(s): " +
+                      string.Join(", ", unmatched);
                 _pendingMetadataAuthors = Array.Empty<string>();
+            }
+
+            if (selectAuthorId.HasValue)
+            {
+                _description.Text =
+                    _authors.SelectedAuthorIds.Contains(selectAuthorId.Value)
+                    ? "Author created and selected. Continue editing the book."
+                    : "Author saved but could not be selected. Verify that it is active.";
             }
         }
         catch (Exception ex)

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
+using System.Globalization;
+using System.Text;
 using System.Windows.Forms;
 using LiteraHub.Core.Models;
 using LiteraHub.WinForms.Theming;
@@ -21,6 +23,12 @@ public sealed class ThemedAuthorPicker : Button
     private string _suggestedSearch = "";
 
     public event EventHandler? SelectionChanged;
+    public event EventHandler? AddAuthorRequested;
+
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool AllowCreateAuthor { get; set; }
+    public string RequestedAuthorName { get; private set; } = "";
 
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -95,10 +103,31 @@ public sealed class ThemedAuthorPicker : Button
         return unmatched;
     }
 
-    private static string Normalize(string value) =>
-        string.Join(" ", value.Trim().Split(
-            (char[]?)null, StringSplitOptions.RemoveEmptyEntries))
-            .ToUpperInvariant();
+    private static string Normalize(string value)
+    {
+        var builder = new StringBuilder();
+        foreach (char ch in value.Trim().Normalize(NormalizationForm.FormD))
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) ==
+                UnicodeCategory.NonSpacingMark)
+                continue;
+            if (char.IsLetterOrDigit(ch))
+                builder.Append(char.ToUpperInvariant(ch));
+        }
+        return builder.ToString();
+    }
+
+    public void SelectAuthor(int authorId)
+    {
+        if (!_authors.Any(a => a.Id == authorId))
+            return;
+        if (_selected.Add(authorId))
+        {
+            _suggestedSearch = "";
+            UpdateCaption();
+            SelectionChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     private void UpdateCaption()
     {
@@ -119,11 +148,13 @@ public sealed class ThemedAuthorPicker : Button
 
     private void OpenPicker(string initialSearch = "")
     {
-        if (_popup is not null || _authors.Count == 0 || !Enabled)
+        if (_popup is not null || !Enabled ||
+            (_authors.Count == 0 && !AllowCreateAuthor))
             return;
 
         if (initialSearch.Length == 0 && _suggestedSearch.Length > 0)
             initialSearch = _suggestedSearch;
+
         var c = Theme.Colors;
         var popup = new Form
         {
@@ -132,13 +163,14 @@ public sealed class ThemedAuthorPicker : Button
             StartPosition = FormStartPosition.Manual,
             BackColor = c.Border,
             Padding = new Padding(1),
-            Size = new Size(Math.Clamp(Width, 270, 480), Math.Clamp(108 + _authors.Count * 44, 154, 310))
+            Size = new Size(Math.Clamp(Width, 270, 480), 250)
         };
+
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 2,
+            RowCount = AllowCreateAuthor ? 3 : 2,
             BackColor = c.Surface,
             Padding = new Padding(8),
             Margin = Padding.Empty
@@ -146,6 +178,8 @@ public sealed class ThemedAuthorPicker : Button
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        if (AllowCreateAuthor)
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
 
         var search = new ThemedTextField
         {
@@ -153,23 +187,17 @@ public sealed class ThemedAuthorPicker : Button
             Margin = new Padding(0, 0, 0, 8)
         };
 
-
         var scroll = new ScrollHost
         {
             Dock = DockStyle.Fill,
             Margin = Padding.Empty
         };
-
         scroll.UseSurfaceBackground();
 
         var selector = new ThemedAuthorSelector
         {
             Margin = Padding.Empty
         };
-
-        // Use a plain surface panel for short author lists.
-        // This prevents the custom scroll host from showing
-        // an unnecessary scrollbar under one or two authors.
         var simpleHost = new Panel
         {
             Dock = DockStyle.Fill,
@@ -178,25 +206,20 @@ public sealed class ThemedAuthorPicker : Button
             Padding = Padding.Empty,
             AutoScroll = false
         };
-
         simpleHost.Controls.Add(selector);
         selector.Dock = DockStyle.Fill;
 
-
         void RefreshRows()
         {
-            var filtered = _authors.Where(a =>
-                a.Name.Contains(search.Text.Trim(),
-                    StringComparison.OrdinalIgnoreCase)).ToArray();
+            var filtered = _authors.Where(a => a.Name.Contains(
+                search.Text.Trim(), StringComparison.OrdinalIgnoreCase)).ToArray();
             selector.SetAuthors(filtered, _selected);
-
-            int rowHeight = 44;
-            int contentHeight = Math.Max(48, filtered.Length * rowHeight);
-
+            int contentHeight = Math.Max(48, filtered.Length * 44);
+            int footerHeight = AllowCreateAuthor ? 46 : 0;
             popup.Height = Math.Clamp(
-                108 + contentHeight,
-                154,
-                310);
+                108 + contentHeight + footerHeight,
+                154 + footerHeight,
+                356);
 
             bool needsScroll = filtered.Length > 4;
             scroll.Visible = needsScroll;
@@ -210,7 +233,6 @@ public sealed class ThemedAuthorPicker : Button
                     selector.Dock = DockStyle.None;
                     scroll.SetContent(selector);
                 }
-
                 selector.Height = contentHeight;
                 scroll.RefreshMetrics();
             }
@@ -221,18 +243,14 @@ public sealed class ThemedAuthorPicker : Button
                     scroll.Controls.Remove(selector);
                     simpleHost.Controls.Add(selector);
                 }
-
                 selector.Dock = DockStyle.Fill;
             }
-
         }
 
         selector.SelectionChanged += (_, _) =>
         {
-            // The displayed selection covers only filtered rows.
-            var displayedIds = _authors
-                .Where(a => a.Name.Contains(search.Text.Trim(),
-                    StringComparison.OrdinalIgnoreCase))
+            var displayedIds = _authors.Where(a => a.Name.Contains(
+                search.Text.Trim(), StringComparison.OrdinalIgnoreCase))
                 .Select(a => a.Id).ToHashSet();
             _selected.RemoveWhere(displayedIds.Contains);
             foreach (int id in selector.SelectedAuthorIds)
@@ -242,8 +260,6 @@ public sealed class ThemedAuthorPicker : Button
         };
 
         search.TextChanged += (_, _) => RefreshRows();
-        if (initialSearch.Length > 0)
-            search.Text = initialSearch;
         layout.Controls.Add(search, 0, 0);
 
         var listContainer = new Panel
@@ -253,14 +269,40 @@ public sealed class ThemedAuthorPicker : Button
             Padding = Padding.Empty,
             BackColor = c.Surface
         };
-
         listContainer.Controls.Add(simpleHost);
         listContainer.Controls.Add(scroll);
-
         scroll.Visible = false;
         simpleHost.Visible = true;
-
         layout.Controls.Add(listContainer, 0, 1);
+
+        if (AllowCreateAuthor)
+        {
+            var add = new Button
+            {
+                Text = "+ Add Author",
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, 6, 0, 0),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = c.Accent,
+                ForeColor = c.OnAccent,
+                Font = Theme.BodyStrong,
+                Cursor = Cursors.Hand,
+                UseVisualStyleBackColor = false
+            };
+            add.FlatAppearance.BorderSize = 0;
+            add.FlatAppearance.MouseOverBackColor = c.Accent;
+            add.FlatAppearance.MouseDownBackColor = c.Accent;
+            add.Click += (_, _) =>
+            {
+                RequestedAuthorName = search.Text.Trim().Length > 0
+                    ? search.Text.Trim()
+                    : _suggestedSearch;
+                _suggestedSearch = "";
+                popup.Close();
+                AddAuthorRequested?.Invoke(this, EventArgs.Empty);
+            };
+            layout.Controls.Add(add, 0, 2);
+        }
 
         popup.Controls.Add(layout);
         _popup = popup;
@@ -272,14 +314,19 @@ public sealed class ThemedAuthorPicker : Button
             popup.Dispose();
         };
 
+        if (initialSearch.Length > 0)
+            search.Text = initialSearch;
         RefreshRows();
+
         var origin = PointToScreen(new Point(0, Height + 4));
         var bounds = Screen.FromControl(this).WorkingArea;
         popup.Location = new Point(
-            Math.Clamp(origin.X, bounds.Left, Math.Max(bounds.Left, bounds.Right - popup.Width)),
+            Math.Clamp(origin.X, bounds.Left,
+                Math.Max(bounds.Left, bounds.Right - popup.Width)),
             origin.Y + popup.Height <= bounds.Bottom
                 ? origin.Y
-                : Math.Max(bounds.Top, PointToScreen(Point.Empty).Y - popup.Height - 4));
+                : Math.Max(bounds.Top,
+                    PointToScreen(Point.Empty).Y - popup.Height - 4));
         if (FindForm() is Form owner)
             popup.Show(owner);
         else
