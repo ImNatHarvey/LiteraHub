@@ -19,6 +19,8 @@ public sealed class ThemedAuthorPicker : Button
 {
     private readonly List<BookLookupOption> _authors = new();
     private readonly HashSet<int> _selected = new();
+    private readonly Dictionary<int, string> _pending = new();
+    private int _nextPendingId = -1;
     private Form? _popup;
     private string _suggestedSearch = "";
 
@@ -33,7 +35,31 @@ public sealed class ThemedAuthorPicker : Button
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public IReadOnlyList<int> SelectedAuthorIds =>
-        _selected.OrderBy(id => id).ToArray();
+        _selected.Where(id => id > 0).OrderBy(id => id).ToArray();
+
+    public IReadOnlyList<string> SelectedPendingAuthorNames =>
+        _pending.Where(p => _selected.Contains(p.Key))
+            .Select(p => p.Value).ToArray();
+
+    public void StageAuthor(string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0) return;
+        var existing = _pending.FirstOrDefault(p => Normalize(p.Value) == Normalize(name));
+        if (existing.Key != 0)
+        {
+            _selected.Add(existing.Key);
+            UpdateCaption();
+            SelectionChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+        int id = _nextPendingId--;
+        _pending[id] = name;
+        _authors.Add(new BookLookupOption { Id = id, Name = name + " (pending)", IsActive = true });
+        _selected.Add(id);
+        UpdateCaption();
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     public ThemedAuthorPicker()
     {
@@ -59,10 +85,13 @@ public sealed class ThemedAuthorPicker : Button
     {
         ArgumentNullException.ThrowIfNull(authors);
         var requested = selectedIds?.ToHashSet() ?? _selected.ToHashSet();
+        requested.UnionWith(_selected.Where(id => id < 0));
         _authors.Clear();
         _authors.AddRange(authors.Where(a => a.IsActive)
             .GroupBy(a => a.Id).Select(g => g.First())
             .OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase));
+        foreach (var pending in _pending)
+            _authors.Add(new BookLookupOption { Id = pending.Key, Name = pending.Value + " (pending)", IsActive = true });
         _selected.Clear();
         foreach (var a in _authors)
             if (requested.Contains(a.Id))

@@ -251,8 +251,9 @@ public sealed class BookService : IBookService
         }
 
         if (input.AuthorIds is null ||
-            input.AuthorIds.Count == 0 ||
-            input.AuthorIds.Any(id => id <= 0))
+            input.AuthorIds.Any(id => id <= 0) ||
+            (input.AuthorIds.Count == 0 &&
+             (input.PendingAuthorNames?.Count ?? 0) == 0))
         {
             return ServiceResult.Fail(
                 "Select at least one valid author.");
@@ -278,7 +279,12 @@ public sealed class BookService : IBookService
                 ? null : description,
             CoverPath = string.IsNullOrEmpty(cover)
                 ? null : cover,
-            AuthorIds = input.AuthorIds.Distinct().ToArray()
+            AuthorIds = input.AuthorIds.Distinct().ToArray(),
+            PendingAuthorNames = input.PendingAuthorNames?
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Select(n => n.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray()
         };
     }
 }

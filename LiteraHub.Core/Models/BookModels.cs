@@ -32,7 +32,8 @@ public sealed record BookInput(
     int TotalCopies,
     int AvailableCopies,
     string? CoverPath,
-    IReadOnlyList<int> AuthorIds
+    IReadOnlyList<int> AuthorIds,
+    IReadOnlyList<string>? PendingAuthorNames = null
 );
 
 public sealed class BookLookupOption

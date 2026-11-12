@@ -416,70 +416,43 @@ public sealed class BookEditorPage : ThemedUserControl
         }
     }
 
-    private async Task CreateMissingMetadataAuthorsAsync(
+    private Task CreateMissingMetadataAuthorsAsync(
         IReadOnlyList<string> missingNames)
     {
         if (missingNames.Count == 0)
         {
             _description.Text = _authors.SelectedAuthorIds.Count > 0
                 ? "Metadata found. Existing authors matched and selected."
-                : "Metadata found, but no author was matched or created. Select an author manually.";
-            return;
+                : "Metadata found, but no author was matched. Select an author manually.";
+            return Task.CompletedTask;
         }
 
-        if (_authorCreationService is null || !_authors.AllowCreateAuthor)
+        if (!_authors.AllowCreateAuthor)
         {
-            _description.Text = "ISBN authors require manual selection: " +
+            _description.Text = "Author creation is unavailable. Select manually: " +
                 string.Join(", ", missingNames);
-            return;
+            return Task.CompletedTask;
         }
 
         var unresolved = new System.Collections.Generic.List<string>();
         foreach (string rawName in missingNames)
         {
             string name = rawName.Trim();
-            string[] parts = name.Split(' ',
-                StringSplitOptions.RemoveEmptyEntries);
-
-            // Do not fabricate a surname for single-word or malformed names.
-            if (parts.Length < 2)
+            string[] parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2 ||
+                string.Join(" ", parts, 0, Math.Max(0, parts.Length - 1)).Length > 100 ||
+                parts[^1].Length > 100)
             {
                 unresolved.Add(name);
                 continue;
             }
-
-            var input = new AuthorInput(
-                string.Join(" ", parts, 0, parts.Length - 1),
-                null,
-                parts[^1],
-                "Unknown");
-
-            try
-            {
-                var result = await _authorCreationService.CreateAsync(input);
-                if (!result.Success)
-                    unresolved.Add(name);
-            }
-            catch (Exception)
-            {
-                unresolved.Add(name);
-            }
+            _authors.StageAuthor(name);
         }
 
-        if (IsDisposed || Disposing || _bookService is null)
-            return;
-
-        // Refresh once, preserve selections, and match again to avoid duplicates.
-        var selected = _authors.SelectedAuthorIds.ToArray();
-        var records = await _bookService.GetAuthorsAsync();
-        if (IsDisposed || Disposing)
-            return;
-        _authors.SetAuthors(records, selected);
-        var stillUnmatched = _authors.MatchMetadataNames(missingNames);
-        _description.Text = stillUnmatched.Count == 0
-            ? "Metadata found. All authors created or matched and selected."
-            : "Metadata found. Review author(s): " +
-              string.Join(", ", stillUnmatched);
+        _description.Text = unresolved.Count > 0
+            ? "Author(s) require manual selection: " + string.Join(", ", unresolved)
+            : "Metadata found. New authors are pending and will only be created when you save the book.";
+        return Task.CompletedTask;
     }
 
     private async Task LookupIsbnAsync()
@@ -1092,7 +1065,8 @@ public sealed class BookEditorPage : ThemedUserControl
             return;
         }
 
-        if (_authors.SelectedAuthorIds.Count == 0)
+        if (_authors.SelectedAuthorIds.Count == 0 &&
+            _authors.SelectedPendingAuthorNames.Count == 0)
         {
             _description.Text = "Select an author, or select an existing " +
                 "'Unknown Author' record if the author is genuinely unknown.";
@@ -1108,7 +1082,8 @@ public sealed class BookEditorPage : ThemedUserControl
             _total.Value,
             _available.Value,
             _coverPath,
-            _authors.SelectedAuthorIds);
+            _authors.SelectedAuthorIds,
+            _authors.SelectedPendingAuthorNames);
 
         _saving = true;
         _save.Enabled = false;

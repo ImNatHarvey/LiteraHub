@@ -160,7 +160,7 @@ public sealed class BookRepository : IBookRepository
 
         try
         {
-            await ValidateReferencesAsync(conn, tx, input);
+            var resolvedAuthors = await ResolveAuthorsAsync(conn, tx, input);
 
             const string sql = """
                 INSERT INTO dbo.Books
@@ -178,7 +178,7 @@ public sealed class BookRepository : IBookRepository
                 sql, input, tx);
 
             await InsertAuthorsAsync(
-                conn, tx, id, input.AuthorIds);
+                conn, tx, id, resolvedAuthors);
 
             await tx.CommitAsync();
             return id;
@@ -201,7 +201,7 @@ public sealed class BookRepository : IBookRepository
 
         try
         {
-            await ValidateReferencesAsync(conn, tx, input);
+            var resolvedAuthors = await ResolveAuthorsAsync(conn, tx, input);
 
             // Lock the book row until the transaction completes.
             // Existing borrowed copies cannot be silently erased.
@@ -276,7 +276,7 @@ public sealed class BookRepository : IBookRepository
                 tx);
 
             await InsertAuthorsAsync(
-                conn, tx, bookId, input.AuthorIds);
+                conn, tx, bookId, resolvedAuthors);
 
             await tx.CommitAsync();
             return true;
@@ -370,6 +370,82 @@ public sealed class BookRepository : IBookRepository
             await tx.RollbackAsync();
             throw;
         }
+    }
+
+    private static async Task<int[]> ResolveAuthorsAsync(
+        System.Data.Common.DbConnection conn,
+        System.Data.Common.DbTransaction tx,
+        BookInput input)
+    {
+        var ids = input.AuthorIds.Distinct().ToList();
+        var pending = input.PendingAuthorNames ?? Array.Empty<string>();
+
+        foreach (string raw in pending.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            string name = raw.Trim();
+            string[] parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2)
+                throw new InvalidOperationException(
+                    $"Author '{name}' requires a first and last name.");
+
+            string first = string.Join(" ", parts, 0, parts.Length - 1);
+            string last = parts[^1];
+            if (first.Length > 100 || last.Length > 100)
+                throw new InvalidOperationException("Author name exceeds 100 characters.");
+
+            // Serialize author resolution for concurrent book saves.
+            // Transaction-owned application lock avoids duplicates even without
+            // a unique constraint on the Authors table.
+            int lockResult = await conn.ExecuteScalarAsync<int>(
+                """
+                DECLARE @result int;
+                EXEC @result = sp_getapplock
+                    @Resource = N'LiteraHub:AuthorName',
+                    @LockMode = N'Exclusive',
+                    @LockOwner = N'Transaction',
+                    @LockTimeout = 10000;
+                SELECT @result;
+                """, transaction: tx);
+            if (lockResult < 0)
+                throw new InvalidOperationException("Could not lock author records. Try again.");
+
+            // Compare complete display names, not only split first/last fields:
+            // the existing author may have different whitespace or capitalization.
+            var matches = (await conn.QueryAsync<int>(
+                """
+                SELECT AuthorId
+                FROM dbo.Authors WITH (UPDLOCK, HOLDLOCK)
+                WHERE UPPER(LTRIM(RTRIM(CONCAT(FirstName, N' ', LastName))))
+                      = UPPER(@Name) AND IsActive = 1;
+                """,
+                new { Name = name }, tx)).ToArray();
+
+            if (matches.Length > 1)
+                throw new InvalidOperationException(
+                    $"Multiple authors match '{name}'. Select the correct author manually.");
+
+            int id;
+            if (matches.Length == 1)
+            {
+                id = matches[0];
+            }
+            else
+            {
+                id = await conn.QuerySingleAsync<int>(
+                    """
+                    INSERT INTO dbo.Authors
+                        (FirstName, MiddleName, LastName, Gender, BirthDate, IsActive)
+                    OUTPUT INSERTED.AuthorId
+                    VALUES (@First, NULL, @Last, N'Unknown', NULL, 1);
+                    """,
+                    new { First = first, Last = last }, tx);
+            }
+            ids.Add(id);
+        }
+
+        var validated = input with { AuthorIds = ids.Distinct().ToArray() };
+        await ValidateReferencesAsync(conn, tx, validated);
+        return validated.AuthorIds.ToArray();
     }
 
     private static async Task ValidateReferencesAsync(
