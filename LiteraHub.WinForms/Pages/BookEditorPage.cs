@@ -109,21 +109,21 @@ public sealed class BookEditorPage : ThemedUserControl
 
     private readonly Button _save = new()
     {
-        Text = "✎  Save Book",
+        Text = "Save Book",
         FlatStyle = FlatStyle.Flat,
         Enabled = false
     };
 
     private readonly Button _archive = new()
     {
-        Text = "▣  Archive Book",
+        Text = "Archive Book",
         FlatStyle = FlatStyle.Flat,
         Visible = false
     };
 
     private readonly Button _delete = new()
     {
-        Text = "✕  Delete Permanently",
+        Text = "Delete Book",
         FlatStyle = FlatStyle.Flat,
         Visible = false
     };
@@ -180,6 +180,12 @@ public sealed class BookEditorPage : ThemedUserControl
         bool canCreateAuthors)
     {
         _canHardDelete = canHardDelete;
+        // ConfigureServices runs after the constructor populated the editor.
+        // Keep Delete visible on existing books; permission controls whether it is enabled.
+        _delete.Visible = _existing is not null;
+        _delete.Enabled = _canHardDelete;
+        _delete.Text = "";
+        _delete.AccessibleName = "Delete Book";
         _categoryService = categories ??
             throw new ArgumentNullException(nameof(categories));
         _metadataService = metadata ??
@@ -687,6 +693,11 @@ public sealed class BookEditorPage : ThemedUserControl
         _save.Click += async (_, _) => await SaveAsync();
         _archive.Click += async (_, _) => await ChangeActiveAsync();
         _delete.Click += async (_, _) => await DeleteAsync();
+        _save.Text = "";
+        _save.AccessibleName = "Save Book";
+        _save.Paint += (_, e) => PaintActionIcon(e, _save, 0);
+        _archive.Paint += (_, e) => PaintActionIcon(e, _archive, 1);
+        _delete.Paint += (_, e) => PaintActionIcon(e, _delete, 2);
 
         _title.TextChanged += (_, _) =>
         {
@@ -733,8 +744,10 @@ public sealed class BookEditorPage : ThemedUserControl
         _coverPath = _existing.CoverPath;
         _ = LoadCoverAsync(_coverPath);
         _archive.Visible = true;
-        _archive.Text = _existing.IsActive ? "▣  Archive Book" : "↶  Restore Book";
-        _delete.Visible = _canHardDelete;
+        _archive.Text = "";
+        _archive.AccessibleName = _existing.IsActive ? "Archive Book" : "Restore Book";
+        _delete.Visible = true;
+        _delete.Enabled = _canHardDelete;
 
         // Author IDs are restored once the database author list loads.
 
@@ -1024,9 +1037,9 @@ public sealed class BookEditorPage : ThemedUserControl
         y += 8;
         if (_existing is not null)
         {
-            _archive.SetBounds(x, y, fieldWidth, 40);
-            y += 48;
             _delete.SetBounds(x, y, fieldWidth, 40);
+            y += 48;
+            _archive.SetBounds(x, y, fieldWidth, 40);
             y += 48;
         }
         _save.SetBounds(x, y, fieldWidth, 40);
@@ -1036,22 +1049,88 @@ public sealed class BookEditorPage : ThemedUserControl
     private void PositionActions(int width, int pad, int y)
     {
         const int gap = 8;
-        const int saveWidth = 136;
-        const int archiveWidth = 148;
-        const int deleteWidth = 172;
         int right = width - pad;
-        _save.SetBounds(Math.Max(pad, right - saveWidth), y, saveWidth, 40);
-        if (_existing is null) return;
+        if (_existing is null)
+        {
+            _save.SetBounds(Math.Max(pad, right - 160), y, 160, 40);
+            return;
+        }
 
-        // Keep destructive controls adjacent to Save; no invisible gap
-        // when HardDelete is not granted.
-        int cursor = _save.Left - gap;
-        _archive.SetBounds(Math.Max(pad, cursor - archiveWidth),
-            y, archiveWidth, 40);
-        cursor = _archive.Left - gap;
-        if (_delete.Visible)
-            _delete.SetBounds(Math.Max(pad, cursor - deleteWidth),
-                y, deleteWidth, 40);
+        // Align the left edge of Delete with the Description field.
+        // All three actions have identical widths and fill that row.
+        int left = Math.Max(pad, _bookDescription.Left);
+        int available = Math.Max(3, right - left - 2 * gap);
+        int buttonWidth = available / 3;
+        _delete.SetBounds(left, y, buttonWidth, 40);
+        _archive.SetBounds(left + buttonWidth + gap, y, buttonWidth, 40);
+        _save.SetBounds(left + (buttonWidth + gap) * 2, y,
+            buttonWidth, 40);
+    }
+
+    private void PaintActionIcon(PaintEventArgs e, Button button, int kind)
+    {
+        if (button.Width < 90 || button.Height < 24) return;
+        var c = Theme.Colors;
+        var g = e.Graphics;
+        var previous = g.SmoothingMode;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+
+        Color color = kind == 2 ? Color.White :
+            kind == 0 ? Color.FromArgb(118, 235, 173) :
+            (_existing?.IsActive == false ? Color.FromArgb(118, 235, 173) : c.TextMuted);
+        if (!button.Enabled) color = c.TextMuted;
+        // Draw the icon to the left of the centered label, with the same
+        // line geometry as the Categories action icons.
+        string label = kind == 0 ? "Save Book" : kind == 2 ? "Delete Book" :
+            _existing?.IsActive == false ? "Restore Book" : "Archive Book";
+        Size labelSize = TextRenderer.MeasureText(label, button.Font);
+        int cx = Math.Max(13, (button.Width - labelSize.Width - 30) / 2 + 9);
+        int cy = button.Height / 2;
+        using var pen = new Pen(color, 2f);
+        if (kind == 0)
+        {
+            g.DrawLine(pen, cx - 8, cy - 7, cx + 1, cy - 7);
+            g.DrawLine(pen, cx - 8, cy - 7, cx - 8, cy + 8);
+            g.DrawLine(pen, cx - 8, cy + 8, cx + 7, cy + 8);
+            g.DrawLine(pen, cx + 7, cy + 8, cx + 7, cy + 1);
+            g.DrawLine(pen, cx - 2, cy + 3, cx + 8, cy - 7);
+            g.DrawLine(pen, cx - 3, cy + 5, cx - 2, cy + 3);
+        }
+        else if (kind == 1)
+        {
+            g.DrawRectangle(pen, cx - 8, cy - 4, 16, 12);
+            g.DrawLine(pen, cx - 10, cy - 8, cx + 10, cy - 8);
+            bool restoring = _existing?.IsActive == false;
+            g.DrawLine(pen, cx, restoring ? cy + 5 : cy - 2,
+                cx, restoring ? cy - 2 : cy + 5);
+            if (restoring)
+            {
+                g.DrawLine(pen, cx - 4, cy + 1, cx, cy - 3);
+                g.DrawLine(pen, cx, cy - 3, cx + 4, cy + 1);
+            }
+            else
+            {
+                g.DrawLine(pen, cx - 4, cy + 1, cx, cy + 5);
+                g.DrawLine(pen, cx, cy + 5, cx + 4, cy + 1);
+            }
+        }
+        else
+        {
+            g.DrawLine(pen, cx - 9, cy - 6, cx + 9, cy - 6);
+            g.DrawLine(pen, cx - 4, cy - 9, cx + 4, cy - 9);
+            g.DrawRectangle(pen, cx - 7, cy - 3, 14, 12);
+            g.DrawLine(pen, cx - 3, cy, cx - 3, cy + 6);
+            g.DrawLine(pen, cx + 3, cy, cx + 3, cy + 6);
+        }
+        // Overpaint the standard centered text so the icon and text form
+        // one centered group; the button retains its native focus border.
+        var textRect = new Rectangle(cx + 16, 0,
+            Math.Max(0, button.Width - cx - 18), button.Height);
+        TextRenderer.DrawText(g, label, button.Font, textRect,
+            button.Enabled ? button.ForeColor : c.TextMuted,
+            TextFormatFlags.VerticalCenter | TextFormatFlags.Left |
+            TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
+        g.SmoothingMode = previous;
     }
 
     private async Task SaveAsync()
@@ -1118,7 +1197,7 @@ public sealed class BookEditorPage : ThemedUserControl
             {
                 _save.Enabled = true;
                 _archive.Enabled = true;
-                _delete.Enabled = true;
+                _delete.Enabled = _canHardDelete;
             }
         }
     }
@@ -1140,7 +1219,7 @@ public sealed class BookEditorPage : ThemedUserControl
 
     private async Task DeleteAsync()
     {
-        if (_saving || _existing is null || _bookService is null) return;
+        if (_saving || _existing is null || _bookService is null || !_canHardDelete) return;
         if (!ThemedMessageDialog.Confirm(FindForm(),
                 "Delete Book Permanently",
                 "This action cannot be undone. Books with borrowing " +
@@ -1180,7 +1259,7 @@ public sealed class BookEditorPage : ThemedUserControl
             {
                 _save.Enabled = true;
                 _archive.Enabled = true;
-                _delete.Enabled = true;
+                _delete.Enabled = _canHardDelete;
             }
         }
     }
@@ -1308,6 +1387,16 @@ public sealed class BookEditorPage : ThemedUserControl
             action.FlatAppearance.BorderColor = c.Border;
             action.Cursor = Cursors.Hand;
         }
+
+        // Match the soft coral-red Delete confirmation button.
+        Color deleteRed = Color.FromArgb(255, 143, 137);
+        _delete.BackColor = deleteRed;
+        _delete.ForeColor = Color.White;
+        _delete.FlatAppearance.BorderSize = 0;
+        _delete.FlatAppearance.MouseOverBackColor =
+            ControlPaint.Dark(deleteRed, 0.12f);
+        _delete.FlatAppearance.MouseDownBackColor =
+            ControlPaint.Dark(deleteRed, 0.23f);
 
         _cover.RefreshTheme();
         _lookup.RefreshTheme();
