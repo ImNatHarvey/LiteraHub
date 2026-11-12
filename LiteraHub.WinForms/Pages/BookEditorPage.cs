@@ -343,7 +343,9 @@ public sealed class BookEditorPage : ThemedUserControl
                 if (unmatched.Count > 0)
                     await CreateMissingMetadataAuthorsAsync(unmatched);
                 else
-                    _description.Text = "ISBN authors matched to existing records.";
+                    _description.Text = _authors.SelectedAuthorIds.Count > 0
+                        ? "ISBN authors matched to existing records."
+                        : "Metadata found, but no author was matched or created. Select an author manually.";
             }
 
             if (selectAuthorId.HasValue)
@@ -419,7 +421,9 @@ public sealed class BookEditorPage : ThemedUserControl
     {
         if (missingNames.Count == 0)
         {
-            _description.Text = "Metadata found. Existing authors selected.";
+            _description.Text = _authors.SelectedAuthorIds.Count > 0
+                ? "Metadata found. Existing authors matched and selected."
+                : "Metadata found, but no author was matched or created. Select an author manually.";
             return;
         }
 
@@ -508,7 +512,11 @@ public sealed class BookEditorPage : ThemedUserControl
             _bookDescription.Text = book.Description ?? string.Empty;
             _coverPath = book.CoverUrl;
             _ = LoadCoverAsync(book.CoverUrl);
-            if (_authorsLoaded)
+            if (book.Authors.Count == 0)
+            {
+                _description.Text = "Metadata found, but no author information was provided. Select an author manually.";
+            }
+            else if (_authorsLoaded)
             {
                 var unmatched = _authors.MatchMetadataNames(book.Authors);
                 await CreateMissingMetadataAuthorsAsync(unmatched);
