@@ -479,10 +479,11 @@ public sealed class BooksPage : ThemedUserControl
         if (e.RowIndex < 0 || e.ColumnIndex < 0)
             return;
 
-        if (_grid.Columns[e.ColumnIndex].Name != "Actions")
+        string column = _grid.Columns[e.ColumnIndex].Name;
+        if (column != "Actions" && column != "Active")
             return;
 
-        if (_grid.Rows[e.RowIndex].DataBoundItem is not Book)
+        if (_grid.Rows[e.RowIndex].DataBoundItem is not Book book)
             return;
 
         e.PaintBackground(e.CellBounds, false);
@@ -497,6 +498,31 @@ public sealed class BooksPage : ThemedUserControl
 
         int cx = e.CellBounds.Left + e.CellBounds.Width / 2;
         int cy = e.CellBounds.Top + e.CellBounds.Height / 2;
+
+        if (column == "Active")
+        {
+            using var statusPen = new Pen(
+                book.IsActive ? Theme.Colors.PillGoodText : Theme.Colors.Danger, 2f)
+            {
+                StartCap = LineCap.Round,
+                EndCap = LineCap.Round,
+                LineJoin = LineJoin.Round
+            };
+            graphics.DrawEllipse(statusPen, cx - 9, cy - 9, 18, 18);
+            if (book.IsActive)
+                graphics.DrawLines(statusPen, new[]
+                {
+                    new Point(cx - 5, cy),
+                    new Point(cx - 1, cy + 4),
+                    new Point(cx + 6, cy - 4)
+                });
+            else
+                graphics.DrawLine(statusPen, cx - 4, cy, cx + 4, cy);
+
+            graphics.SmoothingMode = previousMode;
+            e.Handled = true;
+            return;
+        }
 
         using var pen = new Pen(
             Theme.Colors.Accent, 2.2f)

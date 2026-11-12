@@ -8,6 +8,7 @@ internal static class Migrations
     {
         new Migration(1, "Create core tables and indexes", V1()),
         new Migration(2, "Seed roles, statuses, categories, settings", V2()),
+        new Migration(3, "Rename Good Condition status to Good", V3()),
     };
 
     private static string Index(string name, string table, string columns) =>
@@ -167,7 +168,7 @@ internal static class Migrations
         """,
         """
         INSERT INTO dbo.BookStatuses (Name, IsBorrowable)
-        SELECT v.Name, v.IsBorrowable FROM (VALUES (N'Good Condition', 1), (N'Damaged', 0)) AS v(Name, IsBorrowable)
+        SELECT v.Name, v.IsBorrowable FROM (VALUES (N'Good', 1), (N'Damaged', 0)) AS v(Name, IsBorrowable)
         WHERE NOT EXISTS (SELECT 1 FROM dbo.BookStatuses s WHERE s.Name = v.Name);
         """,
         """
@@ -188,6 +189,34 @@ internal static class Migrations
         INSERT INTO dbo.Settings (SettingKey, SettingValue)
         SELECT v.SettingKey, v.SettingValue FROM (VALUES (N'LoanDays', N'7'), (N'MaxActiveLoans', N'3')) AS v(SettingKey, SettingValue)
         WHERE NOT EXISTS (SELECT 1 FROM dbo.Settings s WHERE s.SettingKey = v.SettingKey);
+        """,
+    };
+    private static string[] V3() => new[]
+    {
+        """
+        -- Preserve the existing StatusId so every book keeps its condition.
+        -- If a separate Good status already exists, merge references first.
+        DECLARE @oldId INT = (
+            SELECT TOP (1) StatusId FROM dbo.BookStatuses
+            WHERE Name = N'Good Condition' ORDER BY StatusId);
+        DECLARE @goodId INT = (
+            SELECT TOP (1) StatusId FROM dbo.BookStatuses
+            WHERE Name = N'Good' ORDER BY StatusId);
+
+        IF @oldId IS NOT NULL
+        BEGIN
+            IF @goodId IS NOT NULL
+            BEGIN
+                UPDATE dbo.Books SET StatusId = @goodId
+                WHERE StatusId = @oldId;
+                DELETE FROM dbo.BookStatuses WHERE StatusId = @oldId;
+            END
+            ELSE
+            BEGIN
+                UPDATE dbo.BookStatuses SET Name = N'Good', IsBorrowable = 1
+                WHERE StatusId = @oldId;
+            END
+        END;
         """,
     };
 }

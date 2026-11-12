@@ -906,7 +906,7 @@ public sealed class CategoriesPage : ThemedUserControl
             using var pen = new Pen(
                 category.IsActive
                     ? SuccessColor
-                    : c.TextMuted,
+                    : c.Danger,
                 2f);
 
             g.DrawEllipse(

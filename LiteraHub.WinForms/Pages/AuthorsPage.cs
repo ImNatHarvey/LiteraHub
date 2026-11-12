@@ -599,7 +599,7 @@ public sealed class AuthorsPage : ThemedUserControl
                 e.CellBounds.Left + e.CellBounds.Width / 2;
 
             using var pen = new Pen(
-                active ? c.PillGoodText : c.TextMuted,
+                active ? c.PillGoodText : c.Danger,
                 2f);
 
             g.DrawEllipse(
