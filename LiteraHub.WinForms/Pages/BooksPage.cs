@@ -408,7 +408,7 @@ public sealed class BooksPage : ThemedUserControl
 
         AddColumn(
             "Copies", "Available",
-            nameof(Book.AvailableCopies), 10, 85);
+            nameof(Book.AvailableCopies), 12, 105);
 
         AddColumn(
             "Condition", "Condition",
@@ -912,7 +912,7 @@ public sealed class BooksPage : ThemedUserControl
                 _grid.Columns["Authors"]!.Width = 145;
                 _grid.Columns["Category"]!.Width = 110;
                 _grid.Columns["ISBN"]!.Width = 125;
-                _grid.Columns["Copies"]!.Width = 85;
+                _grid.Columns["Copies"]!.Width = 110;
                 _grid.Columns["Condition"]!.Width = 120;
 
                 if (CanManage)

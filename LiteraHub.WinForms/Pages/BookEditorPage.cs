@@ -241,6 +241,15 @@ public sealed class BookEditorPage : ThemedUserControl
             previous.Dispose();
             replacement.ApplyTheme();
             _statusesLoaded = true;
+            // Default only new books to a Good condition; never override edits.
+            if (_existing is null)
+            {
+                int goodIndex = Array.FindIndex(options,
+                    option => option.Name.StartsWith("Good",
+                        StringComparison.OrdinalIgnoreCase));
+                if (goodIndex >= 0)
+                    _condition.SelectedIndex = goodIndex;
+            }
             ArrangeForm();
 
             if (_existing is not null)
@@ -330,11 +339,11 @@ public sealed class BookEditorPage : ThemedUserControl
             {
                 var unmatched = _authors.MatchMetadataNames(
                     _pendingMetadataAuthors);
-                _description.Text = unmatched.Count == 0
-                    ? "ISBN authors matched to existing records. Review before saving."
-                    : "Review unmatched author(s): " +
-                      string.Join(", ", unmatched);
                 _pendingMetadataAuthors = Array.Empty<string>();
+                if (unmatched.Count > 0)
+                    await CreateMissingMetadataAuthorsAsync(unmatched);
+                else
+                    _description.Text = "ISBN authors matched to existing records.";
             }
 
             if (selectAuthorId.HasValue)
@@ -405,6 +414,70 @@ public sealed class BookEditorPage : ThemedUserControl
         }
     }
 
+    private async Task CreateMissingMetadataAuthorsAsync(
+        IReadOnlyList<string> missingNames)
+    {
+        if (missingNames.Count == 0)
+        {
+            _description.Text = "Metadata found. Existing authors selected.";
+            return;
+        }
+
+        if (_authorCreationService is null || !_authors.AllowCreateAuthor)
+        {
+            _description.Text = "ISBN authors require manual selection: " +
+                string.Join(", ", missingNames);
+            return;
+        }
+
+        var unresolved = new System.Collections.Generic.List<string>();
+        foreach (string rawName in missingNames)
+        {
+            string name = rawName.Trim();
+            string[] parts = name.Split(' ',
+                StringSplitOptions.RemoveEmptyEntries);
+
+            // Do not fabricate a surname for single-word or malformed names.
+            if (parts.Length < 2)
+            {
+                unresolved.Add(name);
+                continue;
+            }
+
+            var input = new AuthorInput(
+                string.Join(" ", parts, 0, parts.Length - 1),
+                null,
+                parts[^1],
+                "Unknown");
+
+            try
+            {
+                var result = await _authorCreationService.CreateAsync(input);
+                if (!result.Success)
+                    unresolved.Add(name);
+            }
+            catch (Exception)
+            {
+                unresolved.Add(name);
+            }
+        }
+
+        if (IsDisposed || Disposing || _bookService is null)
+            return;
+
+        // Refresh once, preserve selections, and match again to avoid duplicates.
+        var selected = _authors.SelectedAuthorIds.ToArray();
+        var records = await _bookService.GetAuthorsAsync();
+        if (IsDisposed || Disposing)
+            return;
+        _authors.SetAuthors(records, selected);
+        var stillUnmatched = _authors.MatchMetadataNames(missingNames);
+        _description.Text = stillUnmatched.Count == 0
+            ? "Metadata found. All authors created or matched and selected."
+            : "Metadata found. Review author(s): " +
+              string.Join(", ", stillUnmatched);
+    }
+
     private async Task LookupIsbnAsync()
     {
         if (_lookupBusy || _metadataService is null)
@@ -438,10 +511,7 @@ public sealed class BookEditorPage : ThemedUserControl
             if (_authorsLoaded)
             {
                 var unmatched = _authors.MatchMetadataNames(book.Authors);
-                _description.Text = unmatched.Count == 0
-                    ? "Metadata found. Existing authors matched; review before saving."
-                    : "Metadata found. Select or create missing author(s): " +
-                      string.Join(", ", unmatched);
+                await CreateMissingMetadataAuthorsAsync(unmatched);
             }
             else
             {
