@@ -61,12 +61,11 @@ public sealed class BooksPage : ThemedUserControl
         Margin = new Padding(0, 4, 8, 4)
     };
 
-    private readonly ThemedFilterDropdown _filter =
-        new(new[] { "All", "Active", "Inactive" })
-        {
-            Dock = DockStyle.Fill,
-            Margin = new Padding(0, 4, 8, 4)
-        };
+    private readonly ThemedCatalogFilterSort _filter = new("CONDITION", "All", "Good", "Damaged")
+    {
+        Dock = DockStyle.Fill,
+        Margin = new Padding(0, 4, 8, 4)
+    };
 
     private readonly Button _addButton = new()
     {
@@ -262,7 +261,7 @@ public sealed class BooksPage : ThemedUserControl
             FilterBooks();
         };
 
-        _filter.SelectedIndexChanged += (_, _) =>
+        _filter.SelectionChanged += (_, _) =>
         {
             _page = 1;
             FilterBooks();
@@ -823,7 +822,7 @@ public sealed class BooksPage : ThemedUserControl
         string query = _search.Text.Trim();
 
         int activeFilter = CanManage
-            ? _filter.SelectedIndex
+            ? _filter.StatusIndex
             : 1;
 
         var filtered = _allBooks.Where(book =>
@@ -837,6 +836,15 @@ public sealed class BooksPage : ThemedUserControl
              Contains(book.CategoryName, query) ||
              Contains(book.StatusName, query)))
             .ToList();
+
+        if (_filter.ExtraIndex == 1)
+            filtered = filtered.Where(b => b.StatusName.Equals("Good", StringComparison.OrdinalIgnoreCase) || b.StatusName.Equals("Good Condition", StringComparison.OrdinalIgnoreCase)).ToList();
+        else if (_filter.ExtraIndex == 2)
+            filtered = filtered.Where(b => b.StatusName.Equals("Damaged", StringComparison.OrdinalIgnoreCase)).ToList();
+
+        filtered = _filter.SortIndex == 0
+            ? filtered.OrderBy(b => b.Title, StringComparer.OrdinalIgnoreCase).ToList()
+            : filtered.OrderByDescending(b => b.Title, StringComparer.OrdinalIgnoreCase).ToList();
 
         _filteredCount = filtered.Count;
         _page = Math.Clamp(_page, 1, TotalPages);
@@ -916,7 +924,7 @@ public sealed class BooksPage : ThemedUserControl
         {
             // Same toolbar dimensions as CategoriesPage.
             _toolbar.ColumnStyles[1].Width =
-                compact ? 78 : 125;
+                compact ? 108 : 145;
 
             _toolbar.ColumnStyles[2].Width =
                 compact ? 44 : 160;

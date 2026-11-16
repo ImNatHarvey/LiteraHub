@@ -49,7 +49,7 @@ public sealed class AuthorsPage : ThemedUserControl
         Margin = new Padding(0, 4, 8, 4)
     };
 
-    private readonly ThemedFilterDropdown _filter = new()
+    private readonly ThemedCatalogFilterSort _filter = new("GENDER", "All", "Male", "Female", "Other")
     {
         Dock = DockStyle.Fill,
         Margin = new Padding(0, 4, 8, 4)
@@ -189,7 +189,7 @@ public sealed class AuthorsPage : ThemedUserControl
             RenderRows();
         };
 
-        _filter.SelectedIndexChanged += (_, _) =>
+        _filter.SelectionChanged += (_, _) =>
         {
             _page = 1;
             RenderRows();
@@ -1108,7 +1108,7 @@ public sealed class AuthorsPage : ThemedUserControl
         string query = _search.Text.Trim();
 
         int status = _filter.Visible
-            ? _filter.SelectedIndex
+            ? _filter.StatusIndex
             : 1;
 
         var filtered = _authors
@@ -1124,6 +1124,16 @@ public sealed class AuthorsPage : ThemedUserControl
                      query,
                      StringComparison.OrdinalIgnoreCase)))
             .ToArray();
+
+        filtered = filtered
+            .Where(a => _filter.ExtraIndex == 0 ||
+                (_filter.ExtraIndex == 1 && a.Gender.Equals("Male", StringComparison.OrdinalIgnoreCase)) ||
+                (_filter.ExtraIndex == 2 && a.Gender.Equals("Female", StringComparison.OrdinalIgnoreCase)) ||
+                (_filter.ExtraIndex == 3 && !a.Gender.Equals("Male", StringComparison.OrdinalIgnoreCase) && !a.Gender.Equals("Female", StringComparison.OrdinalIgnoreCase)))
+            .ToArray();
+        filtered = _filter.SortIndex == 0
+            ? filtered.OrderBy(a => a.FullName, StringComparer.OrdinalIgnoreCase).ToArray()
+            : filtered.OrderByDescending(a => a.FullName, StringComparer.OrdinalIgnoreCase).ToArray();
 
         _filteredCount = filtered.Length;
         _page = Math.Clamp(_page, 1, TotalPages);
@@ -1276,7 +1286,7 @@ public sealed class AuthorsPage : ThemedUserControl
         try
         {
             _toolbar.ColumnStyles[1].Width =
-                compact ? 78 : 125;
+                compact ? 108 : 145;
 
             _toolbar.ColumnStyles[2].Width =
                 compact ? 44 : 160;

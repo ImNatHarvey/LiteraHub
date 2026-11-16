@@ -39,7 +39,7 @@ public sealed class ShellForm : Form
             Permission.ManageStudents,
             "Students module. Step 5."),
 
-        new("borrow", "Borrow & Return", AppIcons.BorrowReturn,
+        new("borrow", "Borrow && Return", AppIcons.BorrowReturn,
             Permission.ProcessBorrowReturn,
             "Borrow and return. Step 6."),
 

@@ -51,11 +51,12 @@ public sealed class CategoriesPage : ThemedUserControl
         Margin = new Padding(0, 4, 8, 4)
     };
 
-    private readonly ThemedFilterDropdown _filter = new()
-    {
-        Dock = DockStyle.Fill,
-        Margin = new Padding(0, 4, 8, 4)
-    };
+    private readonly ThemedCatalogFilterSort _filterSort =
+        new("Status", "All", "Active", "Inactive")
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 4, 8, 4)
+        };
 
     private readonly Button _addButton = new()
     {
@@ -215,7 +216,7 @@ public sealed class CategoriesPage : ThemedUserControl
 
         _loading.SetContent(_grid);
 
-        _filter.Visible = CanManage;
+        _filterSort.Visible = CanManage;
 
         _addButton.Visible =
             _permissions.Can(Permission.CreateLookups);
@@ -228,7 +229,7 @@ public sealed class CategoriesPage : ThemedUserControl
             FilterCategories();
         };
 
-        _filter.SelectedIndexChanged += (_, _) =>
+        _filterSort.SelectionChanged += (_, _) =>
         {
             _page = 1;
             FilterCategories();
@@ -425,7 +426,7 @@ public sealed class CategoriesPage : ThemedUserControl
         string query = _search.Text.Trim();
 
         int status = CanManage
-            ? _filter.SelectedIndex
+            ? _filterSort.StatusIndex
             : 1;
 
         var filtered = _allCategories.Where(c =>
@@ -441,6 +442,12 @@ public sealed class CategoriesPage : ThemedUserControl
                  StringComparison.OrdinalIgnoreCase)
                  ?? false)))
             .ToList();
+
+        filtered = (_filterSort.SortIndex == 1
+            ? filtered.OrderByDescending(c => c.Name,
+                StringComparer.OrdinalIgnoreCase)
+            : filtered.OrderBy(c => c.Name,
+                StringComparer.OrdinalIgnoreCase)).ToList();
 
         _filteredCount = filtered.Count;
 
@@ -1113,7 +1120,7 @@ public sealed class CategoriesPage : ThemedUserControl
             _toolbar.ColumnStyles.Add(
                 new ColumnStyle(
                     SizeType.Absolute,
-                    compact ? 78 : 125));
+                    compact ? 108 : 145));
 
             _toolbar.ColumnStyles.Add(
                 new ColumnStyle(
@@ -1124,10 +1131,10 @@ public sealed class CategoriesPage : ThemedUserControl
                 new RowStyle(SizeType.Percent, 100));
 
             _toolbar.Controls.Add(_search, 0, 0);
-            _toolbar.Controls.Add(_filter, 1, 0);
+            _toolbar.Controls.Add(_filterSort, 1, 0);
             _toolbar.Controls.Add(_addButton, 2, 0);
 
-            _filter.Visible = CanManage;
+            _filterSort.Visible = CanManage;
 
             _addButton.Text = compact
                 ? "+"
@@ -1287,7 +1294,7 @@ public sealed class CategoriesPage : ThemedUserControl
             button.FlatAppearance.BorderSize = 1;
         }
 
-        _filter.ApplyTheme();
+        _filterSort.ApplyTheme();
         _pageSizeFilter.ApplyTheme();
 
         _addButton.BackColor = c.Accent;
