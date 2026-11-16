@@ -61,7 +61,7 @@ public sealed class BooksPage : ThemedUserControl
         Margin = new Padding(0, 4, 8, 4)
     };
 
-    private readonly ThemedCatalogFilterSort _filter = new("CONDITION", "All", "Good", "Damaged")
+    private readonly ThemedBooksFilterSort _filter = new()
     {
         Dock = DockStyle.Fill,
         Margin = new Padding(0, 4, 8, 4)
@@ -785,6 +785,11 @@ public sealed class BooksPage : ThemedUserControl
                 return;
 
             _allBooks = books.ToList();
+            _filter.SetCategories(_allBooks
+                .Select(b => b.CategoryName)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase));
             _hasLoadedData = true;
         }
         catch (Exception ex)
@@ -837,14 +842,35 @@ public sealed class BooksPage : ThemedUserControl
              Contains(book.StatusName, query)))
             .ToList();
 
-        if (_filter.ExtraIndex == 1)
-            filtered = filtered.Where(b => b.StatusName.Equals("Good", StringComparison.OrdinalIgnoreCase) || b.StatusName.Equals("Good Condition", StringComparison.OrdinalIgnoreCase)).ToList();
-        else if (_filter.ExtraIndex == 2)
-            filtered = filtered.Where(b => b.StatusName.Equals("Damaged", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (_filter.ConditionIndex == 1)
+            filtered = filtered.Where(b =>
+                string.Equals(b.StatusName, "Good", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(b.StatusName, "Good Condition", StringComparison.OrdinalIgnoreCase)).ToList();
+        else if (_filter.ConditionIndex == 2)
+            filtered = filtered.Where(b =>
+                string.Equals(b.StatusName, "Damaged", StringComparison.OrdinalIgnoreCase)).ToList();
 
-        filtered = _filter.SortIndex == 0
-            ? filtered.OrderBy(b => b.Title, StringComparer.OrdinalIgnoreCase).ToList()
-            : filtered.OrderByDescending(b => b.Title, StringComparer.OrdinalIgnoreCase).ToList();
+        if (_filter.CategoryIndex > 0)
+            filtered = filtered.Where(b =>
+                string.Equals(b.CategoryName, _filter.SelectedCategory,
+                    StringComparison.OrdinalIgnoreCase)).ToList();
+
+        filtered = _filter.AvailabilityIndex switch
+        {
+            1 => filtered.Where(b => b.AvailableCopies > 0).ToList(),
+            2 => filtered.Where(b => b.AvailableCopies == 0).ToList(),
+            _ => filtered
+        };
+
+        filtered = _filter.SortIndex switch
+        {
+            1 => filtered.OrderByDescending(b => b.Title, StringComparer.OrdinalIgnoreCase).ToList(),
+            2 => filtered.OrderByDescending(b => b.CreatedAt).ThenBy(b => b.Title, StringComparer.OrdinalIgnoreCase).ToList(),
+            3 => filtered.OrderBy(b => b.CreatedAt).ThenBy(b => b.Title, StringComparer.OrdinalIgnoreCase).ToList(),
+            4 => filtered.OrderByDescending(b => b.TotalCopies).ThenBy(b => b.Title, StringComparer.OrdinalIgnoreCase).ToList(),
+            5 => filtered.OrderBy(b => b.TotalCopies).ThenBy(b => b.Title, StringComparer.OrdinalIgnoreCase).ToList(),
+            _ => filtered.OrderBy(b => b.Title, StringComparer.OrdinalIgnoreCase).ToList()
+        };
 
         _filteredCount = filtered.Count;
         _page = Math.Clamp(_page, 1, TotalPages);
