@@ -751,8 +751,9 @@ public sealed class BookEditorPage : ThemedUserControl
 
         // Author IDs are restored once the database author list loads.
 
-        _reservedCopies = Math.Max(0,
-            _existing.TotalCopies - _existing.AvailableCopies);
+        // Do not infer active loans from unavailable inventory.
+        // The repository validates real outstanding loans on save.
+        _reservedCopies = 0;
         _total.Value = _existing.TotalCopies;
         _available.Value = _existing.AvailableCopies;
         SyncInventory();
@@ -1388,16 +1389,15 @@ public sealed class BookEditorPage : ThemedUserControl
             action.Cursor = Cursors.Hand;
         }
 
-        // Match ThemedMessageDialog's danger confirmation button exactly.
-        // Both use the current theme's Danger color and the default
-        // WinForms Flat button hover/pressed behavior.
-        _delete.BackColor = c.Danger;
+        // Match the soft coral-red Delete confirmation button.
+        Color deleteRed = Color.FromArgb(255, 143, 137);
+        _delete.BackColor = deleteRed;
         _delete.ForeColor = Color.White;
-        _delete.FlatStyle = FlatStyle.Flat;
-        _delete.UseVisualStyleBackColor = false;
         _delete.FlatAppearance.BorderSize = 0;
-        _delete.FlatAppearance.MouseOverBackColor = Color.Empty;
-        _delete.FlatAppearance.MouseDownBackColor = Color.Empty;
+        _delete.FlatAppearance.MouseOverBackColor =
+            ControlPaint.Dark(deleteRed, 0.12f);
+        _delete.FlatAppearance.MouseDownBackColor =
+            ControlPaint.Dark(deleteRed, 0.23f);
 
         _cover.RefreshTheme();
         _lookup.RefreshTheme();

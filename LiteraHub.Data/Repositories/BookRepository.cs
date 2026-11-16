@@ -219,20 +219,28 @@ public sealed class BookRepository : IBookRepository
                 return false;
             }
 
-            int outstanding =
-                current.TotalCopies - current.AvailableCopies;
+            // Only actual unreturned loans reserve copies. A difference
+            // between Total and Available may also represent manually
+            // unavailable stock and must not be treated as a loan.
+            int activeLoans = await conn.ExecuteScalarAsync<int>(
+                """
+                SELECT COUNT(*)
+                FROM dbo.BorrowReturns WITH (UPDLOCK, HOLDLOCK)
+                WHERE BookId = @BookId
+                  AND Status = N'Borrowed'
+                  AND ReturnDate IS NULL;
+                """,
+                new { BookId = bookId }, tx);
 
-            if (input.TotalCopies < outstanding ||
-                input.AvailableCopies >
-                    input.TotalCopies - outstanding)
+            if (input.TotalCopies < activeLoans ||
+                input.AvailableCopies > input.TotalCopies - activeLoans)
             {
                 throw new InvalidOperationException(
-                    "Copy counts conflict with existing loans.");
+                    "Copy counts conflict with active loans.");
             }
 
-            // Available copies are computed from the current
-            // outstanding count rather than trusting stale UI data.
-            int available = input.TotalCopies - outstanding;
+            // Preserve the exact value entered by the user, including 0.
+            int available = input.AvailableCopies;
 
             int affected = await conn.ExecuteAsync(
                 """
