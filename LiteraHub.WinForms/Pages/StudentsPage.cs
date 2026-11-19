@@ -20,12 +20,12 @@ public sealed class StudentsPage : ThemedUserControl
     private readonly Label _status = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
     private readonly ThemedDataGridView _grid = new() { Dock = DockStyle.Fill, Margin = Padding.Empty, ReadOnlyDisplayMode = true };
     private readonly TableLayoutPanel _pagination = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Padding = new Padding(0, 12, 0, 0) };
-    private readonly Label _pageInfo = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
-    private readonly FlowLayoutPanel _pageControls = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false };
+    private readonly Label _pageInfo = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
+    private readonly FlowLayoutPanel _pageControls = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Margin = Padding.Empty, Padding = Padding.Empty };
     private readonly Button _previous = new() { Text = "‹", Size = new Size(36, 32), FlatStyle = FlatStyle.Flat };
     private readonly Button _next = new() { Text = "›", Size = new Size(36, 32), FlatStyle = FlatStyle.Flat };
     private readonly Label _pageNumber = new() { Size = new Size(64, 32), TextAlign = ContentAlignment.MiddleCenter };
-    private readonly Label _rowsLabel = new() { Text = "Rows:", Size = new Size(42, 32), TextAlign = ContentAlignment.MiddleCenter };
+    private readonly Label _rowsLabel = new() { Text = "Rows:", AutoSize = false, Size = new Size(48, 32), TextAlign = ContentAlignment.MiddleCenter };
     private readonly ThemedFilterDropdown _pageSize = new(new[] { "10", "25", "50", "100" }) { Size = new Size(68, 32) };
     private readonly BindingSource _binding = new();
     private readonly List<Student> _all = new();
@@ -52,9 +52,10 @@ public sealed class StudentsPage : ThemedUserControl
         _toolbar.Controls.Add(_filter, 1, 0);
         _toolbar.Controls.Add(_add, 2, 0);
         _pagination.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        _pagination.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300));
+        _pagination.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 306));
         _pagination.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         _pageControls.Margin = Padding.Empty;
+        _pageControls.Padding = Padding.Empty;
         _pageControls.Controls.AddRange(new Control[] { _next, _pageNumber, _previous, _pageSize, _rowsLabel });
         foreach (Control control in _pageControls.Controls) control.Margin = new Padding(4, 8, 0, 0);
         _pagination.Controls.Add(_pageInfo, 0, 0);
@@ -178,7 +179,7 @@ public sealed class StudentsPage : ThemedUserControl
         _page = Math.Clamp(_page, 1, pages);
         _binding.DataSource = _filtered.Skip((_page - 1) * _size).Take(_size).ToList();
         _grid.ClearRowSelection();
-        _status.Text = _all.Count == 0 ? "No students yet. Select + Add Student to create the first record." : $"{_filtered.Count} of {_all.Count} students match.";
+        _status.Text = _all.Count == 0 ? "No matching students." : $"{_filtered.Count} of {_all.Count} students match.";
         _pageInfo.Text = _filtered.Count == 0 ? "Showing 0 students" : $"Showing {(_page - 1) * _size + 1}–{Math.Min(_page * _size, _filtered.Count)} of {_filtered.Count}";
         _pageNumber.Text = $"{_page} / {pages}";
         _previous.Enabled = _page > 1;
@@ -238,7 +239,8 @@ public sealed class StudentsPage : ThemedUserControl
         _toolbar.ColumnStyles[1].Width = compact ? 108 : 145;
         _toolbar.ColumnStyles[2].Width = compact ? 44 : 160;
         _add.Text = compact ? "+" : "+ Add Student";
-        _pagination.ColumnStyles[1].Width = compact ? 245 : 300;
+        _add.Font = compact ? new Font("Segoe UI", 18f) : Theme.BodyStrong;
+        _pagination.ColumnStyles[1].Width = compact ? 251 : 306;
         _heading.Font = compact ? Theme.BodyStrong : Theme.Title;
         _grid.AutoSizeColumnsMode = compact ? DataGridViewAutoSizeColumnsMode.None : DataGridViewAutoSizeColumnsMode.Fill;
         if (compact)
@@ -256,13 +258,18 @@ public sealed class StudentsPage : ThemedUserControl
         _status.Font = Theme.Caption;
         _pageInfo.BackColor = c.Background;
         _pageInfo.ForeColor = c.TextMuted;
-        _pageInfo.Font = _compact ? Theme.Caption : Theme.Body;
+        _pageInfo.Font = _compact ? Theme.Caption : Theme.Body; // exact BooksPage responsive typography
         _pageNumber.BackColor = c.Background;
         _pageNumber.ForeColor = c.Text;
         _pageNumber.Font = Theme.Body;
         _rowsLabel.BackColor = c.Background;
         _rowsLabel.ForeColor = c.TextMuted;
         _rowsLabel.Font = Theme.Body;
+        _rowsLabel.Text = "Rows:";
+        _rowsLabel.Size = new Size(48, 32);
+        _rowsLabel.AutoSize = false;
+        _rowsLabel.TextAlign = ContentAlignment.MiddleCenter;
+        _rowsLabel.Padding = Padding.Empty;
         foreach (var button in new[] { _previous, _next })
         {
             button.BackColor = c.Surface;
@@ -274,8 +281,9 @@ public sealed class StudentsPage : ThemedUserControl
         _add.BackColor = c.Accent;
         _add.ForeColor = c.OnAccent;
         _add.FlatAppearance.BorderSize = 0;
-        _add.Font = _compact ? Theme.Title : Theme.BodyStrong;
-        _add.FlatAppearance.MouseOverBackColor = c.AccentSoft;
+        _add.Font = _compact ? new Font("Segoe UI", 18f) : Theme.BodyStrong;
+        _add.FlatAppearance.MouseOverBackColor = ControlPaint.Light(c.Accent, 0.08f);
+        _add.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(c.Accent, 0.08f);
         _filter.ApplyTheme();
         _pageSize.ApplyTheme();
         _grid.ApplyTheme();

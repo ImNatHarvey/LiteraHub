@@ -81,3 +81,12 @@ LiteraHub/
 - `LiteraHub.WinForms/Pages/StudentDetailsPage.cs` — grouped, responsive student form using existing `ScrollHost` and `ThemedBirthDateDialog`.
 - `LiteraHub.WinForms/Controls/ThemedStudentsFilterSort.cs` — custom painted menu consistent with Books/Categories instead of native `ContextMenuStrip`.
 - Existing `ScrollHost.cs`, `ThinScrollBar.cs`, `ThemedBirthDateDialog.cs`, `Theme.cs` are **dependencies**; do not overwrite them with this batch.
+
+### Step 6C.3 updated UI files
+- `LiteraHub.WinForms/Pages/StudentsPage.cs`: button/font/footer matching for student list.
+- `LiteraHub.WinForms/Pages/StudentDetailsPage.cs`: three-column details; themed controls and avatar; nested local-only `StudentPhotoStore`. No added `.cs` file or database migration.
+
+### Step 6C.4 affected files
+- `LiteraHub.WinForms/Pages/BookEditorPage.cs` — Book actions in a separate footer outside the book content surface.
+- `LiteraHub.WinForms/Pages/StudentDetailsPage.cs` — Student actions in a separate footer, custom Back chevron, centered and responsive avatar.
+- `LiteraHub.WinForms/Pages/StudentsPage.cs` — pagination alignment/typography and `Rows:` label.

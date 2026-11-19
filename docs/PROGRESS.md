@@ -77,3 +77,20 @@
 - Rebuilt Student Details with Student Information, Address and Contact Information sections, fixed header/action footer, `ScrollHost`/`ThinScrollBar` scrolling, and `ThemedBirthDateDialog` via a themed date button.
 - Preserved student service calls, read-only existing-record mode, Add/Edit/Cancel, and archive/restore. No database or service changes.
 - **Not compiled or runtime-tested; user acceptance pending.**
+
+### Step 6C.3 — Student layout and action polish (delivered; pending acceptance)
+- Matched Students list action button and pagination typography with the Books module.
+- Reworked existing student form to a three-column desktop / single-column portrait layout on a themed `ScrollHost` surface; used `ThemedTextField`, `ThemedBirthDateDialog`, and themed dropdowns.
+- Added circular student-photo preview with initials fallback and PNG/JPEG photo selection. **Photos are stored only in the current Windows user's LocalApplicationData**, keyed by student number; they do not sync across PCs or store in SQL Server. Database-backed photo storage remains an explicit future decision.
+- Generated new, immutable candidate student numbers in the form `STU-#########` using a cryptographically secure random generator; uniqueness is enforced by the existing SQL unique constraint and student service. A rare collision must be retried by reopening Add Student.
+- Matched book action icons and horizontal placement for Delete, Archive/Restore, Edit/Save. **Delete Student is disabled:** the repository and service contain no supported hard-delete and the schema has dependent foreign keys. Archive/Restore remains functional.
+- No changes to database schema, service/data interfaces, existing Catalog modules, or current theme presets.
+- Code not independently compiled or runtime-tested; developer acceptance pending.
+
+### Step 6C.4 — Student & Book detail layout alignment (delivered; awaiting developer acceptance)
+- Student Details and Book Editor actions moved into separate themed footer rows below their scrollable content surfaces; the actions remain right-aligned on desktop.
+- Student header Back control uses a custom-painted chevron matching the Book Editor geometry.
+- Student avatar initials are centered with `StringFormat` and its diameter grows on wide desktop content areas.
+- Student directory pagination uses the same Theme.Body/Theme.Caption conventions as Books and explicitly displays `Rows:`.
+- Existing data-layer operations, local-only student photo cache, generated StudentNo, and disabled hard-delete remain unchanged.
+- **Not compiled or runtime-tested in this environment; verify 1280×720, 1920×1080, 390×844, all presets and existing Books behavior.**

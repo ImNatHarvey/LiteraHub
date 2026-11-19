@@ -25,7 +25,7 @@ public sealed class BookEditorPage : ThemedUserControl
     {
         Dock = DockStyle.Fill,
         ColumnCount = 1,
-        RowCount = 3,
+        RowCount = 4,
         Margin = Padding.Empty
     };
 
@@ -61,6 +61,13 @@ public sealed class BookEditorPage : ThemedUserControl
         Dock = DockStyle.Fill,
         AutoScroll = false,
         Margin = Padding.Empty
+    };
+
+    private readonly Panel _actionFooter = new()
+    {
+        Dock = DockStyle.Fill,
+        Margin = Padding.Empty,
+        Padding = Padding.Empty
     };
 
     private readonly Panel _content = new()
@@ -632,6 +639,9 @@ public sealed class BookEditorPage : ThemedUserControl
         _layout.RowStyles.Add(
             new RowStyle(SizeType.Percent, 100));
 
+        _layout.RowStyles.Add(
+            new RowStyle(SizeType.Absolute, 60));
+
         _header.ColumnStyles.Add(
             new ColumnStyle(SizeType.Percent, 100));
 
@@ -667,10 +677,11 @@ public sealed class BookEditorPage : ThemedUserControl
             _totalLabel,
             _total,
             _availableLabel,
-            _available,
-            _archive,
-            _delete,
-            _save
+            _available
+        });
+        _actionFooter.Controls.AddRange(new Control[]
+        {
+            _delete, _archive, _save
         });
 
         _viewport.Controls.Add(_content);
@@ -679,6 +690,7 @@ public sealed class BookEditorPage : ThemedUserControl
         _layout.Controls.Add(_header, 0, 0);
         _layout.Controls.Add(_description, 0, 1);
         _layout.Controls.Add(_viewport, 0, 2);
+        _layout.Controls.Add(_actionFooter, 0, 3);
 
         Controls.Add(_layout);
 
@@ -713,6 +725,7 @@ public sealed class BookEditorPage : ThemedUserControl
 
         Resize += (_, _) => ArrangeForm();
         _viewport.Resize += (_, _) => ArrangeForm();
+        _actionFooter.Resize += (_, _) => PositionFooterActions();
 
         _scrollbar.OffsetRequested += SetScrollOffset;
 
@@ -871,8 +884,8 @@ public sealed class BookEditorPage : ThemedUserControl
         int columnWidth = Math.Max(80, (innerWidth - gap) / 2);
         int leftX = pad;
         int rightX = pad + columnWidth + gap;
-        int actionY = Math.Max(pad, viewportHeight - pad - 40);
-        int fieldBottom = actionY - 12;
+        // Action buttons now live below the content surface.
+        int fieldBottom = Math.Max(pad, viewportHeight - pad);
         const int labelGap = 6;
         const int fieldGap = 7;
         bool wide = width >= 1200;
@@ -937,7 +950,7 @@ public sealed class BookEditorPage : ThemedUserControl
                 Math.Min(280, Math.Max(120, viewportHeight / 3)),
                 labelGap, fieldGap);
 
-            PositionActions(width, pad, actionY);
+            PositionFooterActions();
             return Math.Max(viewportHeight,
                 Math.Max(leftY, rightY) + pad);
         }
@@ -995,7 +1008,7 @@ public sealed class BookEditorPage : ThemedUserControl
         Field(_titleLabel, _title, bookX, ref bookY,
             columnWidth, 36, labelGap, fieldGap);
 
-        PositionActions(width, pad, actionY);
+        PositionFooterActions();
         return Math.Max(viewportHeight,
             Math.Max(bookY, classificationY) + pad);
     }
@@ -1036,36 +1049,31 @@ public sealed class BookEditorPage : ThemedUserControl
         Field(_descriptionLabel, _bookDescription,
             x, ref y, fieldWidth, 90);
         y += 8;
-        if (_existing is not null)
-        {
-            _delete.SetBounds(x, y, fieldWidth, 40);
-            y += 48;
-            _archive.SetBounds(x, y, fieldWidth, 40);
-            y += 48;
-        }
-        _save.SetBounds(x, y, fieldWidth, 40);
-        return y + 40 + pad;
+        PositionFooterActions();
+        return y + pad;
     }
 
-    private void PositionActions(int width, int pad, int y)
+    private void PositionFooterActions()
     {
+        if (_actionFooter.ClientSize.Width < 1) return;
         const int gap = 8;
-        int right = width - pad;
+        const int height = 40;
+        int width = _actionFooter.ClientSize.Width;
+        bool portrait = width < 700;
+        int y = 8;
         if (_existing is null)
         {
-            _save.SetBounds(Math.Max(pad, right - 160), y, 160, 40);
+            _save.SetBounds(Math.Max(0, width - (portrait ? width : 160)),
+                y, portrait ? width : 160, height);
             return;
         }
-
-        // Align the left edge of Delete with the Description field.
-        // All three actions have identical widths and fill that row.
-        int left = Math.Max(pad, _bookDescription.Left);
-        int available = Math.Max(3, right - left - 2 * gap);
-        int buttonWidth = available / 3;
-        _delete.SetBounds(left, y, buttonWidth, 40);
-        _archive.SetBounds(left + buttonWidth + gap, y, buttonWidth, 40);
-        _save.SetBounds(left + (buttonWidth + gap) * 2, y,
-            buttonWidth, 40);
+        int actionWidth = portrait
+            ? Math.Max(70, (width - 2 * gap) / 3)
+            : Math.Min(210, Math.Max(110, (width * 2 / 3 - 2 * gap) / 3));
+        int left = Math.Max(0, width - actionWidth * 3 - 2 * gap);
+        _delete.SetBounds(left, y, actionWidth, height);
+        _archive.SetBounds(left + actionWidth + gap, y, actionWidth, height);
+        _save.SetBounds(left + (actionWidth + gap) * 2, y, actionWidth, height);
     }
 
     private void PaintActionIcon(PaintEventArgs e, Button button, int kind)
@@ -1354,6 +1362,7 @@ public sealed class BookEditorPage : ThemedUserControl
 
         _viewport.BackColor = c.Surface;
         _content.BackColor = c.Surface;
+        _actionFooter.BackColor = c.Background;
 
         foreach (Control control in _content.Controls)
         {

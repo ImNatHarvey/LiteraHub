@@ -84,3 +84,12 @@ Apply the provided replacements for `StudentsPage.cs`, `StudentDetailsPage.cs`, 
 
 ### Pending acceptance — Step 6C.2 (Student visual consistency)
 The user reported unthemed native Student filter popup and date picker, native scrollbar, oversized Add button, and poor Student Details layout. Latest replacement uses `ThemedStudentsFilterSort` based on `ThemedCatalogFilterSort` custom popup, uses `ScrollHost` and `ThemedBirthDateDialog`, and groups details into three sections. Replace only the three Student UI `.cs` files in the package. Previous 6C.1 was not accepted. No commit/push. Test builds, nine themes, 1280×720 / 1920×1080 / 390×844, create/view/edit/cancel/archive, dropdown and scrolling, then regression across Books/Categories/Authors. Books View/Edit enhancement remains next after acceptance.
+
+## Step 6C.3 handoff — pending developer tests
+- `StudentsPage.cs` list font/button/footer polish; `StudentDetailsPage.cs` three-column details, photo preview and local file cache, auto-generated student number, themed actions.
+- Do NOT claim hard deletion or shared photo storage: Delete is intentionally disabled, photos are per-user-local.
+- Test at 1280×720, 1920×1080, 390×844; nine themes; photo persists after closing/reopening on same Windows account; add/edit/view/archive/restore; catalog regressions.
+- Follow-up after acceptance: agree case-study-compliant student number policy and whether student photos require SQL-backed shared storage.
+
+### Latest delivered batch: Step 6C.4
+Separate fixed action footer below content surfaces for both Student Details and Book Editor; align Student Back chevron/initials and list footer. No student database migration, deletion service, or new Markdown file. Await developer build/UI regression tests; focus 1280×720, 1920×1080, portrait 390×844 and nine themes.
