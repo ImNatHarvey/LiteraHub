@@ -76,15 +76,10 @@ public sealed class StudentsPage : ThemedUserControl
         AddColumn("Email", "Email", nameof(Student.Email), 20, 160);
         AddColumn("Status", "Status", null, 10, 90);
         AddColumn("Actions", "", null, 6, 55);
-        // Reuse the same horizontal-only grid borders as Books.
-        _grid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
-        _grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
-        _grid.AdvancedCellBorderStyle.Left = DataGridViewAdvancedCellBorderStyle.None;
-        _grid.AdvancedCellBorderStyle.Right = DataGridViewAdvancedCellBorderStyle.None;
-        // Use a per-row divider instead of cell borders. This prevents
-        // vertical strokes between Student columns while keeping the
-        // same horizontal visual rhythm as the other directories.
-        _grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
+        // Shared grid styling is owned by ThemedDataGridView.
+        // Native cell borders are disabled because the horizontal divider
+        // is painted once per Student cell by PaintStudentCell.
+        _grid.CellBorderStyle = DataGridViewCellBorderStyle.None;
         _grid.AutoGenerateColumns = false;
         _grid.ReadOnly = true;
         _grid.MultiSelect = false;
@@ -107,7 +102,7 @@ public sealed class StudentsPage : ThemedUserControl
             _grid.Columns[name]!.HeaderCell.Style.Padding = Padding.Empty;
             _grid.Columns[name]!.DefaultCellStyle.Padding = Padding.Empty;
         }
-        _grid.CellPainting += PaintAction;
+        _grid.CellPainting += PaintStudentCell;
         _grid.CellMouseUp += async (_, e) =>
         {
             if (e.Button == MouseButtons.Left && e.RowIndex >= 0 && e.ColumnIndex >= 0 &&
@@ -228,16 +223,71 @@ public sealed class StudentsPage : ThemedUserControl
         _layout.BringToFront();
     }
 
-    private void PaintAction(object? sender, DataGridViewCellPaintingEventArgs e)
+    // Paint every Student cell as one horizontal-banded table. The shared
+    // ThemedDataGridView still owns fonts, selection, scrolling and column sizing.
+    // Painting content only (not Borders/Background) prevents the vertical
+    // seams that were visible on alternating rows after navigation/theme refresh.
+    private void PaintStudentCell(object? sender, DataGridViewCellPaintingEventArgs e)
     {
-        if (e.RowIndex < 0 || e.ColumnIndex < 0 || _grid.Columns[e.ColumnIndex].Name != "Actions") return;
-        e.PaintBackground(e.CellBounds, false);
+        if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
         if (e.Graphics is null) return;
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using var pen = new Pen(Theme.Colors.Accent, 2.2f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
-        int x = e.CellBounds.Left + e.CellBounds.Width / 2;
-        int y = e.CellBounds.Top + e.CellBounds.Height / 2;
-        e.Graphics.DrawLines(pen, new[] { new Point(x - 4, y - 7), new Point(x + 3, y), new Point(x - 4, y + 7) });
+
+        var c = Theme.Colors;
+        var rect = e.CellBounds;
+        using (var fill = new SolidBrush(e.RowIndex % 2 == 0 ? c.Surface : c.SurfaceAlt))
+            e.Graphics.FillRectangle(fill, rect);
+
+        // Categories has a single subtle divider below each row, not cell boxes.
+        using (var divider = new Pen(c.Border))
+            e.Graphics.DrawLine(divider, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
+
+        if (_grid.Columns[e.ColumnIndex].Name == "Status")
+        {
+            // The same check-in-circle / minus-in-circle status used by Authors.
+            bool active = e.RowIndex < _grid.Rows.Count &&
+                _grid.Rows[e.RowIndex].DataBoundItem is Student student &&
+                student.IsActive;
+            int cx = rect.Left + rect.Width / 2;
+            int cy = rect.Top + rect.Height / 2;
+            var previous = e.Graphics.SmoothingMode;
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using var pen = new Pen(active ? c.PillGoodText : c.Danger, 2f);
+            e.Graphics.DrawEllipse(pen, cx - 9, cy - 9, 18, 18);
+            if (active)
+                e.Graphics.DrawLines(pen, new[]
+                {
+                    new Point(cx - 5, cy),
+                    new Point(cx - 1, cy + 4),
+                    new Point(cx + 6, cy - 4)
+                });
+            else
+                e.Graphics.DrawLine(pen, cx - 4, cy, cx + 4, cy);
+            e.Graphics.SmoothingMode = previous;
+        }
+        else if (_grid.Columns[e.ColumnIndex].Name == "Actions")
+        {
+            var previous = e.Graphics.SmoothingMode;
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using var pen = new Pen(c.Accent, 2.2f)
+            {
+                StartCap = LineCap.Round,
+                EndCap = LineCap.Round,
+                LineJoin = LineJoin.Round
+            };
+            int x = rect.Left + rect.Width / 2;
+            int y = rect.Top + rect.Height / 2;
+            e.Graphics.DrawLines(pen, new[]
+            {
+                new Point(x - 4, y - 7), new Point(x + 3, y), new Point(x - 4, y + 7)
+            });
+            e.Graphics.SmoothingMode = previous;
+        }
+        else
+        {
+            // Preserve DataGridView formatting for FullName, Status, alignment
+            // and the original Theme.Body font; do not paint native cell borders.
+            e.Paint(rect, DataGridViewPaintParts.ContentForeground);
+        }
         e.Handled = true;
     }
 
@@ -256,6 +306,7 @@ public sealed class StudentsPage : ThemedUserControl
         _add.Font = compact ? new Font("Segoe UI", 18f) : Theme.BodyStrong;
         _pagination.ColumnStyles[1].Width = compact ? 245 : 300;
         _heading.Font = compact ? Theme.BodyStrong : Theme.Title;
+        _pageInfo.Font = compact ? Theme.Caption : Theme.Body;
         _grid.AutoSizeColumnsMode = compact ? DataGridViewAutoSizeColumnsMode.None : DataGridViewAutoSizeColumnsMode.Fill;
         if (compact)
             foreach (DataGridViewColumn column in _grid.Columns) column.Width = column.MinimumWidth;
@@ -272,7 +323,7 @@ public sealed class StudentsPage : ThemedUserControl
         _status.Font = Theme.Caption;
         _pageInfo.BackColor = c.Background;
         _pageInfo.ForeColor = c.TextMuted;
-        _pageInfo.Font = Theme.Body;
+        _pageInfo.Font = _compact ? Theme.Caption : Theme.Body;
         _pageInfo.Margin = Padding.Empty;
         _pageInfo.Padding = Padding.Empty;
         _pageInfo.TextAlign = ContentAlignment.MiddleLeft;
@@ -297,10 +348,7 @@ public sealed class StudentsPage : ThemedUserControl
         _filter.ApplyTheme();
         _pageSize.ApplyTheme();
         _grid.ApplyTheme();
-        _grid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
-        _grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
-        _grid.AdvancedCellBorderStyle.Left = DataGridViewAdvancedCellBorderStyle.None;
-        _grid.AdvancedCellBorderStyle.Right = DataGridViewAdvancedCellBorderStyle.None;
+        _grid.CellBorderStyle = DataGridViewCellBorderStyle.None;
         _grid.ClearRowSelection();
         _grid.Invalidate();
     }

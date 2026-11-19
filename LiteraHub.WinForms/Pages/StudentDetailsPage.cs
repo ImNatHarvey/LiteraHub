@@ -38,12 +38,17 @@ public sealed class StudentDetailsPage : ThemedUserControl
     private readonly Button _photoButton = new() { FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Text = "Choose Photo" };
     private readonly AvatarView _avatar = new();
     private readonly Dictionary<string, ThemedTextField> _inputs = new();
+    private readonly Dictionary<string, Label> _viewInputs = new();
     private readonly Dictionary<string, (Label Caption, Control Control)> _fields = new();
     private readonly Label _studentHeading = new() { Text = "Student Information" };
     private readonly Label _addressHeading = new() { Text = "Address" };
     private readonly Label _contactHeading = new() { Text = "Personal & Contact" };
     private readonly Button _birthDate = new() { FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, TextAlign = ContentAlignment.MiddleLeft };
-    private readonly ThemedFilterDropdown _gender = new(new[] { "Select Gender", "Male", "Female", "Other", "Prefer not to say" });
+    private readonly ThemedFilterDropdown _gender = new(new[] { "Select Gender", "Male", "Female", "Other", "Prefer not to say" })
+    {
+        TextAlign = ContentAlignment.MiddleLeft,
+        Padding = new Padding(12, 0, 8, 0)
+    };
     private readonly ToolTip _toolTip = new();
     private readonly Label _viewBirthDate = new() { TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(12, 0, 0, 0) };
     private readonly Label _viewGender = new() { TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(12, 0, 0, 0) };
@@ -123,7 +128,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
         }
 
         _back.Click += (_, _) => { if (!_busy) BackRequested?.Invoke(this, EventArgs.Empty); };
-        
+
         _save.Click += async (_, _) =>
         {
             if (_busy) return;
@@ -167,6 +172,25 @@ public sealed class StudentDetailsPage : ThemedUserControl
         var field = new ThemedTextField { Text = value ?? "", MaxLength = max };
         _inputs.Add(key, field);
         AddSpecial(key, caption, field);
+        var view = new Label
+        {
+            AutoSize = false,
+            TabStop = false,
+            UseMnemonic = false,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(12, 3, 12, 3),
+            Visible = false,
+            BorderStyle = BorderStyle.None,
+            AutoEllipsis = false
+        };
+        view.Paint += (_, e) =>
+        {
+            using var border = new Pen(Theme.Colors.Border);
+            e.Graphics.DrawRectangle(border, 0, 0,
+                Math.Max(0, view.Width - 1), Math.Max(0, view.Height - 1));
+        };
+        _viewInputs.Add(key, view);
+        _surface.Controls.Add(view);
     }
 
     private void AddSpecial(string key, string caption, Control field)
@@ -205,6 +229,11 @@ public sealed class StudentDetailsPage : ThemedUserControl
                 var field = _fields[key];
                 field.Caption.SetBounds(left, top, columnWidth, 19);
                 field.Control.SetBounds(left, top + 27, columnWidth, fieldHeight);
+                if (_viewInputs.TryGetValue(key, out var view))
+                {
+                    view.Bounds = field.Control.Bounds;
+                    if (!_editing || key == "StudentNo") view.BringToFront();
+                }
                 top += fieldStep;
             }
             if (portrait)
@@ -279,8 +308,10 @@ public sealed class StudentDetailsPage : ThemedUserControl
         if (!_editing || _busy) return;
         using var picker = new OpenFileDialog
         {
-            Title = "Select Student Photo", Filter = "Images (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg",
-            CheckFileExists = true, Multiselect = false
+            Title = "Select Student Photo",
+            Filter = "Images (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg",
+            CheckFileExists = true,
+            Multiselect = false
         };
         if (picker.ShowDialog(FindForm()) != DialogResult.OK) return;
         try
@@ -322,36 +353,71 @@ public sealed class StudentDetailsPage : ThemedUserControl
 
     private static int GenderIndex(string? value) => value?.Trim().ToLowerInvariant() switch
     {
-        "male" => 1, "female" => 2, "other" => 3, "prefer not to say" => 4, _ => 0
+        "male" => 1,
+        "female" => 2,
+        "other" => 3,
+        "prefer not to say" => 4,
+        _ => 0
     };
 
     private void SetEditing(bool editing)
     {
         _editing = editing;
-        foreach (var field in _inputs.Values)
+
+        // EXACTLY like Book View: the original editor control is hidden and
+        // a non-focusable themed value label occupies its place. Never set
+        // ThemedTextField.ReadOnly in View mode; its own internal display label
+        // obscures the border and caused the broken corner-only rectangles.
+        foreach (var (key, field) in _inputs)
         {
+            bool displayOnly = !editing || key == "StudentNo";
+            field.ReadOnly = false;
             field.Enabled = true;
-            field.ReadOnly = !editing; // Keep enabled: WinForms disabled text becomes unreadable.
+            field.TabStop = !displayOnly;
+            field.Visible = !displayOnly;
+
+            var view = _viewInputs[key];
+            view.Text = field.Text;
+            view.Visible = displayOnly;
+            view.TabStop = false;
+            if (displayOnly) view.BringToFront();
         }
-        _inputs["StudentNo"].ReadOnly = true; // Generated student number is immutable.
+
         _viewBirthDate.Text = _selectedBirthDate?.ToString("MMMM d, yyyy", CultureInfo.CurrentCulture) ?? "Not specified";
-        _viewGender.Text = _original?.Gender ?? "Not specified";
+        _viewGender.Text = _gender.SelectedIndex > 0
+            ? new[] { "", "Male", "Female", "Other", "Prefer not to say" }[_gender.SelectedIndex]
+            : "Not specified";
         _viewBirthDate.Visible = !editing;
         _viewGender.Visible = !editing;
+        _birthDate.Visible = editing;
+        _gender.Visible = editing;
         _birthDate.Enabled = editing;
         _gender.Enabled = editing;
-        _viewBirthDate.BringToFront();
-        _viewGender.BringToFront();
+        if (!editing)
+        {
+            _viewBirthDate.BringToFront();
+            _viewGender.BringToFront();
+        }
+
         _photoButton.Visible = editing;
         _save.AccessibleName = editing ? "Save Student" : "Edit Student";
-        _archive.Visible = _original is not null && !editing;
+        // Match Book Editor: the three action buttons retain their positions
+        // and remain visible for an existing record in View and Edit.
+        _archive.Visible = _original is not null;
         _archive.AccessibleName = _original?.IsActive == false ? "Restore Student" : "Archive Student";
-        _delete.Visible = _original is not null && !editing;
+        _delete.Visible = _original is not null;
         _delete.Enabled = _canHardDelete && !_busy;
         _cancel.Visible = _original is not null && editing;
         _heading.Text = _original is null ? "Add Student" : editing ? "Edit Student" : "Student Details";
         _subtitle.Text = _original is null ? "Register a new student." : editing ? "Update student information." : "Viewing student record.";
-        if (IsHandleCreated) { ArrangeForm(); PositionFooterButtons(); }
+        if (IsHandleCreated)
+        {
+            ArrangeForm();
+            PositionFooterButtons();
+        }
+        _save.Invalidate();
+        _archive.Invalidate();
+        _delete.Invalidate();
     }
 
     private void RestoreOriginal()
@@ -359,12 +425,18 @@ public sealed class StudentDetailsPage : ThemedUserControl
         if (_original is null) return;
         foreach (var (key, value) in new Dictionary<string, string?>
         {
-            ["StudentNo"] = _original.StudentNo, ["FirstName"] = _original.FirstName,
-            ["MiddleName"] = _original.MiddleName, ["LastName"] = _original.LastName,
-            ["HouseNo"] = _original.HouseNo, ["Street"] = _original.Street,
-            ["Municipality"] = _original.Municipality, ["CityProvince"] = _original.CityProvince,
-            ["ZipCode"] = _original.ZipCode, ["MobileNo"] = _original.MobileNo,
-            ["LandlineNo"] = _original.LandlineNo, ["Email"] = _original.Email
+            ["StudentNo"] = _original.StudentNo,
+            ["FirstName"] = _original.FirstName,
+            ["MiddleName"] = _original.MiddleName,
+            ["LastName"] = _original.LastName,
+            ["HouseNo"] = _original.HouseNo,
+            ["Street"] = _original.Street,
+            ["Municipality"] = _original.Municipality,
+            ["CityProvince"] = _original.CityProvince,
+            ["ZipCode"] = _original.ZipCode,
+            ["MobileNo"] = _original.MobileNo,
+            ["LandlineNo"] = _original.LandlineNo,
+            ["Email"] = _original.Email
         }) _inputs[key].Text = value ?? "";
         _selectedBirthDate = _original.BirthDate.Date;
         UpdateBirthDateCaption();
@@ -482,21 +554,31 @@ public sealed class StudentDetailsPage : ThemedUserControl
         }
     }
 
+    // Same button label grouping, colors and icon geometry as BookEditorPage.
     private void DrawAction(PaintEventArgs e, Button button, int kind)
     {
+        if (button.Width < 90 || button.Height < 24) return;
         var c = Theme.Colors;
         var g = e.Graphics;
-        var old = g.SmoothingMode;
+        var previous = g.SmoothingMode;
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        string label = kind == 0 ? (_editing ? "Save Student" : "Edit Student") : kind == 1
-            ? (_original?.IsActive == false ? "Restore Student" : "Archive Student") : "Delete Student";
-        if (_responsive && button.Width < 130) label = kind == 0 ? (_editing ? "Save" : "Edit") : kind == 1 ? (_original?.IsActive == false ? "Restore" : "Archive") : "Delete";
-        Color ink = button.Enabled ? button.ForeColor : c.TextMuted;
-        // The Book action uses the normal themed foreground in both archive states.
-        var measured = TextRenderer.MeasureText(label, button.Font);
-        int cx = Math.Max(12, (button.Width - measured.Width - 24) / 2 + 8);
+
+        Color iconColor = kind == 2 ? Color.White
+            : kind == 0 ? Color.FromArgb(118, 235, 173)
+            : (_original?.IsActive == false ? Color.FromArgb(118, 235, 173) : c.TextMuted);
+        if (!button.Enabled) iconColor = c.TextMuted;
+
+        string label = kind == 0 ? (_editing ? "Save Student" : "Edit Student")
+            : kind == 2 ? "Delete Student"
+            : (_original?.IsActive == false ? "Restore Student" : "Archive Student");
+        if (_responsive && button.Width < 130)
+            label = kind == 0 ? (_editing ? "Save" : "Edit")
+                : kind == 2 ? "Delete" : (_original?.IsActive == false ? "Restore" : "Archive");
+
+        Size labelSize = TextRenderer.MeasureText(label, button.Font);
+        int cx = Math.Max(13, (button.Width - labelSize.Width - 30) / 2 + 9);
         int cy = button.Height / 2;
-        using var pen = new Pen(ink, 2f);
+        using var pen = new Pen(iconColor, 2f);
         if (kind == 0)
         {
             g.DrawLine(pen, cx - 8, cy - 7, cx + 1, cy - 7);
@@ -504,6 +586,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
             g.DrawLine(pen, cx - 8, cy + 8, cx + 7, cy + 8);
             g.DrawLine(pen, cx + 7, cy + 8, cx + 7, cy + 1);
             g.DrawLine(pen, cx - 2, cy + 3, cx + 8, cy - 7);
+            g.DrawLine(pen, cx - 3, cy + 5, cx - 2, cy + 3);
         }
         else if (kind == 1)
         {
@@ -530,9 +613,13 @@ public sealed class StudentDetailsPage : ThemedUserControl
             g.DrawLine(pen, cx - 3, cy, cx - 3, cy + 6);
             g.DrawLine(pen, cx + 3, cy, cx + 3, cy + 6);
         }
-        TextRenderer.DrawText(g, label, button.Font, new Rectangle(cx + 16, 0, Math.Max(1, button.Width - cx - 18), button.Height), ink,
-            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
-        g.SmoothingMode = old;
+        var textRect = new Rectangle(cx + 16, 0,
+            Math.Max(0, button.Width - cx - 18), button.Height);
+        TextRenderer.DrawText(g, label, button.Font, textRect,
+            button.Enabled ? button.ForeColor : c.TextMuted,
+            TextFormatFlags.VerticalCenter | TextFormatFlags.Left |
+            TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
+        g.SmoothingMode = previous;
     }
 
     protected override void ApplyTheme()
@@ -562,9 +649,16 @@ public sealed class StudentDetailsPage : ThemedUserControl
             field.Caption.ForeColor = c.Text;
             field.Caption.Font = Theme.Body;
         }
+        foreach (var value in _viewInputs.Values)
+        {
+            value.BackColor = c.SurfaceAlt;
+            value.ForeColor = c.Text;
+            value.Font = Theme.BodyStrong;
+            value.Invalidate();
+        }
         foreach (var value in new[] { _viewBirthDate, _viewGender })
         {
-            value.BackColor = c.Surface;
+            value.BackColor = c.SurfaceAlt;
             value.ForeColor = c.Text;
             value.Font = Theme.BodyStrong;
         }
@@ -584,24 +678,29 @@ public sealed class StudentDetailsPage : ThemedUserControl
             button.FlatAppearance.BorderSize = 1;
             button.FlatAppearance.MouseOverBackColor = c.AccentSoft;
         }
+        // Match BookEditorPage's three action styles and interactive states.
         _save.BackColor = Color.FromArgb(34, 139, 86);
         _save.ForeColor = Color.White;
         _save.Font = Theme.BodyStrong;
         _save.FlatAppearance.BorderSize = 0;
-        _save.FlatAppearance.MouseOverBackColor = _save.BackColor;
-        _save.FlatAppearance.MouseDownBackColor = _save.BackColor;
+        _save.FlatAppearance.MouseOverBackColor = Color.Empty;
+        _save.FlatAppearance.MouseDownBackColor = Color.Empty;
+
         _archive.BackColor = c.Surface;
         _archive.ForeColor = c.Text;
+        _archive.Font = Theme.BodyStrong;
         _archive.FlatAppearance.BorderColor = c.Border;
         _archive.FlatAppearance.BorderSize = 1;
-        _archive.FlatAppearance.MouseOverBackColor = c.SurfaceAlt;
-        _archive.FlatAppearance.MouseDownBackColor = c.AccentSoft;
-        _delete.BackColor = Color.FromArgb(255, 143, 137);
+        _archive.FlatAppearance.MouseOverBackColor = Color.Empty;
+        _archive.FlatAppearance.MouseDownBackColor = Color.Empty;
+
+        Color deleteRed = Color.FromArgb(255, 143, 137);
+        _delete.BackColor = deleteRed;
         _delete.ForeColor = Color.White;
         _delete.Font = Theme.BodyStrong;
         _delete.FlatAppearance.BorderSize = 0;
-        _delete.FlatAppearance.MouseOverBackColor = ControlPaint.Dark(_delete.BackColor, 0.12f);
-        _delete.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(_delete.BackColor, 0.23f);
+        _delete.FlatAppearance.MouseOverBackColor = ControlPaint.Dark(deleteRed, 0.12f);
+        _delete.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(deleteRed, 0.23f);
         _back.RefreshTheme();
         _avatar.Invalidate();
         ArrangeForm();
@@ -647,8 +746,11 @@ public sealed class StudentDetailsPage : ThemedUserControl
             {
                 using var font = new Font(Theme.Title.FontFamily, Math.Max(12, Height * .3f), FontStyle.Bold);
                 using var centered = new StringFormat
-                { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center,
-                  FormatFlags = StringFormatFlags.NoWrap };
+                {
+                    Alignment = StringAlignment.Center,
+                    LineAlignment = StringAlignment.Center,
+                    FormatFlags = StringFormatFlags.NoWrap
+                };
                 using var ink = new SolidBrush(c.Accent);
                 // DrawString avoids the TextRenderer vertical overhang on '?' and initials.
                 g.DrawString(_initials, font, ink, rect, centered);

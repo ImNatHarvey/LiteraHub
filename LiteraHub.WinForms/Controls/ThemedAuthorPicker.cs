@@ -103,6 +103,24 @@ public sealed class ThemedAuthorPicker : Button
     }
 
     /// <summary>
+    /// Cancel Edit: remove staged (not saved) authors and restore the original
+    /// stored author IDs without reopening the selection dialog or writing data.
+    /// </summary>
+    public void RestoreSavedSelection(
+        IEnumerable<BookLookupOption> authors,
+        IEnumerable<int> savedAuthorIds)
+    {
+        ArgumentNullException.ThrowIfNull(authors);
+        ArgumentNullException.ThrowIfNull(savedAuthorIds);
+        _popup?.Close();
+        _pending.Clear();
+        _nextPendingId = -1;
+        _selected.Clear();
+        _suggestedSearch = "";
+        SetAuthors(authors, savedAuthorIds);
+    }
+
+    /// <summary>
     /// Matches full author names from ISBN metadata against active DB authors.
     /// Existing selections are preserved; ambiguous names are NOT auto-selected.
     /// Returns names that still require a librarian's attention.

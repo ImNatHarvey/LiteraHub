@@ -104,10 +104,18 @@ public sealed class BookEditorPage : ThemedUserControl
     // Reuse the same themed popup dropdown as the Books toolbar.
     // Category options remain placeholders until database integration.
     private ThemedFilterDropdown _category =
-        new(new[] { "Select category" });
+        new(new[] { "Select category" })
+        {
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(12, 0, 8, 0)
+        };
 
     private ThemedFilterDropdown _condition =
-        new(new[] { "Good", "Damaged" });
+        new(new[] { "Good", "Damaged" })
+        {
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(12, 0, 8, 0)
+        };
 
     private readonly NumberField _total = new();
     private readonly NumberField _available = new();
@@ -140,8 +148,10 @@ public sealed class BookEditorPage : ThemedUserControl
     private readonly Dictionary<string, Label> _viewValues = new();
     private readonly Button _cancelEdit = new()
     {
-        Text = "Cancel Edit", FlatStyle = FlatStyle.Flat,
-        Cursor = Cursors.Hand, Visible = false
+        Text = "Cancel",
+        FlatStyle = FlatStyle.Flat,
+        Cursor = Cursors.Hand,
+        Visible = false
     };
     private bool _saving;
     private bool _canHardDelete;
@@ -170,6 +180,9 @@ public sealed class BookEditorPage : ThemedUserControl
     private IAuthorCreationService? _authorCreationService;
     private bool _authorsLoading;
     private bool _authorsLoaded;
+    // Cached lookup entries let Cancel restore the persisted author selection,
+    // including clearing any staged/unsaved authors in the existing picker.
+    private IReadOnlyList<BookLookupOption> _loadedAuthorOptions = Array.Empty<BookLookupOption>();
     private IReadOnlyList<string> _pendingMetadataAuthors = Array.Empty<string>();
 
     public IReadOnlyList<int> SelectedAuthorIds => _authors.SelectedAuthorIds;
@@ -256,7 +269,11 @@ public sealed class BookEditorPage : ThemedUserControl
             }
             var previous = _condition;
             var replacement = new ThemedFilterDropdown(
-                options.Select(x => x.Name).ToArray());
+                options.Select(x => x.Name).ToArray())
+            {
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(12, 0, 8, 0)
+            };
             _condition = replacement;
             _content.Controls.Add(replacement);
             previous.Dispose();
@@ -346,6 +363,7 @@ public sealed class BookEditorPage : ThemedUserControl
             if (IsDisposed || Disposing)
                 return;
 
+            _loadedAuthorOptions = records;
             var selected = _authors.SelectedAuthorIds.ToHashSet();
             if (!_authorsLoaded && _existing is not null)
                 selected.UnionWith(_existing.AuthorIds);
@@ -412,7 +430,11 @@ public sealed class BookEditorPage : ThemedUserControl
             }
 
             var previous = _category;
-            var replacement = new ThemedFilterDropdown(options);
+            var replacement = new ThemedFilterDropdown(options)
+            {
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(12, 0, 8, 0)
+            };
             _category = replacement;
             _categoryIds = ids;
             _save.Enabled = !_editing || (_authorsLoaded && _statusesLoaded);
@@ -713,9 +735,8 @@ public sealed class BookEditorPage : ThemedUserControl
         _back.Click += (_, _) =>
         {
             if (_saving) return;
-            if (_existing is not null && _editing &&
-                !ThemedMessageDialog.Confirm(FindForm(), "Discard Book Changes",
-                    "Return to Books without saving these edits?", confirmText: "Discard")) return;
+            // Match Student Details: Back returns directly to the list.
+            // Cancel below restores the saved record without leaving this page.
             BackRequested?.Invoke(this, EventArgs.Empty);
         };
 
@@ -734,9 +755,23 @@ public sealed class BookEditorPage : ThemedUserControl
         _cancelEdit.Click += (_, _) =>
         {
             if (_saving || _existing is null) return;
-            // Restore the persisted values without saving or leaving View Book.
+            // Restore every saved field, not just the fields visible in View mode.
+            // No validation, confirmation, or database write on Cancel.
             _editing = false;
+            _pendingMetadataAuthors = Array.Empty<string>();
             PopulateExistingBook();
+            if (_categoryIds.Length > 0)
+            {
+                int category = Array.IndexOf(_categoryIds, _existing.CategoryId);
+                if (category >= 0) _category.SelectedIndex = category;
+            }
+            if (_statusIds.Length > 0)
+            {
+                int condition = Array.IndexOf(_statusIds, _existing.StatusId);
+                if (condition >= 0) _condition.SelectedIndex = condition;
+            }
+            if (_authorsLoaded)
+                _authors.RestoreSavedSelection(_loadedAuthorOptions, _existing.AuthorIds);
             RefreshEditorMode();
         };
         _archive.Click += async (_, _) => await ChangeActiveAsync();
@@ -852,6 +887,14 @@ public sealed class BookEditorPage : ThemedUserControl
         try
         {
             bool portrait = Width < 700;
+            // In portrait edit mode, give Cancel its own row above the three
+            // existing actions. Never overlap Delete, Archive and Save.
+            bool stackedActions = _actionFooter.ClientSize.Width > 0
+                ? _actionFooter.ClientSize.Width < 700 : portrait;
+            float footerHeight = stackedActions && _existing is not null && _editing
+                ? 104 : 60;
+            if (Math.Abs(_layout.RowStyles[3].Height - footerHeight) > 0.5f)
+                _layout.RowStyles[3].Height = footerHeight;
 
             _header.ColumnStyles[1].Width =
                 portrait ? 88 : 100;
@@ -923,8 +966,13 @@ public sealed class BookEditorPage : ThemedUserControl
         int rightX = pad + columnWidth + gap;
         // Action buttons now live below the content surface.
         int fieldBottom = Math.Max(pad, viewportHeight - pad);
-        const int labelGap = 6;
-        const int fieldGap = 7;
+        // Compact *View* mode at 1280x720. The old 6/7px gaps could push
+        // a two-line author field and Description a few pixels past the
+        // viewport, activating the scrollbar even though the page nearly fit.
+        // Editing, wide desktop and portrait retain their own layouts.
+        bool compactView = _existing is not null && !_editing && width < 1200;
+        int labelGap = compactView ? 4 : 6;
+        int fieldGap = compactView ? 4 : 7;
         bool wide = width >= 1200;
 
         if (wide)
@@ -1019,8 +1067,11 @@ public sealed class BookEditorPage : ThemedUserControl
         Field(_authorsLabel, _authors, classificationX,
             ref classificationY, columnWidth, ViewAuthorHeight(columnWidth), labelGap, fieldGap);
 
-        int descriptionHeight = Math.Max(48,
-            fieldBottom - classificationY - 19 - labelGap);
+        int descriptionHeight = compactView &&
+            string.IsNullOrWhiteSpace(_existing?.Description)
+            ? 40
+            : Math.Max(compactView ? 40 : 48,
+                fieldBottom - classificationY - 19 - labelGap);
         Field(_descriptionLabel, _bookDescription,
             classificationX, ref classificationY, columnWidth,
             descriptionHeight, labelGap, 0);
@@ -1033,6 +1084,8 @@ public sealed class BookEditorPage : ThemedUserControl
         int coverLabelAndGap = 19 + labelGap + fieldGap;
         int coverHeight1280 = Math.Max(78,
             fieldBottom - bookY - coverLabelAndGap - afterCoverHeight);
+        if (compactView)
+            coverHeight1280 = Math.Min(190, coverHeight1280);
         int coverWidth1280 = Math.Max(55,
             (int)Math.Round(coverHeight1280 * 0.72));
 
@@ -1095,24 +1148,34 @@ public sealed class BookEditorPage : ThemedUserControl
         if (_actionFooter.ClientSize.Width < 1) return;
         const int gap = 8;
         const int height = 40;
-        int width = _actionFooter.ClientSize.Width;
-        bool portrait = width < 700;
-        int y = 8;
-        _cancelEdit.SetBounds(0, y, Math.Min(120, Math.Max(90, width / 5)), height);
-        _cancelEdit.Visible = _existing is not null && _editing && !portrait;
+        int fullWidth = _actionFooter.ClientSize.Width;
+        bool portrait = fullWidth < 700;
+        bool showCancel = _existing is not null && _editing;
+        int actionY = portrait && showCancel ? 54 : 8;
+
         if (_existing is null)
         {
-            _save.SetBounds(Math.Max(0, width - (portrait ? width : 160)),
-                y, portrait ? width : 160, height);
+            _cancelEdit.Visible = false;
+            _save.SetBounds(Math.Max(0, fullWidth - (portrait ? fullWidth : 160)),
+                actionY, portrait ? fullWidth : 160, height);
             return;
         }
+
         int actionWidth = portrait
-            ? Math.Max(70, (width - 2 * gap) / 3)
-            : Math.Min(210, Math.Max(110, (width * 2 / 3 - 2 * gap) / 3));
-        int left = Math.Max(0, width - actionWidth * 3 - 2 * gap);
-        _delete.SetBounds(left, y, actionWidth, height);
-        _archive.SetBounds(left + actionWidth + gap, y, actionWidth, height);
-        _save.SetBounds(left + (actionWidth + gap) * 2, y, actionWidth, height);
+            ? Math.Max(70, (fullWidth - 2 * gap) / 3)
+            : Math.Min(210, Math.Max(110, (fullWidth * 2 / 3 - 2 * gap) / 3));
+        int left = Math.Max(0, fullWidth - actionWidth * 3 - 2 * gap);
+        _delete.SetBounds(left, actionY, actionWidth, height);
+        _archive.SetBounds(left + actionWidth + gap, actionY, actionWidth, height);
+        _save.SetBounds(left + (actionWidth + gap) * 2, actionY, actionWidth, height);
+
+        // Exactly the Student Details Cancel behavior/layout on desktop.
+        // In portrait, Cancel gets a dedicated row so all four stay accessible.
+        int cancelWidth = portrait
+            ? Math.Min(115, fullWidth)
+            : Math.Min(115, Math.Max(80, left - gap));
+        _cancelEdit.SetBounds(0, portrait ? 4 : 8, cancelWidth, height);
+        _cancelEdit.Visible = showCancel;
     }
 
     private void PaintActionIcon(PaintEventArgs e, Button button, int kind)
@@ -1230,7 +1293,7 @@ public sealed class BookEditorPage : ThemedUserControl
         var measured = TextRenderer.MeasureText(text, Theme.BodyStrong,
             new Size(Math.Max(60, width - 26), 10000),
             TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
-        return Math.Max(40, measured.Height + 18);
+        return Math.Max(40, measured.Height + (_editing ? 18 : 14));
     }
 
     private void PositionViewValues()
@@ -1253,7 +1316,7 @@ public sealed class BookEditorPage : ThemedUserControl
             if (!_editing) overlay.BringToFront();
         }
         _lookup.Visible = _editing;
-        _cancelEdit.Visible = _existing is not null && _editing && _actionFooter.ClientSize.Width >= 700;
+        _cancelEdit.Visible = _existing is not null && _editing;
     }
 
     private void RefreshEditorMode()
@@ -1266,7 +1329,7 @@ public sealed class BookEditorPage : ThemedUserControl
         _save.Enabled = !_editing || (_authorsLoaded && _statusesLoaded && _categoryIds.Length > 1);
         _archive.Visible = _existing is not null;
         _delete.Visible = _existing is not null;
-        _cancelEdit.Visible = _existing is not null && _editing && _actionFooter.ClientSize.Width >= 700;
+        _cancelEdit.Visible = _existing is not null && _editing;
         _lookup.Enabled = _editing && _metadataService is not null;
         if (_existing is not null)
         {
@@ -1519,12 +1582,14 @@ public sealed class BookEditorPage : ThemedUserControl
             overlay.ForeColor = c.Text;
             overlay.Font = Theme.BodyStrong;
         }
-        _cancelEdit.BackColor = c.Surface;
+        // Same themed Cancel button as StudentDetailsPage.
+        _cancelEdit.BackColor = c.SurfaceAlt;
         _cancelEdit.ForeColor = c.Text;
         _cancelEdit.Font = Theme.Body;
         _cancelEdit.FlatAppearance.BorderColor = c.Border;
         _cancelEdit.FlatAppearance.BorderSize = 1;
-        _cancelEdit.FlatAppearance.MouseOverBackColor = c.SurfaceAlt;
+        _cancelEdit.FlatAppearance.MouseOverBackColor = c.AccentSoft;
+        _cancelEdit.FlatAppearance.MouseDownBackColor = c.AccentSoft;
         _category.ApplyTheme();
         _condition.ApplyTheme();
         _authors.ApplyTheme();
