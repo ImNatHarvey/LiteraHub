@@ -76,11 +76,22 @@ public sealed class StudentsPage : ThemedUserControl
         AddColumn("Email", "Email", nameof(Student.Email), 20, 160);
         AddColumn("Status", "Status", null, 10, 90);
         AddColumn("Actions", "", null, 6, 55);
+        // Match Books: horizontal row separators only, never per-cell borders.
+        _grid.CellBorderStyle = DataGridViewCellBorderStyle.None;
+        // Use a per-row divider instead of cell borders. This prevents
+        // vertical strokes between Student columns while keeping the
+        // same horizontal visual rhythm as the other directories.
+        _grid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
         _grid.AutoGenerateColumns = false;
         _grid.ReadOnly = true;
         _grid.MultiSelect = false;
         _grid.DataSource = new List<Student>();
-        _grid.DataBindingComplete += (_, _) => _grid.ClearRowSelection();
+        _grid.DataBindingComplete += (_, _) =>
+        {
+            foreach (DataGridViewRow row in _grid.Rows)
+                row.DividerHeight = 1;
+            _grid.ClearRowSelection();
+        };
         _grid.CellFormatting += (_, e) =>
         {
             if (e.RowIndex < 0 || e.RowIndex >= _grid.Rows.Count || _grid.Rows[e.RowIndex].DataBoundItem is not Student student) return;
@@ -260,7 +271,10 @@ public sealed class StudentsPage : ThemedUserControl
         _status.Font = Theme.Caption;
         _pageInfo.BackColor = c.Background;
         _pageInfo.ForeColor = c.TextMuted;
-        _pageInfo.Font = _compact ? Theme.Caption : Theme.Body; // Matches BooksPage.UpdateResponsiveLayout
+        _pageInfo.Font = _compact ? Theme.Caption : Theme.Body;
+        _pageInfo.Margin = Padding.Empty;
+        _pageInfo.Padding = Padding.Empty;
+        _pageInfo.TextAlign = ContentAlignment.MiddleLeft;
         _pageNumber.BackColor = c.Background;
         _pageNumber.ForeColor = c.Text;
         _rowsLabel.BackColor = c.Background;
@@ -282,6 +296,8 @@ public sealed class StudentsPage : ThemedUserControl
         _filter.ApplyTheme();
         _pageSize.ApplyTheme();
         _grid.ApplyTheme();
+        _grid.CellBorderStyle = DataGridViewCellBorderStyle.None;
+        foreach (DataGridViewRow row in _grid.Rows) row.DividerHeight = 1;
         _grid.ClearRowSelection();
         _grid.Invalidate();
     }

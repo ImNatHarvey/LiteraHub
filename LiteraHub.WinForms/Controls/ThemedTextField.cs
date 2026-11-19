@@ -1,4 +1,4 @@
-﻿
+
 using System;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
@@ -70,6 +70,22 @@ public sealed class ThemedTextField : ThemedUserControl
             _input.ScrollBars = ScrollBars.None;
 
             LayoutInput();
+        }
+    }
+
+    private bool _readOnly;
+
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool ReadOnly
+    {
+        get => _readOnly;
+        set
+        {
+            if (_readOnly == value) return;
+            _readOnly = value;
+            _input.ReadOnly = value;
+            _input.TabStop = !value;
+            ApplyTheme();
         }
     }
 
@@ -360,7 +376,7 @@ public sealed class ThemedTextField : ThemedUserControl
 
         _input.BackColor = c.Surface;
         _input.ForeColor = c.Text;
-        _input.Font = Theme.Body;
+        _input.Font = _readOnly ? Theme.BodyStrong : Theme.Body;
 
         _scroll.BackColor = c.Surface;
         _scroll.Invalidate();

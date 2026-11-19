@@ -104,3 +104,16 @@
 - Archive/Restore icon draws upward/downward arrows consistent with Book Editor. Profile photo cache is best-effort deleted only after successful student deletion. Student photos are still local to the current PC/user and not shared database assets.
 - Files: `StudentsPage.cs`, `StudentDetailsPage.cs`, `ShellForm.cs`, `IStudentService.cs`, `IStudentRepository.cs`, `StudentService.cs`, `StudentRepository.cs`. No other modules' source modified.
 - **Not compiled or runtime-tested in this environment. No commit/push made by assistant.**
+
+### Step 6C.6 + Books View Mode — delivered for developer acceptance (2026-11-20)
+- Unified footer label alignment/padding across Books, Authors, Categories and Students. Student directory specifies horizontal-only cell borders like Books.
+- Student detail edit field spacing adjusted, archive surface/hover matched Books, Save hover coordinated with Books, and view fields use readable bold text without disabling their textboxes. Read-only birthdate/gender render through themed text labels.
+- Existing Book records now open in **View Book** (read-only) while Add Book opens in edit mode. The first action becomes **Edit Book**, then **Save Book**. All associated author names are displayed from `Book.Authors`, not the picker count; the book layout can scroll for long author lists. Back/Cancel Edit offer discard confirmation rather than silently persisting edits.
+- Student delete service/permissions from Step 6C.5 are unchanged. Book inventory, author/ISBN workflows, database and migrations untouched.
+- **Requires developer build/runtime tests. No compilation or runtime acceptance reported for 6C.6.**
+
+
+### Step 6C.6r — replacement verification and targeted visual repair (2026-11-20)
+- Re-issued complete Book View/Edit source and Student UI fixes. Student table now uses row-only dividers; footer typography and padding are standardized.
+- Includes a PowerShell verification script to distinguish misplaced replacement files or stale binaries from live layout defects.
+- Source changes not compiled or runtime-tested in assistant environment. Verify with clean solution rebuild and runtime screenshot before committing.

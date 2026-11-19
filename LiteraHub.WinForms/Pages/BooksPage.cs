@@ -1,4 +1,4 @@
-﻿
+
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -1025,6 +1025,9 @@ public sealed class BooksPage : ThemedUserControl
 
         _pageInfo.BackColor = c.Background;
         _pageInfo.ForeColor = c.TextMuted;
+        _pageInfo.Margin = Padding.Empty;
+        _pageInfo.Padding = Padding.Empty;
+        _pageInfo.TextAlign = ContentAlignment.MiddleLeft;
 
         _pageNumber.BackColor = c.Background;
         _pageNumber.ForeColor = c.Text;

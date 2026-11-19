@@ -45,6 +45,8 @@ public sealed class StudentDetailsPage : ThemedUserControl
     private readonly Button _birthDate = new() { FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, TextAlign = ContentAlignment.MiddleLeft };
     private readonly ThemedFilterDropdown _gender = new(new[] { "Select Gender", "Male", "Female", "Other", "Prefer not to say" });
     private readonly ToolTip _toolTip = new();
+    private readonly Label _viewBirthDate = new() { TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(12, 0, 0, 0) };
+    private readonly Label _viewGender = new() { TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(12, 0, 0, 0) };
     private DateTime? _selectedBirthDate;
     private Image? _pendingPhoto;
     private bool _editing;
@@ -96,7 +98,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
         UpdateBirthDateCaption();
         _birthDate.Click += (_, _) => OpenBirthDatePicker();
 
-        _surface.Controls.AddRange(new Control[] { _studentHeading, _addressHeading, _contactHeading, _avatar, _photoButton });
+        _surface.Controls.AddRange(new Control[] { _studentHeading, _addressHeading, _contactHeading, _avatar, _photoButton, _viewBirthDate, _viewGender });
         _actionFooter.Controls.AddRange(new Control[] { _delete, _archive, _save, _cancel });
         _scroll.SetContent(_surface);
         Controls.Add(_layout);
@@ -182,8 +184,8 @@ public sealed class StudentDetailsPage : ThemedUserControl
             int columnWidth = portrait ? inner : Math.Max(90, (inner - 2 * gap) / 3);
             int[] x = portrait ? new[] { pad, pad, pad } : new[] { pad, pad + columnWidth + gap, pad + (columnWidth + gap) * 2 };
             int startY = 14;
-            int fieldHeight = portrait ? 40 : 38;
-            int fieldStep = portrait ? 74 : 68;
+            int fieldHeight = 40;
+            int fieldStep = portrait ? 74 : 72;
             int y1 = startY, y2 = startY, y3 = startY;
             void Heading(Label label, int left, ref int top)
             {
@@ -194,7 +196,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
             {
                 var field = _fields[key];
                 field.Caption.SetBounds(left, top, columnWidth, 19);
-                field.Control.SetBounds(left, top + 26, columnWidth, fieldHeight);
+                field.Control.SetBounds(left, top + 27, columnWidth, fieldHeight);
                 top += fieldStep;
             }
             if (portrait)
@@ -233,6 +235,10 @@ public sealed class StudentDetailsPage : ThemedUserControl
             int targetHeight = Math.Max(contentBottom, _scroll.ClientSize.Height);
             if (_surface.Height != targetHeight) _surface.Height = targetHeight;
             _scroll.RefreshMetrics();
+            _viewBirthDate.Bounds = _birthDate.Bounds;
+            _viewGender.Bounds = _gender.Bounds;
+            _viewBirthDate.BringToFront();
+            _viewGender.BringToFront();
             PositionFooterButtons();
             _heading.Font = portrait ? Theme.BodyStrong : Theme.Title;
             _save.Invalidate(); _archive.Invalidate(); _delete.Invalidate();
@@ -314,10 +320,20 @@ public sealed class StudentDetailsPage : ThemedUserControl
     private void SetEditing(bool editing)
     {
         _editing = editing;
-        foreach (var field in _inputs.Values) field.Enabled = editing;
-        _inputs["StudentNo"].Enabled = false; // Generated student number is immutable.
+        foreach (var field in _inputs.Values)
+        {
+            field.Enabled = true;
+            field.ReadOnly = !editing; // Keep enabled: WinForms disabled text becomes unreadable.
+        }
+        _inputs["StudentNo"].ReadOnly = true; // Generated student number is immutable.
+        _viewBirthDate.Text = _selectedBirthDate?.ToString("MMMM d, yyyy", CultureInfo.CurrentCulture) ?? "Not specified";
+        _viewGender.Text = _original?.Gender ?? "Not specified";
+        _viewBirthDate.Visible = !editing;
+        _viewGender.Visible = !editing;
         _birthDate.Enabled = editing;
         _gender.Enabled = editing;
+        _viewBirthDate.BringToFront();
+        _viewGender.BringToFront();
         _photoButton.Visible = editing;
         _save.AccessibleName = editing ? "Save Student" : "Edit Student";
         _archive.Visible = _original is not null && !editing;
@@ -538,6 +554,12 @@ public sealed class StudentDetailsPage : ThemedUserControl
             field.Caption.ForeColor = c.Text;
             field.Caption.Font = Theme.Body;
         }
+        foreach (var value in new[] { _viewBirthDate, _viewGender })
+        {
+            value.BackColor = c.Surface;
+            value.ForeColor = c.Text;
+            value.Font = Theme.BodyStrong;
+        }
         _birthDate.BackColor = c.SurfaceAlt;
         _birthDate.ForeColor = c.Text;
         _birthDate.Font = Theme.Body;
@@ -558,7 +580,11 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _save.ForeColor = Color.White;
         _save.Font = Theme.BodyStrong;
         _save.FlatAppearance.BorderSize = 0;
-        _save.FlatAppearance.MouseOverBackColor = c.AccentSoft;
+        _save.FlatAppearance.MouseOverBackColor = _save.BackColor;
+        _save.FlatAppearance.MouseDownBackColor = _save.BackColor;
+        _archive.BackColor = c.Surface;
+        _archive.FlatAppearance.MouseOverBackColor = c.SurfaceAlt;
+        _archive.FlatAppearance.MouseDownBackColor = c.AccentSoft;
         _delete.BackColor = Color.FromArgb(255, 143, 137);
         _delete.ForeColor = Color.White;
         _delete.Font = Theme.BodyStrong;

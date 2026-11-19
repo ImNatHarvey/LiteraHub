@@ -1,4 +1,4 @@
-﻿
+
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -1366,6 +1366,9 @@ public sealed class AuthorsPage : ThemedUserControl
         _status.Font = Theme.Caption;
 
         _pageInfo.ForeColor = c.TextMuted;
+        _pageInfo.Margin = Padding.Empty;
+        _pageInfo.Padding = Padding.Empty;
+        _pageInfo.TextAlign = ContentAlignment.MiddleLeft;
         _pageInfo.Font = Theme.Body;
 
         _pageNumber.ForeColor = c.Text;

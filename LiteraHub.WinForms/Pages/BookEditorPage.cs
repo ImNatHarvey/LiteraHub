@@ -1,4 +1,4 @@
-﻿
+
 using System;
 using System.ComponentModel;
 using System.IO;
@@ -135,6 +135,14 @@ public sealed class BookEditorPage : ThemedUserControl
         Visible = false
     };
 
+    // Existing books open in read-only View mode; new books open in Edit mode.
+    private bool _editing;
+    private readonly Dictionary<string, Label> _viewValues = new();
+    private readonly Button _cancelEdit = new()
+    {
+        Text = "Cancel Edit", FlatStyle = FlatStyle.Flat,
+        Cursor = Cursors.Hand, Visible = false
+    };
     private bool _saving;
     private bool _canHardDelete;
     private bool _statusesLoaded;
@@ -205,7 +213,7 @@ public sealed class BookEditorPage : ThemedUserControl
         _authors.AllowCreateAuthor = canCreateAuthors;
         _authors.AddAuthorRequested -= HandleAddAuthorRequested;
         _authors.AddAuthorRequested += HandleAddAuthorRequested;
-        _lookup.Enabled = true;
+        _lookup.Enabled = _editing;
 
         if (IsHandleCreated)
         {
@@ -253,6 +261,7 @@ public sealed class BookEditorPage : ThemedUserControl
             _content.Controls.Add(replacement);
             previous.Dispose();
             replacement.ApplyTheme();
+            replacement.Enabled = _editing;
             _statusesLoaded = true;
             // Default only new books to a Good condition; never override edits.
             if (_existing is null)
@@ -270,7 +279,7 @@ public sealed class BookEditorPage : ThemedUserControl
                 int index = Array.IndexOf(_statusIds, _existing.StatusId);
                 if (index >= 0) _condition.SelectedIndex = index;
             }
-            _save.Enabled = _authorsLoaded && _categoryIds.Length > 1;
+            _save.Enabled = !_editing || (_authorsLoaded && _categoryIds.Length > 1);
         }
         catch (Exception ex)
         {
@@ -345,8 +354,8 @@ public sealed class BookEditorPage : ThemedUserControl
 
             _authors.SetAuthors(records, selected);
             _authorsLoaded = true;
-            _save.Enabled = _statusesLoaded &&
-                _categoryIds.Length > 1 && !_saving;
+            _save.Enabled = !_editing || (_statusesLoaded &&
+                _categoryIds.Length > 1 && !_saving);
 
             if (_pendingMetadataAuthors.Count > 0)
             {
@@ -406,7 +415,7 @@ public sealed class BookEditorPage : ThemedUserControl
             var replacement = new ThemedFilterDropdown(options);
             _category = replacement;
             _categoryIds = ids;
-            _save.Enabled = _authorsLoaded && _statusesLoaded;
+            _save.Enabled = !_editing || (_authorsLoaded && _statusesLoaded);
             _content.Controls.Add(replacement);
             previous.Dispose();
             if (_existing is not null)
@@ -416,6 +425,7 @@ public sealed class BookEditorPage : ThemedUserControl
                     replacement.SelectedIndex = index;
             }
             replacement.ApplyTheme();
+            replacement.Enabled = _editing;
             ArrangeForm();
         }
         catch (Exception ex)
@@ -470,7 +480,7 @@ public sealed class BookEditorPage : ThemedUserControl
 
     private async Task LookupIsbnAsync()
     {
-        if (_lookupBusy || _metadataService is null)
+        if (!_editing || _lookupBusy || _metadataService is null)
             return;
         string isbn = _isbn.Text.Trim();
         if (isbn.Length == 0)
@@ -523,7 +533,7 @@ public sealed class BookEditorPage : ThemedUserControl
             _lookupBusy = false;
             _lookup.IsBusy = false;
             if (!IsDisposed && !Disposing)
-                _lookup.Enabled = _metadataService is not null;
+                _lookup.Enabled = _editing && _metadataService is not null;
         }
     }
 
@@ -579,17 +589,16 @@ public sealed class BookEditorPage : ThemedUserControl
     public BookEditorPage(Book? existing = null)
     {
         _existing = existing;
+        _editing = existing is null;
 
         Dock = DockStyle.Fill;
         Padding = new Padding(Space.L);
 
-        _heading.Text = existing is null
-            ? "Add Book"
-            : "Edit Book";
+        _heading.Text = existing is null ? "Add Book" : "View Book";
 
         _description.Text = existing is null
             ? "Create a new book record."
-            : $"Editing: {existing.Title}";
+            : $"Viewing: {existing.Title}";
 
         _bookSection = MakeLabel("Book Information", true);
         _classificationSection =
@@ -608,7 +617,10 @@ public sealed class BookEditorPage : ThemedUserControl
 
         BuildLayout();
         PopulateExistingBook();
+        if (existing is not null)
+            CreateViewValues();
         WireEvents();
+        RefreshEditorMode();
         ApplyTheme();
     }
 
@@ -681,7 +693,7 @@ public sealed class BookEditorPage : ThemedUserControl
         });
         _actionFooter.Controls.AddRange(new Control[]
         {
-            _delete, _archive, _save
+            _delete, _archive, _save, _cancelEdit
         });
 
         _viewport.Controls.Add(_content);
@@ -699,14 +711,37 @@ public sealed class BookEditorPage : ThemedUserControl
     private void WireEvents()
     {
         _back.Click += (_, _) =>
+        {
+            if (_saving) return;
+            if (_existing is not null && _editing &&
+                !ThemedMessageDialog.Confirm(FindForm(), "Discard Book Changes",
+                    "Return to Books without saving these edits?", confirmText: "Discard")) return;
             BackRequested?.Invoke(this, EventArgs.Empty);
+        };
 
         _lookup.Click += async (_, _) => await LookupIsbnAsync();
-        _save.Click += async (_, _) => await SaveAsync();
+        _save.Click += async (_, _) =>
+        {
+            if (_saving) return;
+            if (!_editing)
+            {
+                _editing = true;
+                RefreshEditorMode();
+                return;
+            }
+            await SaveAsync();
+        };
+        _cancelEdit.Click += (_, _) =>
+        {
+            if (_saving || _existing is null) return;
+            if (!ThemedMessageDialog.Confirm(FindForm(), "Discard Book Changes",
+                "Discard unsaved changes and return to the Books list?", confirmText: "Discard")) return;
+            BackRequested?.Invoke(this, EventArgs.Empty);
+        };
         _archive.Click += async (_, _) => await ChangeActiveAsync();
         _delete.Click += async (_, _) => await DeleteAsync();
         _save.Text = "";
-        _save.AccessibleName = "Save Book";
+        _save.AccessibleName = _editing ? "Save Book" : "Edit Book";
         _save.Paint += (_, e) => PaintActionIcon(e, _save, 0);
         _archive.Paint += (_, e) => PaintActionIcon(e, _archive, 1);
         _delete.Paint += (_, e) => PaintActionIcon(e, _delete, 2);
@@ -868,6 +903,7 @@ public sealed class BookEditorPage : ThemedUserControl
                 height,
                 _viewport.ClientSize.Height,
                 _scrollOffset);
+            PositionViewValues();
         }
         finally
         {
@@ -944,7 +980,7 @@ public sealed class BookEditorPage : ThemedUserControl
                 ref availableY, numberWidth, 40, labelGap, fieldGap);
             rightY = Math.Max(totalY, availableY);
             Field(_authorsLabel, _authors, rightX,
-                ref rightY, columnWidth, 40, labelGap, fieldGap);
+                ref rightY, columnWidth, ViewAuthorHeight(columnWidth), labelGap, fieldGap);
             Field(_descriptionLabel, _bookDescription,
                 rightX, ref rightY, columnWidth,
                 Math.Min(280, Math.Max(120, viewportHeight / 3)),
@@ -980,7 +1016,7 @@ public sealed class BookEditorPage : ThemedUserControl
             ref availableRowY, numericWidth, 40, labelGap, fieldGap);
         classificationY = Math.Max(totalRowY, availableRowY);
         Field(_authorsLabel, _authors, classificationX,
-            ref classificationY, columnWidth, 40, labelGap, fieldGap);
+            ref classificationY, columnWidth, ViewAuthorHeight(columnWidth), labelGap, fieldGap);
 
         int descriptionHeight = Math.Max(48,
             fieldBottom - classificationY - 19 - labelGap);
@@ -1045,7 +1081,7 @@ public sealed class BookEditorPage : ThemedUserControl
         y = Math.Max(totalY, availableY) + 8;
 
         Field(_authorsLabel, _authors, x, ref y,
-            fieldWidth, 40);
+            fieldWidth, ViewAuthorHeight(fieldWidth));
         Field(_descriptionLabel, _bookDescription,
             x, ref y, fieldWidth, 90);
         y += 8;
@@ -1061,6 +1097,8 @@ public sealed class BookEditorPage : ThemedUserControl
         int width = _actionFooter.ClientSize.Width;
         bool portrait = width < 700;
         int y = 8;
+        _cancelEdit.SetBounds(0, y, Math.Min(120, Math.Max(90, width / 5)), height);
+        _cancelEdit.Visible = _existing is not null && _editing && !portrait;
         if (_existing is null)
         {
             _save.SetBounds(Math.Max(0, width - (portrait ? width : 160)),
@@ -1090,7 +1128,7 @@ public sealed class BookEditorPage : ThemedUserControl
         if (!button.Enabled) color = c.TextMuted;
         // Draw the icon to the left of the centered label, with the same
         // line geometry as the Categories action icons.
-        string label = kind == 0 ? "Save Book" : kind == 2 ? "Delete Book" :
+        string label = kind == 0 ? (_editing ? "Save Book" : "Edit Book") : kind == 2 ? "Delete Book" :
             _existing?.IsActive == false ? "Restore Book" : "Archive Book";
         Size labelSize = TextRenderer.MeasureText(label, button.Font);
         int cx = Math.Max(13, (button.Width - labelSize.Width - 30) / 2 + 9);
@@ -1142,9 +1180,100 @@ public sealed class BookEditorPage : ThemedUserControl
         g.SmoothingMode = previous;
     }
 
+    private void CreateViewValues()
+    {
+        if (_existing is null) return;
+        foreach (string key in new[]
+        {
+            "ISBN", "Title", "Description", "Authors", "Category",
+            "Condition", "Total", "Available"
+        })
+        {
+            var label = new Label
+            {
+                AutoSize = false,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(12, 3, 12, 3),
+                UseMnemonic = false,
+                AutoEllipsis = false,
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            _viewValues[key] = label;
+            _content.Controls.Add(label);
+        }
+        _viewValues["ISBN"].Text = _existing.Isbn;
+        _viewValues["Title"].Text = _existing.Title;
+        _viewValues["Description"].Text = _existing.Description ?? "—";
+        // Book.Authors is the complete joined author list returned by the repository.
+        // Never replace this with the picker caption (e.g. '5 authors selected').
+        _viewValues["Authors"].TextAlign = ContentAlignment.MiddleLeft;
+        _viewValues["Authors"].Text = string.IsNullOrWhiteSpace(_existing.Authors)
+            ? "No authors listed" : _existing.Authors;
+        _viewValues["Category"].Text = _existing.CategoryName;
+        _viewValues["Condition"].Text = _existing.StatusName;
+        _viewValues["Total"].Text = _existing.TotalCopies.ToString();
+        _viewValues["Available"].Text = _existing.AvailableCopies.ToString();
+    }
+
+    private int ViewAuthorHeight(int width)
+    {
+        if (_existing is null || _editing) return 40;
+        var text = _existing.Authors;
+        if (string.IsNullOrEmpty(text)) return 40;
+        var measured = TextRenderer.MeasureText(text, Theme.BodyStrong,
+            new Size(Math.Max(60, width - 26), 10000),
+            TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+        return Math.Max(40, measured.Height + 18);
+    }
+
+    private void PositionViewValues()
+    {
+        if (_existing is null) return;
+        var mapped = new (string Key, Control Target)[]
+        {
+            ("ISBN", _isbn), ("Title", _title),
+            ("Description", _bookDescription), ("Authors", _authors),
+            ("Category", _category), ("Condition", _condition),
+            ("Total", _total), ("Available", _available)
+        };
+        foreach (var (key, target) in mapped)
+        {
+            Label overlay = _viewValues[key];
+            overlay.Bounds = target.Bounds;
+            overlay.Visible = !_editing;
+            overlay.TabStop = false;
+            target.Visible = _editing;
+            if (!_editing) overlay.BringToFront();
+        }
+        _lookup.Visible = _editing;
+        _cancelEdit.Visible = _existing is not null && _editing && _actionFooter.ClientSize.Width >= 700;
+    }
+
+    private void RefreshEditorMode()
+    {
+        _heading.Text = _existing is null ? "Add Book" : _editing ? "Edit Book" : "View Book";
+        _description.Text = _existing is null ? "Create a new book record." :
+            (_editing ? "Editing: " : "Viewing: ") + _existing.Title;
+        _save.AccessibleName = _editing ? "Save Book" : "Edit Book";
+        // The view action is always available. Saving requires loaded lookups.
+        _save.Enabled = !_editing || (_authorsLoaded && _statusesLoaded && _categoryIds.Length > 1);
+        _archive.Visible = _existing is not null && _editing;
+        _delete.Visible = _existing is not null && _editing;
+        _cancelEdit.Visible = _existing is not null && _editing && _actionFooter.ClientSize.Width >= 700;
+        _lookup.Enabled = _editing && _metadataService is not null;
+        if (_existing is not null)
+        {
+            _authors.Enabled = _editing;
+            _category.Enabled = _editing;
+            _condition.Enabled = _editing;
+        }
+        ArrangeForm();
+        _save.Invalidate();
+    }
+
     private async Task SaveAsync()
     {
-        if (_saving || _bookService is null || !_authorsLoaded || !_statusesLoaded)
+        if (!_editing || _saving || _bookService is null || !_authorsLoaded || !_statusesLoaded)
             return;
         int statusIndex = _condition.SelectedIndex;
         if (statusIndex < 0 || statusIndex >= _statusIds.Length)
@@ -1204,7 +1333,7 @@ public sealed class BookEditorPage : ThemedUserControl
             _saving = false;
             if (!IsDisposed && !Disposing)
             {
-                _save.Enabled = true;
+                _save.Enabled = !_editing || (_authorsLoaded && _statusesLoaded && _categoryIds.Length > 1);
                 _archive.Enabled = true;
                 _delete.Enabled = _canHardDelete;
             }
@@ -1266,7 +1395,7 @@ public sealed class BookEditorPage : ThemedUserControl
             _saving = false;
             if (!IsDisposed && !Disposing)
             {
-                _save.Enabled = true;
+                _save.Enabled = !_editing || (_authorsLoaded && _statusesLoaded && _categoryIds.Length > 1);
                 _archive.Enabled = true;
                 _delete.Enabled = _canHardDelete;
             }
@@ -1377,6 +1506,18 @@ public sealed class BookEditorPage : ThemedUserControl
                 : Theme.Body;
         }
 
+        foreach (var overlay in _viewValues.Values)
+        {
+            overlay.BackColor = c.SurfaceAlt;
+            overlay.ForeColor = c.Text;
+            overlay.Font = Theme.BodyStrong;
+        }
+        _cancelEdit.BackColor = c.Surface;
+        _cancelEdit.ForeColor = c.Text;
+        _cancelEdit.Font = Theme.Body;
+        _cancelEdit.FlatAppearance.BorderColor = c.Border;
+        _cancelEdit.FlatAppearance.BorderSize = 1;
+        _cancelEdit.FlatAppearance.MouseOverBackColor = c.SurfaceAlt;
         _category.ApplyTheme();
         _condition.ApplyTheme();
         _authors.ApplyTheme();
@@ -1416,6 +1557,7 @@ public sealed class BookEditorPage : ThemedUserControl
         _scrollbar.RefreshTheme();
 
         ArrangeForm();
+        PositionViewValues();
     }
 
     protected override void Dispose(bool disposing)

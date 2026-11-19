@@ -100,3 +100,16 @@ LiteraHub/
 - `LiteraHub.Services/Students/StudentService.cs`: Authorized delete with meaningful failure results.
 - `LiteraHub.Data/Repositories/StudentRepository.cs`: Parameterized SQL guarded by dependent user/loan records.
 - Existing docs updated: `docs/PROGRESS.md`, `docs/SESSION_HANDOFF.md`, `docs/FILES.md`.
+
+### Step 6C.6 updated files (pending developer acceptance)
+- `LiteraHub.WinForms/Controls/ThemedTextField.cs` — adds read-only property keeping theme colors and bold display text.
+- `LiteraHub.WinForms/Pages/{BooksPage,AuthorsPage,CategoriesPage,StudentsPage}.cs` — align footer text presentation; Students also applies horizontal-only cell separators.
+- `LiteraHub.WinForms/Pages/StudentDetailsPage.cs` — field spacing, readable view fields, birthdate/gender view overlays, Save and Archive visual parity.
+- `LiteraHub.WinForms/Pages/BookEditorPage.cs` — existing book starts read-only, displays all author names, Edit/Save mode toggle and discard navigation.
+- Existing docs updated: `PROGRESS.md`, `SESSION_HANDOFF.md`, `FILES.md`. No new docs.
+
+
+### Step 6C.6r — replacement verification and targeted visual repair (2026-11-20)
+- Re-issued complete Book View/Edit source and Student UI fixes. Student table now uses row-only dividers; footer typography and padding are standardized.
+- Includes a PowerShell verification script to distinguish misplaced replacement files or stale binaries from live layout defects.
+- Source changes not compiled or runtime-tested in assistant environment. Verify with clean solution rebuild and runtime screenshot before committing.

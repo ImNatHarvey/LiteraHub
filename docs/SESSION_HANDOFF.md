@@ -102,3 +102,17 @@ Separate fixed action footer below content surfaces for both Student Details and
 - Visual acceptance: compare list pagination and separators side by side with Books/Categories; compare Back button to Book Editor; test 1280×720, 1920×1080, 390×844 and nine themes.
 - No database migration or additional Markdown file. Source not compiled; user must build, test, and approve before any commit recommendation.
 - Next after acceptance: Books View → Edit → Save with full associated-author display.
+
+## Current handoff — Step 6C.6 + Books View Mode (2026-11-20)
+- Full replacements: `LiteraHub.WinForms/Controls/ThemedTextField.cs` and the six pages `BooksPage.cs`, `AuthorsPage.cs`, `CategoriesPage.cs`, `StudentsPage.cs`, `StudentDetailsPage.cs`, `BookEditorPage.cs`.
+- Existing book opens read-only with legible overlays and full author-name display; **Edit Book** unlocks existing controls; **Save Book** invokes the same persistence path. Cancel Edit and Back prompt to discard; Add Book remains editable. The archive/delete buttons are available when editing existing books.
+- Student detail fields stay enabled but use the new `ThemedTextField.ReadOnly` property for bold, legible display (excluding birthdate/gender, which have read-only labels).
+- Footer alignment normalized; Student row borders styled horizontal-only; Student form spacing/hover updated. All nine theme presets must be tested.
+- **Developer testing is pending**: 1280×720, 1920×1080, 390×844; Books view/edit/save and author display; inventory preservation; Student add/view/edit/delete/archive; other-module pagination regression.
+- No changes committed/pushed by assistant; latest working source reviewed against pushed GitHub source before patch.
+
+
+### Step 6C.6r — replacement verification and targeted visual repair (2026-11-20)
+- Re-issued complete Book View/Edit source and Student UI fixes. Student table now uses row-only dividers; footer typography and padding are standardized.
+- Includes a PowerShell verification script to distinguish misplaced replacement files or stale binaries from live layout defects.
+- Source changes not compiled or runtime-tested in assistant environment. Verify with clean solution rebuild and runtime screenshot before committing.
