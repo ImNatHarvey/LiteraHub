@@ -2,7 +2,7 @@
 type: handoff
 project: LiteraHub
 updated: 2026-11-20
-status: step-6-student-management-next
+status: step-6b1-6c-combined-awaiting-testing
 ---
 
 # LiteraHub — Session Handoff
@@ -56,4 +56,31 @@ Student ID number; first, middle, last name; house number, street, municipality,
 
 ## First instruction to new chat
 
-Inspect the latest uploaded source ZIP, GitHub and Case Study #5. Check `Migrations.cs` for Students, `Program.cs` for service wiring, `MainForm`/navigation for Student page placeholders, existing auth/permissions, and any student models/contracts. Propose/implement **Step 6A** in one safe, testable batch. Do not begin Borrow & Return or redesign the whole application.
+Inspect the latest uploaded source ZIP, GitHub and Case Study #5. Check `Migrations.cs` for Students, `Program.cs` for service wiring, `MainForm`/navigation for Student page placeholders, existing auth/permissions, and any student models/contracts. Step 6A foundation was added and user reported the build passed. Step 6B read-only Students List UI is now delivered for developer testing. Next: verify the 6B build and runtime behavior, then implement Step 6C Student Add/Edit. Do not begin Borrow & Return or redesign the whole application.
+
+## Latest batch update — Step 6B (2026-11-20)
+
+- 6A: user confirmed build passed; runtime tests not independently verified.
+- 6B delivered (uncompiled here): `LiteraHub.WinForms/Pages/StudentsPage.cs` added; `Program.cs` and `Forms/ShellForm.cs` updated for service wiring and navigation.
+- List features: student ID/name/email/address search, active/archived filter, sorting, page sizes 10/25/50/100, refresh, read-only grid.
+- No migration, account creation or permanent delete.
+- Next: developer build and UI regression tests; after acceptance Step 6C Student Add/Edit.
+- No commits or pushes performed.
+
+## Latest batch — Combined Step 6B.1 + 6C (2026-11-20)
+
+- User confirmed the original 6B Student List opens but requested Books-like themed controls, row chevrons, and a non-modal Student Details page.
+- Delivered full replacements: `LiteraHub.WinForms/Pages/StudentsPage.cs`; new `LiteraHub.WinForms/Pages/StudentDetailsPage.cs`.
+- Details opens read-only for existing students; Edit Student unlocks fields; Save Student calls the existing service; Cancel discards edits; Add Student starts editable; archive/restore requires confirmation.
+- Existing `Program.cs`, `ShellForm.cs`, Core/Data/Services and SQL schema remain unchanged from the previous 6A/6B installation.
+- Package is **not compiled or tested** in this environment; user must test with real student records and all theme presets/resolutions.
+- No new Markdown milestone file; only existing docs updated. Do not commit or push without user confirmation.
+- After acceptance, plan separate Books View/Edit mode and full authors display enhancement.
+
+
+### Current pending batch: Step 6C.1 Student UI correction
+Apply the provided replacements for `StudentsPage.cs`, `StudentDetailsPage.cs`, and new `ThemedStudentsFilterSort.cs`. Root cause: the previous Student toolbar allocated 135px to a nested 280px filter/sort container, causing clipped controls. Verify 1280×720, 1920×1080, portrait 390×844 and all nine themes; test student create, view, edit, archive/restore, search, status, sort and pagination. No DB or service changes. Do not mark accepted until user confirms.
+
+
+### Pending acceptance — Step 6C.2 (Student visual consistency)
+The user reported unthemed native Student filter popup and date picker, native scrollbar, oversized Add button, and poor Student Details layout. Latest replacement uses `ThemedStudentsFilterSort` based on `ThemedCatalogFilterSort` custom popup, uses `ScrollHost` and `ThemedBirthDateDialog`, and groups details into three sections. Replace only the three Student UI `.cs` files in the package. Previous 6C.1 was not accepted. No commit/push. Test builds, nine themes, 1280×720 / 1920×1080 / 390×844, create/view/edit/cancel/archive, dropdown and scrolling, then regression across Books/Categories/Authors. Books View/Edit enhancement remains next after acceptance.

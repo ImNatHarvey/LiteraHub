@@ -9,6 +9,7 @@ using LiteraHub.Services.Authors;
 using LiteraHub.Services.Books;
 using LiteraHub.Services.Categories;
 using LiteraHub.Services.Security;
+using LiteraHub.Services.Students;
 using LiteraHub.WinForms.Forms;
 using LiteraHub.WinForms.Theming;
 using Microsoft.Extensions.Configuration;
@@ -96,6 +97,9 @@ internal static class Program
         IAuthorCreationService authors =
             new AuthorCreationService(authorRepository, permissions);
 
+        IStudentService students = new StudentService(
+            new StudentRepository(connectionFactory), permissions);
+
         IBookMetadataService metadata =
             new OpenLibraryMetadataService();
 
@@ -106,7 +110,8 @@ internal static class Program
             categories,
             books,
             authors,
-            metadata);
+            metadata,
+            students);
     }
 
     private static void RunSessions(
@@ -116,7 +121,8 @@ internal static class Program
         ICategoryService categories,
         IBookService books,
         IAuthorCreationService authors,
-        IBookMetadataService metadata)
+        IBookMetadataService metadata,
+        IStudentService students)
     {
         while (true)
         {
@@ -154,7 +160,8 @@ internal static class Program
                 categories,
                 books,
                 authors,
-                metadata);
+                metadata,
+                students);
 
             shell.ShowDialog();
             auth.Logout();

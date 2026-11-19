@@ -1,4 +1,4 @@
-﻿
+
 using FontAwesome.Sharp;
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Security;
@@ -37,7 +37,7 @@ public sealed class ShellForm : Form
 
         new("students", "Students", AppIcons.Students,
             Permission.ManageStudents,
-            "Students module. Step 5."),
+            "Student directory. Step 6."),
 
         new("borrow", "Borrow && Return", AppIcons.BorrowReturn,
             Permission.ProcessBorrowReturn,
@@ -59,6 +59,7 @@ public sealed class ShellForm : Form
     private readonly IBookService _books;
     private readonly IAuthorCreationService _authors;
     private readonly IBookMetadataService _metadata;
+    private readonly IStudentService _students;
 
     private readonly List<PageDef> _pages;
 
@@ -112,7 +113,8 @@ public sealed class ShellForm : Form
         ICategoryService categories,
         IBookService books,
         IAuthorCreationService authors,
-        IBookMetadataService metadata)
+        IBookMetadataService metadata,
+        IStudentService students)
     {
         _session = session ??
             throw new ArgumentNullException(nameof(session));
@@ -134,6 +136,9 @@ public sealed class ShellForm : Form
 
         _metadata = metadata ??
             throw new ArgumentNullException(nameof(metadata));
+
+        _students = students ??
+            throw new ArgumentNullException(nameof(students));
 
         _pages = AllPages
             .Where(p => permissions.Can(p.Permission))
@@ -386,6 +391,10 @@ public sealed class ShellForm : Form
                 _permissions);
         }
 
+        else if (key == "students")
+        {
+            next = new StudentsPage(_students);
+        }
         else if (key == "authors")
         {
             next = new AuthorsPage(
