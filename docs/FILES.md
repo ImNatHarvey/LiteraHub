@@ -115,3 +115,17 @@ LiteraHub/
 - Source changes not compiled or runtime-tested in assistant environment. Verify with clean solution rebuild and runtime screenshot before committing.
 
 Step 6C.7 candidate edits (unverified): `LiteraHub.WinForms/Pages/StudentsPage.cs`, `StudentDetailsPage.cs`, `BookEditorPage.cs`, and `LiteraHub.WinForms/Controls/ThemedTextField.cs`.
+
+
+## Latest accepted UI changes (2026-11-20)
+
+These are **existing files** updated in the developer-tested Step 6C.7 and follow-up polish; no additional source files were created.
+
+| Existing path | Current responsibility / recent change |
+|---|---|
+| `LiteraHub.WinForms/Pages/StudentsPage.cs` | Student directory, shared-theme table rendering and pagination; Active/Archived status icons and in-shell row navigation |
+| `LiteraHub.WinForms/Pages/StudentDetailsPage.cs` | Three-column student details, non-interactive themed View display, Edit/Cancel, archive/restore/delete permissions, left-aligned gender |
+| `LiteraHub.WinForms/Pages/BookEditorPage.cs` | Book View/Edit, compact view layout, Delete/Archive/Edit actions, no-dialog Cancel, left-aligned category/condition and author reset |
+| `LiteraHub.WinForms/Controls/ThemedAuthorPicker.cs` | Multi-author selection and reset of staged/unsaved changes when canceling Book edits |
+
+This current status supersedes older historical entries marked “pending.” The four locally accepted files have not yet been verified on GitHub.

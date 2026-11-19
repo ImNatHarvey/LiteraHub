@@ -2,9 +2,11 @@
 
 **Updated:** 2026-11-20  
 **Repository:** `ImNatHarvey/LiteraHub`  
-**Handoff checkpoint:** Step 6C.4 user-reported pushed; Step 6C.5 source replacements prepared, awaiting Visual Studio build and runtime acceptance
+**Latest checkpoint:** Step 6C.7 and the immediate UI polish follow-up are **developer-tested and accepted**, per user confirmation on 2026-11-20; local changes are not yet confirmed pushed
 
 > **Status definitions:** “Developer-tested” means the user reported successful Visual Studio/runtime tests. “Pushed” means the user reported pushing; check GitHub again to establish the current remote SHA. ChatGPT has not independently compiled the Windows application. Older GitHub `docs/` files were still dated 2026-11-12 when this handoff was prepared.
+
+> **Current status overrides older historical “pending acceptance” entries below.** Previous batch sections are retained as development history. The assistant has not independently compiled WinForms.
 
 ## Developer-reported completed milestones
 
@@ -125,3 +127,24 @@
 - Book View labels and Student birthdate/gender display borders now draw with the active theme border color.
 - Student Restore action: uses normal themed foreground, including compact Restore caption.
 - Status: source-edited only. Compilation, all nine themes, breakpoints, CRUD, lookup, inventory, and runtime acceptance are pending developer tests.
+
+
+## Latest accepted checkpoint — Step 6C.7 + UI polish (2026-11-20)
+
+**Developer-reported: all targeted tests passed in Visual Studio and the running app.** This supersedes the earlier 6C.7 “candidate/not yet accepted” note. The user reports the follow-up CS8602 warning was addressed and the subsequent UI checks passed. The assistant did not run Visual Studio or verify a push for these latest local replacements.
+
+- Student List: themed status icons consistent with Authors, correct pagination presentation, navigation-stable grid without unwanted vertical separators, row navigation preserved.
+- Student Details: non-interactive View mode with theme-aware read-only field borders; Edit mode, Cancel action, three action-button styles/hover and gender alignment matched to Book conventions.
+- Book View/Edit: restored Delete / Archive-or-Restore / Edit actions, compact View Book display without unnecessary desktop scrollbar; Cancel discards unsaved changes without confirmation and shows “Cancel” only.
+- Category and Condition dropdown values left aligned; Gender dropdown value left aligned.
+- Updated author picker supports discarding staged selections when Book editing is canceled.
+- Source replacements in this accepted follow-up: `LiteraHub.WinForms/Pages/BookEditorPage.cs`, `StudentDetailsPage.cs`, `StudentsPage.cs`, `LiteraHub.WinForms/Controls/ThemedAuthorPicker.cs`.
+- No SQL schema/migration changes and no assistant-initiated commit or push.
+
+### Remaining scope and regression considerations
+
+1. **Next planned:** Login UI polish and secure Forgot Password, subject to source-level review of authentication and account recovery contracts. Avoid insecure recovery shortcuts.
+2. **Then:** Borrow & Return with atomic inventory/loan transactions and mandatory case-study search filters.
+3. **Then:** Reports (books per category, author, status and all books); grading checklist and final tests.
+4. Reconfirm negative-path tests as needed: borrower/librarian/admin permissions, student delete blocked by linked records, photo persistence across users/devices (currently local-only), validation/duplicate student IDs, book inventory zero and long author names. These are audit suggestions, not newly observed defects.
+5. Commit/push of the locally accepted Step 6C.7 work is pending user action; remote status checked on 2026-11-20 showed `172ea9d3c1` as the latest reachable `master` commit.

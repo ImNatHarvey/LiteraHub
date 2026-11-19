@@ -2,10 +2,12 @@
 type: handoff
 project: LiteraHub
 updated: 2026-11-20
-status: step-6b1-6c-combined-awaiting-testing
+status: step-6c7-and-ui-polish-user-accepted-unpushed
 ---
 
 # LiteraHub — Session Handoff
+
+> **Current handoff (2026-11-20): Step 6C.7 and follow-up UI polish passed developer runtime tests. Older pending sections below are historical. Do not interpret them as the current status.**
 
 ## Read this first
 
@@ -124,3 +126,18 @@ Separate fixed action footer below content surfaces for both Student Details and
 - Book View labels and Student birthdate/gender display borders now draw with the active theme border color.
 - Student Restore action: uses normal themed foreground, including compact Restore caption.
 - Status: source-edited only. Compilation, all nine themes, breakpoints, CRUD, lookup, inventory, and runtime acceptance are pending developer tests.
+
+
+## Current checkpoint — accepted Step 6C.7 and UI polish (2026-11-20)
+
+The user confirmed **“everything passed”** after replacing complete individual C# files and resolving a CS8602 warning. Accepted behavior includes Student grid/font/status icons, Student Details View/Edit theme and button consistency, restored Book View actions, compact View Book, no-dialog Cancel, author reset, and left-aligned gender/category/condition values. This is **developer-reported acceptance**, not an assistant-run build.
+
+Accepted latest local replacements:
+- `LiteraHub.WinForms/Pages/StudentsPage.cs`
+- `LiteraHub.WinForms/Pages/StudentDetailsPage.cs`
+- `LiteraHub.WinForms/Pages/BookEditorPage.cs`
+- `LiteraHub.WinForms/Controls/ThemedAuthorPicker.cs`
+
+Do not overwrite these newer local files with earlier GitHub copies. GitHub `master` most recent observed commit: `172ea9d3c1` (2026-11-20 check); the newest accepted local files have **not been verified pushed**. Await user commit/push.
+
+Immediate next milestone: review `LoginForm.cs`, `AuthService.cs`, user repository/account permissions, and theme controls to implement Login UI polish and a secure Forgot Password workflow. After that, Borrow & Return, Reports, and final case-study testing. Follow source verification and preserve nine themes, resolutions, inventory, and case-study scope.
