@@ -117,3 +117,11 @@
 - Re-issued complete Book View/Edit source and Student UI fixes. Student table now uses row-only dividers; footer typography and padding are standardized.
 - Includes a PowerShell verification script to distinguish misplaced replacement files or stale binaries from live layout defects.
 - Source changes not compiled or runtime-tested in assistant environment. Verify with clean solution rebuild and runtime screenshot before committing.
+
+## Step 6C.7 — source correction candidate (2026-11-20; NOT YET ACCEPTED)
+- Student grid: shared horizontal border configuration, no row dividers; pagination font set to Theme.Body without changing alignment.
+- Book View: Archive/Restore and Delete restored by prior partial package; Cancel Edit restores view without confirmation.
+- ThemedTextField: read-only values use a non-focusable themed display label; Student details uses this for text fields.
+- Book View labels and Student birthdate/gender display borders now draw with the active theme border color.
+- Student Restore action: uses normal themed foreground, including compact Restore caption.
+- Status: source-edited only. Compilation, all nine themes, breakpoints, CRUD, lookup, inventory, and runtime acceptance are pending developer tests.

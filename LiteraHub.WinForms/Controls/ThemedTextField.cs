@@ -31,6 +31,15 @@ public sealed class ThemedTextField : ThemedUserControl
     };
 
     private readonly ScrollTrack _scroll = new();
+    // Non-focusable presentation of a read-only value, using the same themed frame.
+    private readonly Label _display = new()
+    {
+        AutoSize = false,
+        TabStop = false,
+        UseMnemonic = false,
+        TextAlign = ContentAlignment.MiddleLeft,
+        Visible = false
+    };
 
     private bool _focused;
     private bool _multiline;
@@ -85,6 +94,10 @@ public sealed class ThemedTextField : ThemedUserControl
             _readOnly = value;
             _input.ReadOnly = value;
             _input.TabStop = !value;
+            _input.Visible = !value;
+            _display.Visible = value;
+            _display.Text = _input.Text;
+            if (value) _display.BringToFront();
             ApplyTheme();
         }
     }
@@ -103,6 +116,7 @@ public sealed class ThemedTextField : ThemedUserControl
         Cursor = Cursors.IBeam;
 
         Controls.Add(_input);
+        Controls.Add(_display);
         Controls.Add(_scroll);
 
         _scroll.Visible = false;
@@ -110,6 +124,7 @@ public sealed class ThemedTextField : ThemedUserControl
 
         _input.TextChanged += (_, _) =>
         {
+            _display.Text = _input.Text;
             UpdateScroll();
             TextChanged?.Invoke(this, EventArgs.Empty);
         };
@@ -135,7 +150,7 @@ public sealed class ThemedTextField : ThemedUserControl
         MouseWheel += HandleMouseWheel;
         _scroll.MouseWheel += HandleMouseWheel;
 
-        Click += (_, _) => _input.Focus();
+        Click += (_, _) => { if (!_readOnly) _input.Focus(); };
 
         Resize += (_, _) => LayoutInput();
 
@@ -348,6 +363,7 @@ public sealed class ThemedTextField : ThemedUserControl
                     1,
                     ClientSize.Height - 20));
 
+            _display.SetBounds(left, 10, width, Math.Max(1, ClientSize.Height - 20));
             _scroll.BringToFront();
         }
         else
@@ -363,6 +379,7 @@ public sealed class ThemedTextField : ThemedUserControl
                     (ClientSize.Height - height) / 2),
                 width,
                 height);
+            _display.SetBounds(left, 0, width, ClientSize.Height);
         }
     }
 
@@ -377,6 +394,9 @@ public sealed class ThemedTextField : ThemedUserControl
         _input.BackColor = c.Surface;
         _input.ForeColor = c.Text;
         _input.Font = _readOnly ? Theme.BodyStrong : Theme.Body;
+        _display.BackColor = c.Surface;
+        _display.ForeColor = c.Text;
+        _display.Font = Theme.BodyStrong;
 
         _scroll.BackColor = c.Surface;
         _scroll.Invalidate();

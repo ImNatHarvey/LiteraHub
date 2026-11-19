@@ -734,9 +734,10 @@ public sealed class BookEditorPage : ThemedUserControl
         _cancelEdit.Click += (_, _) =>
         {
             if (_saving || _existing is null) return;
-            if (!ThemedMessageDialog.Confirm(FindForm(), "Discard Book Changes",
-                "Discard unsaved changes and return to the Books list?", confirmText: "Discard")) return;
-            BackRequested?.Invoke(this, EventArgs.Empty);
+            // Restore the persisted values without saving or leaving View Book.
+            _editing = false;
+            PopulateExistingBook();
+            RefreshEditorMode();
         };
         _archive.Click += async (_, _) => await ChangeActiveAsync();
         _delete.Click += async (_, _) => await DeleteAsync();
@@ -1196,7 +1197,13 @@ public sealed class BookEditorPage : ThemedUserControl
                 Padding = new Padding(12, 3, 12, 3),
                 UseMnemonic = false,
                 AutoEllipsis = false,
-                BorderStyle = BorderStyle.FixedSingle
+                BorderStyle = BorderStyle.None
+            };
+            label.Paint += (_, e) =>
+            {
+                using var pen = new Pen(Theme.Colors.Border);
+                e.Graphics.DrawRectangle(pen, 0, 0,
+                    Math.Max(0, label.Width - 1), Math.Max(0, label.Height - 1));
             };
             _viewValues[key] = label;
             _content.Controls.Add(label);
@@ -1257,8 +1264,8 @@ public sealed class BookEditorPage : ThemedUserControl
         _save.AccessibleName = _editing ? "Save Book" : "Edit Book";
         // The view action is always available. Saving requires loaded lookups.
         _save.Enabled = !_editing || (_authorsLoaded && _statusesLoaded && _categoryIds.Length > 1);
-        _archive.Visible = _existing is not null && _editing;
-        _delete.Visible = _existing is not null && _editing;
+        _archive.Visible = _existing is not null;
+        _delete.Visible = _existing is not null;
         _cancelEdit.Visible = _existing is not null && _editing && _actionFooter.ClientSize.Width >= 700;
         _lookup.Enabled = _editing && _metadataService is not null;
         if (_existing is not null)

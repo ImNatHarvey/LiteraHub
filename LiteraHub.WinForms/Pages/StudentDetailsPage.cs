@@ -93,6 +93,14 @@ public sealed class StudentDetailsPage : ThemedUserControl
         AddInput("Email", "Email address", 150, student?.Email);
         AddSpecial("BirthDate", "Birthdate", _birthDate);
         AddSpecial("Gender", "Gender", _gender);
+        foreach (var view in new[] { _viewBirthDate, _viewGender })
+        {
+            view.Paint += (_, e) =>
+            {
+                using var pen = new Pen(Theme.Colors.Border);
+                e.Graphics.DrawRectangle(pen, 0, 0, Math.Max(0, view.Width - 1), Math.Max(0, view.Height - 1));
+            };
+        }
         _selectedBirthDate = student?.BirthDate.Date ?? DateTime.Today.AddYears(-18);
         _gender.SelectedIndex = GenderIndex(student?.Gender);
         UpdateBirthDateCaption();
@@ -482,9 +490,9 @@ public sealed class StudentDetailsPage : ThemedUserControl
         g.SmoothingMode = SmoothingMode.AntiAlias;
         string label = kind == 0 ? (_editing ? "Save Student" : "Edit Student") : kind == 1
             ? (_original?.IsActive == false ? "Restore Student" : "Archive Student") : "Delete Student";
-        if (_responsive && button.Width < 130) label = kind == 0 ? (_editing ? "Save" : "Edit") : kind == 1 ? "Archive" : "Delete";
+        if (_responsive && button.Width < 130) label = kind == 0 ? (_editing ? "Save" : "Edit") : kind == 1 ? (_original?.IsActive == false ? "Restore" : "Archive") : "Delete";
         Color ink = button.Enabled ? button.ForeColor : c.TextMuted;
-        if (kind == 1 && _original?.IsActive == false && button.Enabled) ink = c.PillGoodText;
+        // The Book action uses the normal themed foreground in both archive states.
         var measured = TextRenderer.MeasureText(label, button.Font);
         int cx = Math.Max(12, (button.Width - measured.Width - 24) / 2 + 8);
         int cy = button.Height / 2;
@@ -583,6 +591,9 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _save.FlatAppearance.MouseOverBackColor = _save.BackColor;
         _save.FlatAppearance.MouseDownBackColor = _save.BackColor;
         _archive.BackColor = c.Surface;
+        _archive.ForeColor = c.Text;
+        _archive.FlatAppearance.BorderColor = c.Border;
+        _archive.FlatAppearance.BorderSize = 1;
         _archive.FlatAppearance.MouseOverBackColor = c.SurfaceAlt;
         _archive.FlatAppearance.MouseDownBackColor = c.AccentSoft;
         _delete.BackColor = Color.FromArgb(255, 143, 137);

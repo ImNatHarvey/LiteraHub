@@ -113,3 +113,5 @@ LiteraHub/
 - Re-issued complete Book View/Edit source and Student UI fixes. Student table now uses row-only dividers; footer typography and padding are standardized.
 - Includes a PowerShell verification script to distinguish misplaced replacement files or stale binaries from live layout defects.
 - Source changes not compiled or runtime-tested in assistant environment. Verify with clean solution rebuild and runtime screenshot before committing.
+
+Step 6C.7 candidate edits (unverified): `LiteraHub.WinForms/Pages/StudentsPage.cs`, `StudentDetailsPage.cs`, `BookEditorPage.cs`, and `LiteraHub.WinForms/Controls/ThemedTextField.cs`.
