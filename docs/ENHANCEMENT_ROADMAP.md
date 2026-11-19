@@ -1,85 +1,43 @@
-# LiteraHub — Enhancement Roadmap
+# LiteraHub — Development Roadmap
 
-**Updated:** 2026-11-12  
-**Primary scope:** STI Balagtas Case Study #5  
-**Direction:** Library management first; hybrid digital reading features after the required MVP.
+**Updated:** 2026-11-20  
+**Primary scope:** STI Balagtas Case Study #5
 
-## Development principles
+## Phase 1 — Foundation and completed catalog work
 
-1. Complete required case-study modules before optional enhancements.
-2. Preserve four-project .NET 10 / WinForms / SQL Server / Dapper architecture.
-3. Use testable batches with user-confirmed results.
-4. Keep source-of-truth distinctions between implemented, tested, and planned.
-5. Preserve role permissions, database integrity and applied migrations.
-6. Use existing themed controls and approved responsive layouts.
-7. Treat imported metadata as suggestions until staff confirms it.
+**Developer-tested/pushed (reported):** architecture and authentication foundation, themed shell, nine presets, responsive controls and scrollbars, Categories/Authors/Books CRUD, ISBN lookup, book cover preview, author selection, themed filter/sort menus, gender icons, and Step 5B.6 inventory consistency fix.
 
-## Phase A — Foundation and visual system
+## Phase 2 — Student Management (NEXT)
 
-**Developer-tested:** solution, migrations, authentication, application shell, loading states, dark/themed scrollbars, nine-preset appearance.
+- **6A:** inspect schema, permissions, sidebar, existing contracts; establish a testable foundation.
+- **6B:** Students listing: columns, search, filter/sort, pagination, action icons, theme/portrait behavior.
+- **6C:** Add/Edit Student: all case-study fields, unique StudentNo, validation, accessible controls.
+- **6D:** Archive/Restore/Delete with permissions, confirmation, and foreign-key/history safeguards.
+- **6E:** Test full-name/partial-name/StudentNo search, duplicate handling, database round trips, theme and responsive regressions.
 
-Presets: Classic Light, Midnight Library, Sepia Paper, Forest Scholar, Slate & Teal, Lavender Dusk, Ocean Breeze, Rosewood, Graphite.
+The sequence may be adjusted after inspecting actual source, but do not skip mandatory student fields or required search.
 
-Reader appearance will eventually be independent from application appearance.
+## Phase 3 — Authentication polish and recovery
 
-## Phase B — Required library management
+- Audit existing `LoginForm`, `AuthService`, users/roles, password hash and account provisioning.
+- Improve responsive login UI, themed focus/error states, show/hide password, keyboard access and feedback.
+- Choose and implement a secure Forgot Password flow appropriate to the desktop deployment (verified email delivery + expiring single-use tokens, or audited admin-assisted reset).
+- Add appropriate service/database protections and regression tests; do not introduce an insecure reset bypass.
 
-| Module | Current state |
-|---|---|
-| Categories | CRUD developer-tested and pushed |
-| Books catalog | UI developer-tested |
-| Book Editor | Responsive UI, inventory validation, category dropdown, ISBN lookup and cover preview integrated |
-| Authors | Backend/creation foundation exists; selector and CRUD completion pending |
-| Students | Pending completion |
-| Borrow/Return | Pending completion |
-| Reports | Pending completion |
-| Users | Role/account foundation exists; complete UI pending |
+## Phase 4 — Borrow & Return
 
-### Immediate sequence
+- Select existing student and available/borrowable book; validate permissions and loan policy.
+- Borrow and return in database transactions; prevent double borrowing and negative availability.
+- Record borrow/due/return dates, remarks, ISBN and return condition; preserve transaction history.
+- Search by dates, student name and ISBN; report overdue status.
+- Verify concurrent edits and inventory invariants.
 
-1. **Author selector:** search/select/create/match author records.
-2. **Book save:** validate and persist book, author relationships and inventory safely.
-3. **Book edit:** refresh catalog and enforce outstanding-loan restrictions.
-4. **Complete Authors and Students CRUD.**
-5. **Borrow/Return, Reports and end-to-end case-study testing.**
+## Phase 5 — Reports and case-study acceptance
 
-## Phase C — Smart cataloging
+- Books by category, author, status; all books.
+- Validate mandatory search facilities across Books, Authors, Students and Borrow/Return.
+- Run role, theme, portrait, database and packaging regression tests.
 
-**Implemented in editor:** ISBN lookup through Open Library, title/description import, cover-image retrieval, first-letter fallback.
+## Future optional enhancements
 
-**Pending:** author ID resolution, safe category matching, cover caching strategy, metadata attribution, offline handling and comprehensive save validation.
-
-The current metadata contract does not provide category data; do not invent category matches.
-
-## Phase D — Member requests and hybrid catalog
-
-Planned, not implemented:
-
-- Member book requests and staff approval.
-- Physical and digital title types.
-- Licensed/public-domain PDF and EPUB support.
-- Access and lending controls.
-
-## Phase E — Reader
-
-Planned, not implemented:
-
-- PDF/EPUB reading, bookmarks, highlights, notes, reading progress.
-- Independent reader appearance, typography, margins and line spacing.
-- Parallel Read (two independent reading panes).
-
-## Phase F — Optional intelligence
-
-Planned only: Wikipedia lookup, translation, text-to-speech, AI-assisted descriptions and recommendations. All require privacy, licensing, quota and cost review.
-
-## Quality gates
-
-- 1280×720 and 1920×1080: no unnecessary scrollbar, overlap or clipping.
-- 390×844: usable portrait scrolling and themed scrollbar.
-- Nine themes: no native-white control regressions.
-- Permission enforcement in services.
-- SQL validation and transaction safety.
-- Developer testing before commit and push.
-- Matching updates to `PROGRESS.md`, `DECISIONS.md`, and `SESSION_HANDOFF.md`.
-
-See `OPEN_QUESTIONS.md` for unresolved design choices.
+Hybrid physical/digital catalog, licensed PDF/EPUB reader, highlights/notes/bookmarks, Parallel Read, translation/lookup, accessibility improvements and advanced analytics. These are **not** prerequisites for the academic MVP.

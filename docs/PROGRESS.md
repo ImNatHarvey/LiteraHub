@@ -1,63 +1,56 @@
 # LiteraHub — Development Progress
 
-**Updated:** 2026-11-12  
+**Updated:** 2026-11-20  
 **Repository:** `ImNatHarvey/LiteraHub`  
-**Latest verified remote commit:** `8b17ad3847bb5dce6e71cb27792762e1245cc50b`  
-**Current checkpoint:** Step 5B.3C — Book Editor integrations
+**Handoff checkpoint:** After Step 5B.6; plan Step 6 Student Management
 
-> Status convention: **Developer-tested** means the developer reported successful local tests. **Source verified** means the implementation was inspected in GitHub; it does not mean ChatGPT compiled or executed it.
+> **Status definitions:** “Developer-tested” means the user reported successful Visual Studio/runtime tests. “Pushed” means the user reported pushing; check GitHub again to establish the current remote SHA. ChatGPT has not independently compiled the Windows application. Older GitHub `docs/` files were still dated 2026-11-12 when this handoff was prepared.
 
-## Completed or developer-tested
+## Developer-reported completed milestones
 
-| Workstream | Status | Notes |
+| Area | Status | Details |
 |---|---|---|
-| Steps 1–4C | Developer-tested | Solution, SQL bootstrap, authentication, shell/themes, scrollbars, loading states |
-| Nine-preset appearance | Developer-tested | Theme selection and responsive theme integration |
-| Categories CRUD | Developer-tested and pushed | Listing, search, filters, pagination, create/edit, archive/delete safeguards |
-| Books backend | Source verified / previously developer-tested | Models, repository, service, lookup options, author relationships |
-| ISBN metadata service | Developer-tested | Open Library lookup; Atomic Habits ISBN `9780735211292` returned title and description |
-| Books catalog | Developer-tested | Search, filter, pagination, themed actions, editor navigation |
-| Dedicated Book Editor | Developer-tested | Add/Edit modes, Back button, responsive layouts, themed fields |
-| Inventory UI validation | Developer-tested | Available <= Total; nonnegative values; spinner and manual-input restrictions |
-| Category dropdown | Developer-tested in UI | Active category options via existing service; category inference from ISBN not implemented |
-| Cover preview | Implementation committed; user confirmed latest designer fix | Remote image retrieval with first-letter fallback; no mandatory cover-path input |
-| Lookup button states | Implementation committed; user confirmed latest designer fix | Hover/pressed/busy styling; `IsBusy` designer serialization issue addressed |
+| Solution foundation | Developer-tested | .NET 10, four-project architecture, SQL Server/Dapper, login foundation, permissions, programmatic WinForms |
+| Themes and responsiveness | Developer-tested | Nine theme presets; custom controls/scrollbars; 1280×720, 1920×1080, 390×844 testing |
+| Categories | Developer-tested/pushed | CRUD, archive/restore/delete, search, pagination, themed filter/sort |
+| Authors | Developer-tested/pushed | CRUD, birth date/gender fields, themed selectors, search/filter/sort, gender submenu icons |
+| Books | Developer-tested/pushed | CRUD, Add/Edit page, authors, category/condition, ISBN lookup, cover preview, inventory, search/filter/sort |
+| Filter & Sort polish | Developer-tested/pushed | Themed menus/submenus across Categories, Authors and Books; selection labels; gender icons |
+| Step 5B.6 inventory fix | Developer-tested/pushed | Save explicitly entered Available=0; validate availability against real active loans rather than `Total - Available` inference |
 
-## Current approved Book Editor layout
+## Critical inventory behavior
 
-**1280 × 720:** left = Book Information, cover, ISBN, lookup, title; right = Classification, Category, Condition, Inventory, Authors, Description.
+- `TotalCopies >= 0`.
+- `0 <= AvailableCopies <= TotalCopies`.
+- Total=1, Available=0 is valid and must persist as zero.
+- Increasing Total must not silently increase Available.
+- Active loans, when present, impose additional server/repository-side constraints.
+- User confirmed the Step 5B.6 fix passed all requested tests and was pushed; inspect latest repository before further changes.
 
-**1920 × 1080:** left = Book Information, cover, ISBN, lookup, title, Classification, Category, Condition; right = Inventory, Authors, Description.
+## Pending / not yet accepted
 
-**390 × 844:** portrait scrolling supported; themed scrollbars must be retained.
+- **Step 6: Student Management:** inspect schema, interfaces, repositories, service, permissions, sidebar and page placeholders; implement Student CRUD and full required search.
+- **Step 7: Login polish and Forgot Password:** review existing login/auth contracts, design a secure recovery mechanism, implement UI and tests; no recovery mechanism is yet verified.
+- **Step 8: Borrow & Return:** connect student records and book inventory with atomic transaction handling, due dates, return conditions, borrowing history and required search.
+- **Reports:** four required summary lists and final case-study acceptance.
+- End-to-end regression, role checks, data integrity, accessibility, release/demo setup.
 
-Both desktop layouts were approved by the developer. Do not redesign without request.
+## Immediate next batch
 
-## Pending
+**Step 6A — Student Module Foundation:** inspect current GitHub source plus the newly uploaded latest repository ZIP; reconcile differences; identify schema, navigation, permissions and existing student contracts. Then implement the first small testable Student UI/backend batch with full file replacements and matching docs.
 
-- Author selector connected to real author records; author-name resolution from ISBN metadata.
-- Reliable category matching from external metadata; permission-aware confirmation for new categories.
-- Full Save Book and Edit Book persistence, validation, busy states, error handling, and catalog refresh.
-- Service/database checks for outstanding loans and inventory consistency at save time.
-- Authors, Students, Borrow/Return, Reports, Users UI completion as required by case study.
-- End-to-end regression, packaging, demo machine verification.
+## UI invariants
 
-## Important distinction
-
-The current Book Editor's inventory guard preserves `TotalCopies - AvailableCopies` as an unavailable count for UI editing. This is **not proven to equal active loans**. The service layer must query and enforce actual borrowing constraints when saving.
-
-The presence of the Save Book button does not mean saving is functional. The editor's author names are not yet persisted as author relationships.
-
-## Next implementation
-
-**Step 5B.3C.4 — Author selection and metadata matching.** Inspect `ThemedAuthorSelector`, author service interfaces and the latest `BookEditorPage.cs` before modifying them. Deliver one testable code batch and corresponding documentation update.
+- Preserve the approved Book Editor arrangements at 1280×720 and 1920×1080.
+- Preserve usable themed portrait scrolling at 390×844.
+- No native-white artifacts, unthemed controls, unnecessary scrollbars, or broken table action icons.
+- Preserve themed dialogs, selection behavior, active/inactive icons, tooltips and pagination.
 
 ## Development protocol
 
-1. Check GitHub on each LiteraHub follow-up; prefer uploaded newer local files over older remote files.
-2. Complete replacement `.cs` files by default; precise snippets only for small isolated fixes.
-3. For files around 1,000+ lines, provide downloadable complete source.
-4. No PowerShell replacement scripts.
-5. Code plus documentation in each development batch when possible.
-6. Developer tests before commit; never claim unrun tests passed.
-7. Preserve nine themes, approved responsive layouts, custom controls, permissions, and existing Categories CRUD.
+- Latest user instruction + working local source take priority for implementation; mandatory case-study scope must still be met.
+- Check GitHub and latest uploaded ZIP before editing. Do not assume GitHub contains unpushed files.
+- Deliver complete `.cs` replacements, exact paths and focused tests; tiny isolated fixes may use precise snippets.
+- For very long files, attach downloadable source/ZIP; do not force the user to reconstruct large files.
+- After the developer confirms all tests pass, suggest a commit; never commit or push without authorization.
+- Update `docs/` at each completed batch.

@@ -1,69 +1,54 @@
-# LiteraHub — Project Files and Responsibilities
+# LiteraHub — File Map and Responsibilities
 
-**Updated:** 2026-11-12  
+**Updated:** 2026-11-20  
 **Repository:** https://github.com/ImNatHarvey/LiteraHub
-
-## Solution
 
 ```text
 LiteraHub/
 ├── LiteraHub.slnx
-├── LiteraHub.Core/
-├── LiteraHub.Data/
-├── LiteraHub.Services/
-├── LiteraHub.WinForms/
-└── docs/
-    ├── DECISIONS.md
-    ├── ENHANCEMENT_ROADMAP.md
-    ├── FILES.md
-    ├── OPEN_QUESTIONS.md
-    ├── PROGRESS.md
-    ├── PROJECT_BRIEF.md
-    ├── SCHEMA.md
-    └── SESSION_HANDOFF.md
+├── LiteraHub.Core/         # models, interfaces, security contracts
+├── LiteraHub.Data/         # migrations, Dapper repositories
+├── LiteraHub.Services/     # business rules, authorization, metadata
+├── LiteraHub.WinForms/     # UI, pages, forms, custom controls, themes
+└── docs/                   # handoff, progress, architecture, scope
 ```
 
-## Project boundaries
+## Verified/known implementation paths
 
-| Project | Responsibility |
+| Path | Purpose |
 |---|---|
-| `LiteraHub.Core` | Models, contracts, security and shared definitions |
-| `LiteraHub.Data` | SQL Server bootstrap/migrations, Dapper repositories |
-| `LiteraHub.Services` | Business logic, authentication, authorization and validation |
-| `LiteraHub.WinForms` | Programmatic UI, forms, pages, custom controls, theme engine |
+| `LiteraHub.Data/Bootstrap/Migrations.cs` | SQL tables, constraints and seed/migration logic |
+| `LiteraHub.Data/Repositories/BookRepository.cs` | Book persistence and Step 5B.6 inventory fix |
+| `LiteraHub.Services/Books/BookService.cs` | Book validation, permissions and orchestration |
+| `LiteraHub.Core/Models/BookModels.cs` | Book records and input models |
+| `LiteraHub.WinForms/Pages/BooksPage.cs` | Catalog grid, search/filter/sort, navigation |
+| `LiteraHub.WinForms/Pages/BookEditorPage.cs` | Dedicated Add/Edit Book page and inventory controls |
+| `LiteraHub.WinForms/Pages/CategoriesPage.cs` | Categories CRUD and filtering |
+| `LiteraHub.WinForms/Pages/AuthorsPage.cs` | Authors CRUD and filtering |
+| `LiteraHub.WinForms/Controls/ThemedBooksFilterSort.cs` | Books filter/sort menu |
+| `LiteraHub.WinForms/Controls/ThemeCategoryFilterSort.cs` | Shared Categories/Authors catalog filter/sort control (class name differs from file name) |
+| `LiteraHub.WinForms/Forms/LoginForm.cs` | Existing login form; UI polish pending |
+| `LiteraHub.Services/Security/AuthService.cs` | Existing authentication service |
+| `LiteraHub.WinForms/Program.cs` | Dependency composition and application bootstrap |
 
-## Known Books and Categories files
+**Important:** Recheck all exact paths against the newest source ZIP/GitHub; this map is a handoff aid, not a claim that no files changed after it was prepared.
 
-Exact locations and method signatures must be checked against the current repository before editing.
+## Step 6 source inspection targets
 
-- `LiteraHub.WinForms/Pages/BooksPage.cs` — Books catalog and editor navigation.
-- `LiteraHub.WinForms/Pages/BookEditorPage.cs` — Add/Edit Book UI, ISBN lookup, inventory validation, cover preview.
-- `LiteraHub.WinForms/Pages/CategoriesPage.cs` — Categories management UI.
-- `LiteraHub.WinForms/Controls/ThemedFilterDropdown.cs` — Theme-aware dropdown reused for category/condition.
-- `LiteraHub.WinForms/Controls/ThemedAuthorSelector.cs` — Author selector foundation; integration pending.
-- `LiteraHub.Core/Models/BookMetadata.cs` — External bibliographic metadata.
-- `LiteraHub.Core/Interfaces/IBookMetadataService.cs` — Metadata service contract.
-- `LiteraHub.Services/.../OpenLibraryMetadataService.cs` — Open Library integration (verify exact path).
-- `BookModels.cs`, `IBookRepository.cs`, `IBookService.cs`, `BookRepository.cs`, `BookService.cs` — Books domain/data/service layer (verify exact paths).
-- `LiteraHub.Data/Bootstrap/Migrations.cs` — Authoritative schema migration definitions.
+- `Migrations.cs` student table and foreign keys.
+- Existing Student model, repository, service and interface (if any); do not assume they exist merely because the table exists.
+- Main shell/sidebar navigation and placeholder Student page.
+- Role/permission declarations and authorization service.
+- Existing themed table, form controls, filter/sort, pagination, confirmation dialogs.
 
-## Documentation purposes
+## Documentation index
 
-| File | Responsibility |
-|---|---|
-| `DECISIONS.md` | Architectural and product decisions |
-| `ENHANCEMENT_ROADMAP.md` | Planned enhancements and sequencing |
-| `FILES.md` | Structure and file ownership |
-| `OPEN_QUESTIONS.md` | Unresolved decisions and unverified behavior |
-| `PROGRESS.md` | Implemented/tested/pending milestones |
-| `PROJECT_BRIEF.md` | Case Study #5 mandatory scope |
-| `SCHEMA.md` | SQL schema and constraints |
-| `SESSION_HANDOFF.md` | Restart context and next coding batch |
-
-## Development conventions
-
-- All UI is programmatic WinForms; no designer files.
-- Keep SQL out of forms and permissions enforced in services.
-- Do not restore discarded `BookDialog.cs` and `AuthorQuickAddDialog.cs` without explicit approval.
-- Update this document when files are added, renamed, or removed.
-- Do not confuse planned components with implemented components.
+- `PROJECT_BRIEF.md` — mandatory academic requirements.
+- `PROGRESS.md` — completed vs pending work.
+- `SESSION_HANDOFF.md` — next conversation context.
+- `DECISIONS.md` — architectural and product choices.
+- `SCHEMA.md` — migration-based schema summary.
+- `FILES.md` — project/file ownership.
+- `OPEN_QUESTIONS.md` — unresolved decisions.
+- `ENHANCEMENT_ROADMAP.md` — phased plan.
+- `AUTHOR_SELECTION_BATCH.md` — historical implementation batch record; may contain superseded “pending” notes.

@@ -1,49 +1,49 @@
 # LiteraHub — Architecture and Decisions Log
 
-**Updated:** 2026-11-12
+**Updated:** 2026-11-20
 
-This document summarizes current decisions and their rationale. Earlier decisions should be retained in Git history.
+## Foundation
 
-## Foundation (2026-11-08 to 2026-11-09)
+- Four-project layered solution: Core, Data, Services, WinForms.
+- C#/.NET 10, programmatic WinForms, SQL Server Express, Dapper, idempotent versioned migration approach.
+- SQL belongs in Data; validation/permissions in Services; UI in WinForms; manual dependency wiring in `Program.cs`.
+- Staff Admin/Librarian roles; student record != user login. Borrower portal is not required for the present academic MVP.
+- Previously recorded loan policy: 7-day default, maximum 3 active loans, no fines, damaged books not borrowable. Verify actual seeded settings and service rules when implementing circulation.
+- Soft delete/archive preferred; hard deletion requires authorization and referential safety.
 
-- Four-project architecture: `LiteraHub.Core`, `.Data`, `.Services`, `.WinForms`.
-- C# / .NET 10, Windows Forms built programmatically, SQL Server Express, Dapper.
-- Idempotent SQL migrations; never rewrite migrations already applied.
-- SQL operations belong in Data; business validation and permissions in Services; UI in WinForms.
-- Manual dependency composition in `Program.cs`.
-- Admin and Librarian are staff roles; borrower login portal is outside current MVP.
-- Seven-day default loan period, maximum three active loans, no fines, and damaged books not borrowable.
-- Soft delete by default; hard delete only with appropriate authorization and dependency checks.
-- Responsive testing targets: 1280×720, 1920×1080, and 390×844.
+## Visual system
 
-## UI and themes
+- Nine presets: Classic Light, Midnight Library, Sepia Paper, Forest Scholar, Slate & Teal, Lavender Dusk, Ocean Breeze, Rosewood, Graphite.
+- Use existing themed controls, custom scrollbars, action icons, tooltip and pagination patterns.
+- Preserve approved responsive sizes 1280×720, 1920×1080 and 390×844; do not hardcode layouts that break portrait mode.
+- Books uses dedicated Add/Edit page rather than discarded modal BookDialog.
 
-- Nine theme presets: Classic Light, Midnight Library, Sepia Paper, Forest Scholar, Slate & Teal, Lavender Dusk, Ocean Breeze, Rosewood, Graphite.
-- Preserve design tokens and theme-change propagation.
-- Use existing themed controls rather than native default controls where an equivalent exists.
-- Use custom-themed scrolling, loading skeletons, and busy feedback.
-- Remove redundant page headings; preserve contextual Add/Edit headings.
-- Keep custom chevron navigation and themed table action icons.
+## Books and inventory
 
-## Books decisions (2026-11-09 to 2026-11-12)
+- Open Library metadata and cover preview assist staff; imported data requires review.
+- Authors may be selected/created through approved workflows; do not silently create categories from unverified metadata.
+- Good condition appears as “Good” in the UI; verify stored status mapping before changes.
+- `AvailableCopies=0` is a legitimate explicit value even when `TotalCopies>0`.
+- `TotalCopies - AvailableCopies` is **not** equivalent to active loans.
+- Step 5B.6 user-tested repository fix persists the requested available count and validates against actual unreturned loan rows.
+- Future Borrow/Return operations must adjust inventory atomically and preserve loan history; avoid stale UI calculations.
 
-- The Book Editor is a **dedicated page inside Books**, not a modal dialog. Do not restore discarded `BookDialog.cs` or `AuthorQuickAddDialog.cs`.
-- Keep the approved 1280 and 1920 responsive arrangements documented in `PROGRESS.md`.
-- Cover Path/URL is not a required visible input. Prefer remote cover lookup with a first-letter placeholder.
-- ISBN metadata comes from Open Library through existing service abstractions; manual entry remains available.
-- Imported bibliographic information requires staff review before saving.
-- Existing categories must be loaded from the database. Do not automatically create categories from unreliable metadata.
-- The metadata contract currently lacks category information; matching/creation requires additional design.
-- Author names returned from metadata are **not** automatically equivalent to persisted author IDs.
-- Available copies must never exceed total copies; UI validates immediately and the service must validate again.
-- On edits, do not discard outstanding/unavailable copies. Determine active-loan restrictions from actual persisted borrowing records.
-- Save Book is a visible UI action but end-to-end saving remains pending.
-- The custom Lookup button's runtime-only `IsBusy` property must not be designer-serialized (`DesignerSerializationVisibility.Hidden`).
+## Current implementation order (user approved)
 
-## Workflow decisions
+1. Student Management.
+2. Login UI polish and secure Forgot Password.
+3. Borrow & Return.
+4. Reports and full academic acceptance.
 
-- Each development response should deliver code when sufficient source is available, not merely an acknowledgment.
-- Full file replacements are preferred; tiny isolated corrections can use exact replacement snippets.
-- Deliver complete downloadable files for very long source files (approximately 1,000+ lines).
-- Supply matching documentation updates as development proceeds.
-- Developer confirms tests before committing; GitHub commit verification does not replace runtime testing.
+## Authentication recovery design constraints
+
+- Never store plaintext passwords or email reset tokens.
+- Do not claim Forgot Password is implemented; select recovery method only after checking available infrastructure and security requirements.
+- Prefer time-limited, single-use, securely hashed reset tokens with rate limiting and no account-enumeration disclosures if email recovery is feasible; otherwise propose an auditable admin-assisted staff reset workflow.
+- Never create a universal bypass/master password.
+
+## Workflow
+
+- Source-of-truth priority: latest explicit user direction, latest working files, verified GitHub, developer-confirmed decisions; the case study remains binding for mandatory scope.
+- Complete replacements, exact paths, concise tests, docs updates, user-controlled commits.
+- Developer “All passed” is evidence of developer testing, not independent ChatGPT execution.

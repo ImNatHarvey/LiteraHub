@@ -1,73 +1,59 @@
 ---
 type: handoff
 project: LiteraHub
-updated: 2026-11-12
-status: books-editor-author-integration-next
+updated: 2026-11-20
+status: step-6-student-management-next
 ---
 
 # LiteraHub — Session Handoff
 
-## Identity and architecture
+## Read this first
 
-Repository: https://github.com/ImNatHarvey/LiteraHub
+We are **continuing an existing project**, not starting from scratch. The user is moving development into a ChatGPT Project called **LiteraHub**. The new conversation should review the academic case study, mockup, Claude history, original and previous master prompts, latest source ZIP and GitHub repository before coding.
 
-STI Balagtas Library Management System (Case Study #5), C#/.NET 10, programmatic WinForms, SQL Server Express, Dapper, four projects: Core, Data, Services, WinForms. The case study governs mandatory features; hybrid digital reader enhancements remain future work.
+**Repository:** https://github.com/ImNatHarvey/LiteraHub  
+**Stack:** C# / .NET 10 / WinForms / SQL Server Express / Dapper  
+**Solution:** `LiteraHub.Core`, `LiteraHub.Data`, `LiteraHub.Services`, `LiteraHub.WinForms`.
 
-## GitHub checkpoint
+## Last developer-confirmed milestone
 
-Latest verified remote commit at handoff:
+**Step 5B.6 — Inventory Save Fix: all tests passed; user reported pushing.** Before that, Step 5B.5 filter/sort polish and gender icons also passed and were pushed. The last commit SHA was **not independently established in this handoff**; fetch it on restart. The repository's older docs may still describe author selection and book persistence as pending—those notes are stale.
 
-`8b17ad3847bb5dce6e71cb27792762e1245cc50b`
+### Step 5B.6 root cause and fix
 
-Message: `feat: integrate ISBN lookup, cover preview, and inventory validation`
+`BookRepository.UpdateAsync` had calculated available copies from total minus an inferred outstanding count, causing a saved `Available=0` to appear as 1 when Total was raised to 1. The tested fix preserves `input.AvailableCopies` and counts actual active rows in `dbo.BorrowReturns` (`Status='Borrowed'`, `ReturnDate IS NULL`) for additional constraints. The Book Editor no longer assumes `Total-Available` is the active loan count. Confirm this implementation in the latest ZIP/GitHub before modifying it.
 
-Check GitHub again when starting a new conversation; it may have advanced.
+## User-approved next sequence
 
-## Developer-tested progress
+1. **Step 6 — Students:** student records and case-study-compliant search, CRUD, archive/restore, safe deletion, themed responsive UI.
+2. **Step 7 — Authentication:** polish login UI and implement secure Forgot Password; review existing roles, account model and recovery constraints first.
+3. **Step 8 — Borrow & Return:** implement only after reliable student records, account access, and inventory are established.
+4. **Reports and final acceptance:** required four summary lists, case-study search and end-to-end testing.
 
-- Application foundation, login/permissions, nine themes, shell, scrollbars, loading states.
-- Categories CRUD, responsive themed table, filtering and pagination.
-- Books catalog with dedicated Add/Edit Book page navigation.
-- Book Editor responsive layout approved at 1280×720 and 1920×1080.
-- Inventory UI validation tested: nonnegative integers; Available <= Total.
-- ISBN lookup tested with Atomic Habits `9780735211292`; title and description populated.
-- Category dropdown connected to category service and tested.
-- Cover retrieval/placeholder and lookup-button feedback committed; designer `IsBusy` WFO1000 issue fixed and user confirmed good.
+## Mandatory Student fields from case study
 
-## Current UI arrangements
+Student ID number; first, middle, last name; house number, street, municipality, city/province, ZIP; date of birth; gender; mobile, landline, email. The existing migration already creates `dbo.Students` with `StudentId` internal identity and `StudentNo` unique external ID; inspect its exact column constraints before designing forms.
 
-At 1280×720: Book Information / Cover / ISBN / Lookup / Title on left; Classification / Category / Condition / Inventory / Authors / Description on right.
+## Architecture and UI rules
 
-At 1920×1080: Book Information / Cover / ISBN / Lookup / Title / Classification / Category / Condition on left; Inventory / Authors / Description on right.
+- Business rules and permissions in Services; SQL and transactions in Data; contracts/models in Core; themed controls/pages in WinForms.
+- Preserve nine themes: Classic Light, Midnight Library, Sepia Paper, Forest Scholar, Slate & Teal, Lavender Dusk, Ocean Breeze, Rosewood, Graphite.
+- Respect tested layouts at 1280×720, 1920×1080, and 390×844.
+- Follow Categories/Authors/Books established patterns: toolbar, search, themed filter/sort submenus, active icons, action tooltips, pagination, confirmation dialogs, theme-safe scrollbars.
+- Student records and login accounts are distinct. The current `Users.StudentId` relationship is nullable; do not create student logins by default without explicit scope.
+- Preserve actual active-loan constraints and do not treat unavailable inventory as proof of an active loan.
 
-Do not change approved layouts without explicit request. Preserve portrait scrolling and nine themes.
+## User's coding workflow
 
-## Not yet implemented or verified
+- Be concise; no repetitive acknowledgment or empty “next we will code” messages.
+- For feature/fix requests, inspect source and provide code in the same reply when possible.
+- Complete replacement `.cs` files with exact paths by default; tiny errors may use exact snippets.
+- For 1,000+ lines, supply downloadable full replacement file or ZIP.
+- Do not send PowerShell-based file modification scripts.
+- No fabricated compilation/test results. Wait for user to report “All passed” before suggesting commit.
+- Do not commit/push without explicit authorization.
+- Maintain `docs/*.md` as development evolves.
 
-- Real author selector and persisted book-author associations.
-- Automatic category inference from ISBN (metadata currently lacks category).
-- Save Book persistence and complete validation.
-- Service-level enforcement of active loan constraints at save.
-- Remaining required CRUD modules and reporting.
+## First instruction to new chat
 
-Do not infer that Save Book works from its visible button. The author input currently does not constitute persisted author selection.
-
-## Immediate next batch
-
-Inspect current `BookEditorPage.cs`, `BooksPage.cs`, `ThemedAuthorSelector.cs`, author contracts and services. Implement a small, testable author-selection/matching batch. Reuse existing custom controls and permissions. Provide complete code and documentation replacement in the same response.
-
-## User's coding preferences
-
-- Check GitHub for every LiteraHub follow-up, even short ones.
-- Acknowledge briefly and deliver code in the same message whenever possible.
-- Full C# file replacements by default; exact snippet only for a small isolated fix.
-- For 1,000+ line files, generate downloadable complete `.cs` files.
-- No PowerShell modification scripts.
-- Each batch: code, docs update, focused test checklist.
-- Do not commit or push without authorization; give commit name after developer tests.
-- Never claim local compilation or tests that have not been performed.
-- Respect the case study, old Claude history, mockup, and original master prompt, while prioritizing current verified code and latest user decisions.
-
-## Restart instruction
-
-Read all attached case-study and history files. Check GitHub's latest commit and current relevant source. Compare uploaded local files with remote. Continue **Book Editor author-selection integration** in a testable code batch, including matching documentation changes. Do not restart the project or replace working layouts.
+Inspect the latest uploaded source ZIP, GitHub and Case Study #5. Check `Migrations.cs` for Students, `Program.cs` for service wiring, `MainForm`/navigation for Student page placeholders, existing auth/permissions, and any student models/contracts. Propose/implement **Step 6A** in one safe, testable batch. Do not begin Borrow & Return or redesign the whole application.

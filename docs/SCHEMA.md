@@ -1,41 +1,50 @@
 # LiteraHub — Database Schema and Inventory Rules
 
-**Updated:** 2026-11-12  
-**Database:** SQL Server Express  
-**Authoritative migration source:** `LiteraHub.Data/Bootstrap/Migrations.cs`
+**Updated:** 2026-11-20  
+**Authoritative source:** `LiteraHub.Data/Bootstrap/Migrations.cs` and live SQL Server schema.
 
-This is a documentation summary of the existing migration model, **not** a newly applied migration. Verify the exact current schema from `Migrations.cs` and the runtime database before changing it.
+> This document is a schema summary, **not** a migration. Verify the latest repository and runtime DB before writing SQL. Do not edit previously applied migrations in place.
 
-## Core tables
+## Existing core tables
 
-| Table | Primary key | Purpose |
+| Table | Key | Role |
 |---|---|---|
-| Roles | RoleId | Access roles |
-| Users | UserId | Staff/borrower accounts |
-| Students | StudentId | Student records |
-| Authors | AuthorId | Author records |
-| Categories | CategoryId | Book classification |
-| BookStatuses | StatusId | Condition and borrowability |
-| Books | BookId | Catalog and inventory |
-| BookAuthors | BookId + AuthorId | Book-author relationships |
-| BorrowReturns | BorrowId | Loan transactions |
-| Settings | SettingKey | Loan settings |
+| `dbo.Roles` | `RoleId` | Staff role permissions |
+| `dbo.Users` | `UserId` | Authentication accounts; optional `StudentId` association |
+| `dbo.Students` | `StudentId` | Student borrower records |
+| `dbo.Authors` | `AuthorId` | Author metadata |
+| `dbo.Categories` | `CategoryId` | Book categories |
+| `dbo.BookStatuses` | `StatusId` | Book condition/borrowability |
+| `dbo.Books` | `BookId` | Catalog/inventory |
+| `dbo.BookAuthors` | `BookId` + `AuthorId` | Many-to-many links |
+| `dbo.BorrowReturns` | `BorrowId` | Loan and return history |
+| `dbo.Settings` | `SettingKey` | Loan settings |
 
-## Categories
+## Students — current migration fields
 
-`dbo.Categories`: CategoryId (identity), Name (unique, required), Description (nullable), IsActive.
+- `StudentId INT IDENTITY PRIMARY KEY` — internal record key.
+- `StudentNo NVARCHAR(30) NOT NULL UNIQUE` — visible Student ID number.
+- `FirstName NVARCHAR(100) NOT NULL`.
+- `MiddleName NVARCHAR(100) NULL`.
+- `LastName NVARCHAR(100) NOT NULL`.
+- `HouseNo NVARCHAR(50) NOT NULL`.
+- `Street NVARCHAR(150) NOT NULL`.
+- `Municipality NVARCHAR(100) NOT NULL`.
+- `CityProvince NVARCHAR(100) NOT NULL`.
+- `ZipCode NVARCHAR(10) NOT NULL`.
+- `BirthDate DATE NOT NULL`.
+- `Gender NVARCHAR(20) NOT NULL`.
+- `MobileNo NVARCHAR(30) NOT NULL`.
+- `LandlineNo NVARCHAR(30) NULL`.
+- `Email NVARCHAR(150) NOT NULL`.
+- `IsActive BIT NOT NULL DEFAULT 1`.
+- `CreatedAt DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME()`.
 
-Seed names previously documented: Fiction, Non-Fiction, Science, Technology, Mathematics, History, Literature, Reference.
+Student hard-delete must respect `BorrowReturns.StudentId` and any `Users.StudentId` references. Do not assume archive means permanent delete.
 
-## Authors
+## Books — current migration fields and constraints
 
-`dbo.Authors`: AuthorId, FirstName, MiddleName, LastName, BirthDate, Gender, IsActive, CreatedAt.
-
-## Books
-
-`dbo.Books`: BookId, Isbn, Title, Description, CategoryId, TotalCopies, AvailableCopies, StatusId, CoverPath, IsActive, CreatedAt.
-
-Inventory constraints:
+`BookId`, `Isbn`, `Title`, `Description`, `CategoryId`, `TotalCopies`, `AvailableCopies`, `StatusId`, `CoverPath`, `IsActive`, `CreatedAt`.
 
 ```text
 TotalCopies >= 0
@@ -43,41 +52,19 @@ AvailableCopies >= 0
 AvailableCopies <= TotalCopies
 ```
 
-The Book Editor now enforces these constraints at the UI level. **The service and database remain authoritative when saving.**
+Step 5B.6 fix: on edit, preserve the explicit available count (including 0) while checking actual active `BorrowReturns` records. Do not recompute availability as `Total - (old Total - old Available)`.
 
-The UI currently reserves the difference `TotalCopies - AvailableCopies` when editing, but this difference must not be assumed to equal the number of outstanding loans. Verify borrowing records before permitting inventory reductions.
+## BorrowReturns — existing migration fields
 
-## Relationships
+`BorrowId`, `StudentId`, `BookId`, `Isbn`, `BorrowDate`, `DueDate`, `ReturnDate`, `Remarks`, `Status`, `ReturnConditionStatusId`, `CreatedByUserId`, `CreatedAt`. `Status` is constrained to `Borrowed`/`Returned`; `ReturnDate` is nullable. An active loan is presently identified by `Status='Borrowed' AND ReturnDate IS NULL` in the inventory fix.
 
-- `Books.CategoryId` references `Categories`.
-- `Books.StatusId` references `BookStatuses`.
-- `BookAuthors` links Books and Authors using a composite primary key.
-- `BorrowReturns` references the borrower and book and records borrow/due/return dates, remarks and status.
+## Users
 
-## Book statuses
+`UserId`, `Username`, `PasswordHash`, `RoleId`, nullable `StudentId`, `MustChangePassword`, `IsActive`, `CreatedAt`; unique filtered index on non-null `StudentId`. Forgot Password is not currently a verified feature; assess whether token storage/new migration or admin-assisted reset is appropriate.
 
-Previously documented seed statuses:
+## Data integrity policy
 
-- Good Condition — borrowable.
-- Damaged — not borrowable.
-
-The UI may abbreviate Good Condition as “Good”; verify mapping to actual database status IDs before persistence.
-
-## Borrowing
-
-`dbo.BorrowReturns` previously documented fields: BorrowId, StudentId, BookId, Isbn, BorrowDate, DueDate, ReturnDate, Remarks, Status, ReturnConditionStatusId, CreatedByUserId, CreatedAt.
-
-## Settings
-
-Previously documented seed values:
-
-- `LoanDays = 7`
-- `MaxActiveLoans = 3`
-
-## Schema change policy
-
-- Do not edit already-applied migrations.
-- Introduce schema changes through new versioned migrations.
-- Never auto-create categories or authors from external metadata without validation, duplicate handling and permissions.
-- Do not assume a new database column exists because the UI displays a field.
-- No new migration is claimed in the current Book Editor integration checkpoint.
+- Add schema changes via new versioned migrations, never rewrite applied versions.
+- Validate in service layer and database/repository.
+- Parameterize SQL, use transactions and concurrency-safe updates for loans and returns.
+- Never infer that unavailable copies are all borrowed.
