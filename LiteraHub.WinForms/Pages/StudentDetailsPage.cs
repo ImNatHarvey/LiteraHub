@@ -22,17 +22,18 @@ public sealed class StudentDetailsPage : ThemedUserControl
 {
     private readonly IStudentService _service;
     private readonly Student? _original;
+    private readonly bool _canHardDelete;
     private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Margin = Padding.Empty, Padding = Padding.Empty };
     private readonly TableLayoutPanel _header = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
     private readonly Label _heading = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
-    private readonly Button _back = new() { Text = "", Dock = DockStyle.Fill, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Margin = new Padding(8, 4, 0, 4) };
+    private readonly StudentBackButton _back = new() { Dock = DockStyle.Fill, Margin = new Padding(8, 4, 2, 4) };
     private readonly Label _subtitle = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
     private readonly ScrollHost _scroll = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
     private readonly Panel _surface = new() { Margin = Padding.Empty };
     private readonly Panel _actionFooter = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
     private readonly Button _save = new() { FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Text = "" };
     private readonly Button _archive = new() { FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Text = "" };
-    private readonly Button _delete = new() { FlatStyle = FlatStyle.Flat, Text = "", Enabled = false };
+    private readonly Button _delete = new() { FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Text = "" };
     private readonly Button _cancel = new() { FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Text = "Cancel", Visible = false };
     private readonly Button _photoButton = new() { FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Text = "Choose Photo" };
     private readonly AvatarView _avatar = new();
@@ -53,9 +54,10 @@ public sealed class StudentDetailsPage : ThemedUserControl
 
     public event EventHandler? BackRequested;
 
-    public StudentDetailsPage(IStudentService service, Student? student)
+    public StudentDetailsPage(IStudentService service, Student? student, bool canHardDelete)
     {
         _service = service ?? throw new ArgumentNullException(nameof(service));
+        _canHardDelete = canHardDelete;
         _original = student;
         _editing = student is null;
         Dock = DockStyle.Fill;
@@ -98,7 +100,8 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _actionFooter.Controls.AddRange(new Control[] { _delete, _archive, _save, _cancel });
         _scroll.SetContent(_surface);
         Controls.Add(_layout);
-        _toolTip.SetToolTip(_delete, "Permanent student deletion is not implemented in the current service; no data is deleted.");
+        _toolTip.SetToolTip(_delete, _canHardDelete ? "Permanently delete this unreferenced student" : "Only administrators with HardDelete permission can delete students.");
+        _delete.Enabled = _canHardDelete;
         _inputs["StudentNo"].Enabled = false;
         _avatar.Initials = Initials(student);
         if (student is not null)
@@ -110,7 +113,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
         }
 
         _back.Click += (_, _) => { if (!_busy) BackRequested?.Invoke(this, EventArgs.Empty); };
-        _back.Paint += (_, e) => DrawBackButton(e);
+        
         _save.Click += async (_, _) =>
         {
             if (_busy) return;
@@ -119,6 +122,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
         };
         _cancel.Click += (_, _) => { if (_busy) return; RestoreOriginal(); SetEditing(false); };
         _archive.Click += async (_, _) => await ToggleActiveAsync();
+        _delete.Click += async (_, _) => await DeleteStudentAsync();
         _photoButton.Click += (_, _) => SelectPhoto();
         _save.Paint += (_, e) => DrawAction(e, _save, 0);
         _archive.Paint += (_, e) => DrawAction(e, _archive, 1);
@@ -178,8 +182,8 @@ public sealed class StudentDetailsPage : ThemedUserControl
             int columnWidth = portrait ? inner : Math.Max(90, (inner - 2 * gap) / 3);
             int[] x = portrait ? new[] { pad, pad, pad } : new[] { pad, pad + columnWidth + gap, pad + (columnWidth + gap) * 2 };
             int startY = 14;
-            int fieldHeight = portrait ? 40 : 42;
-            int fieldStep = portrait ? 60 : 64;
+            int fieldHeight = portrait ? 40 : 38;
+            int fieldStep = portrait ? 74 : 68;
             int y1 = startY, y2 = startY, y3 = startY;
             void Heading(Label label, int left, ref int top)
             {
@@ -189,8 +193,8 @@ public sealed class StudentDetailsPage : ThemedUserControl
             void Field(string key, int left, ref int top)
             {
                 var field = _fields[key];
-                field.Caption.SetBounds(left, top, columnWidth, 17);
-                field.Control.SetBounds(left, top + 19, columnWidth, fieldHeight);
+                field.Caption.SetBounds(left, top, columnWidth, 19);
+                field.Control.SetBounds(left, top + 26, columnWidth, fieldHeight);
                 top += fieldStep;
             }
             if (portrait)
@@ -211,11 +215,11 @@ public sealed class StudentDetailsPage : ThemedUserControl
             else
             {
                 Heading(_studentHeading, x[0], ref y1);
-                int avatarSize = width >= 1300 ? 148 : width >= 1150 ? 120 : 90;
+                int avatarSize = width >= 1300 ? 148 : width >= 1150 ? 120 : 78;
                 _avatar.SetBounds(x[0] + (columnWidth - avatarSize) / 2, y1, avatarSize, avatarSize);
                 y1 += avatarSize + 4;
-                _photoButton.SetBounds(x[0], y1, columnWidth, 30);
-                y1 += 36;
+                _photoButton.SetBounds(x[0], y1, columnWidth, 28);
+                y1 += 33;
                 foreach (var key in new[] { "StudentNo", "FirstName", "MiddleName", "LastName" }) Field(key, x[0], ref y1);
 
                 Heading(_addressHeading, x[1], ref y2);
@@ -234,22 +238,6 @@ public sealed class StudentDetailsPage : ThemedUserControl
             _save.Invalidate(); _archive.Invalidate(); _delete.Invalidate();
         }
         finally { _arranging = false; }
-    }
-
-    private void DrawBackButton(PaintEventArgs e)
-    {
-        var c = Theme.Colors;
-        var g = e.Graphics;
-        var old = g.SmoothingMode;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        int cx = 18, cy = _back.Height / 2;
-        using var pen = new Pen(c.Accent, 2.2f)
-        { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
-        g.DrawLines(pen, new[] { new Point(cx + 4, cy - 6), new Point(cx - 2, cy), new Point(cx + 4, cy + 6) });
-        TextRenderer.DrawText(g, "Back", Theme.Body,
-            new Rectangle(31, 0, Math.Max(1, _back.Width - 34), _back.Height), c.Text,
-            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
-        g.SmoothingMode = old;
     }
 
     private void PositionFooterButtons()
@@ -335,6 +323,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _archive.Visible = _original is not null && !editing;
         _archive.AccessibleName = _original?.IsActive == false ? "Restore Student" : "Archive Student";
         _delete.Visible = _original is not null && !editing;
+        _delete.Enabled = _canHardDelete && !_busy;
         _cancel.Visible = _original is not null && editing;
         _heading.Text = _original is null ? "Add Student" : editing ? "Edit Student" : "Student Details";
         _subtitle.Text = _original is null ? "Register a new student." : editing ? "Update student information." : "Viewing student record.";
@@ -425,6 +414,50 @@ public sealed class StudentDetailsPage : ThemedUserControl
         finally { _busy = false; if (!IsDisposed && !Disposing) _archive.Enabled = true; }
     }
 
+
+    private async Task DeleteStudentAsync()
+    {
+        if (_original is null || _busy || !_canHardDelete) return;
+        if (!ThemedMessageDialog.Confirm(FindForm(), "Permanently Delete Student",
+                $"Permanently delete '{_original.FirstName} {_original.LastName}'?\n\n" +
+                "This cannot be undone. Students with borrowing history or linked accounts cannot be deleted.",
+                danger: true, confirmText: "Delete")) return;
+        _busy = true;
+        _delete.Enabled = false;
+        _save.Enabled = false;
+        _archive.Enabled = false;
+        try
+        {
+            var result = await _service.DeleteAsync(_original.StudentId);
+            if (IsDisposed || Disposing) return;
+            if (result.Success)
+            {
+                // Photo cache is intentionally left untouched if local deletion fails;
+                // database deletion is authoritative and always happens first.
+                StudentPhotoStore.TryDelete(_original.StudentNo);
+                BackRequested?.Invoke(this, EventArgs.Empty);
+            }
+            else
+                ThemedMessageDialog.ShowAlert(FindForm(), "Delete Student",
+                    result.Error ?? "Unable to delete student.", danger: true);
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && !Disposing)
+                ThemedMessageDialog.ShowAlert(FindForm(), "Delete Student", ex.Message, danger: true);
+        }
+        finally
+        {
+            _busy = false;
+            if (!IsDisposed && !Disposing)
+            {
+                _delete.Enabled = _canHardDelete;
+                _save.Enabled = true;
+                _archive.Enabled = true;
+            }
+        }
+    }
+
     private void DrawAction(PaintEventArgs e, Button button, int kind)
     {
         var c = Theme.Colors;
@@ -435,6 +468,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
             ? (_original?.IsActive == false ? "Restore Student" : "Archive Student") : "Delete Student";
         if (_responsive && button.Width < 130) label = kind == 0 ? (_editing ? "Save" : "Edit") : kind == 1 ? "Archive" : "Delete";
         Color ink = button.Enabled ? button.ForeColor : c.TextMuted;
+        if (kind == 1 && _original?.IsActive == false && button.Enabled) ink = c.PillGoodText;
         var measured = TextRenderer.MeasureText(label, button.Font);
         int cx = Math.Max(12, (button.Width - measured.Width - 24) / 2 + 8);
         int cy = button.Height / 2;
@@ -451,7 +485,18 @@ public sealed class StudentDetailsPage : ThemedUserControl
         {
             g.DrawRectangle(pen, cx - 8, cy - 4, 16, 12);
             g.DrawLine(pen, cx - 10, cy - 8, cx + 10, cy - 8);
-            g.DrawLine(pen, cx, cy - 2, cx, cy + 5);
+            bool restoring = _original?.IsActive == false;
+            g.DrawLine(pen, cx, restoring ? cy + 5 : cy - 2, cx, restoring ? cy - 2 : cy + 5);
+            if (restoring)
+            {
+                g.DrawLine(pen, cx - 4, cy + 1, cx, cy - 3);
+                g.DrawLine(pen, cx, cy - 3, cx + 4, cy + 1);
+            }
+            else
+            {
+                g.DrawLine(pen, cx - 4, cy + 1, cx, cy + 5);
+                g.DrawLine(pen, cx, cy + 5, cx + 4, cy + 1);
+            }
         }
         else
         {
@@ -500,7 +545,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _birthDate.FlatAppearance.BorderSize = 1;
         _birthDate.FlatAppearance.MouseOverBackColor = c.AccentSoft;
         _gender.ApplyTheme();
-        foreach (var button in new[] { _back, _cancel, _archive, _photoButton })
+        foreach (var button in new[] { _cancel, _archive, _photoButton })
         {
             button.BackColor = c.SurfaceAlt;
             button.ForeColor = c.Text;
@@ -518,7 +563,9 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _delete.ForeColor = Color.White;
         _delete.Font = Theme.BodyStrong;
         _delete.FlatAppearance.BorderSize = 0;
-        _back.Invalidate();
+        _delete.FlatAppearance.MouseOverBackColor = ControlPaint.Dark(_delete.BackColor, 0.12f);
+        _delete.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(_delete.BackColor, 0.23f);
+        _back.RefreshTheme();
         _avatar.Invalidate();
         ArrangeForm();
     }
@@ -574,6 +621,128 @@ public sealed class StudentDetailsPage : ThemedUserControl
         }
         protected override void Dispose(bool disposing) { if (disposing) _photo?.Dispose(); base.Dispose(disposing); }
     }
+    private sealed class StudentBackButton : Control
+    {
+        private bool _hovered;
+
+        public StudentBackButton()
+        {
+            SetStyle(
+                ControlStyles.UserPaint |
+                ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.ResizeRedraw |
+                ControlStyles.Selectable,
+                true);
+
+            Cursor = Cursors.Hand;
+            TabStop = true;
+            AccessibleName = "Back to Students";
+        }
+
+        public void RefreshTheme()
+        {
+            BackColor = Theme.Colors.Surface;
+            ForeColor = Theme.Colors.Text;
+            Font = Theme.Body;
+            Invalidate();
+        }
+
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            base.OnMouseEnter(e);
+            _hovered = true;
+            Invalidate();
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            base.OnMouseLeave(e);
+            _hovered = false;
+            Invalidate();
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+
+            if (e.KeyCode is Keys.Enter or Keys.Space)
+            {
+                OnClick(EventArgs.Empty);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+
+            var c = Theme.Colors;
+            var g = e.Graphics;
+
+            g.SmoothingMode =
+                SmoothingMode.AntiAlias;
+
+            using var background = new SolidBrush(
+                _hovered ? c.SurfaceAlt : c.Surface);
+
+            g.FillRectangle(
+                background, ClientRectangle);
+
+            using var border = new Pen(c.Border);
+
+            g.DrawRectangle(
+                border,
+                0, 0,
+                Math.Max(0, Width - 1),
+                Math.Max(0, Height - 1));
+
+            int iconX = 18;
+            int iconY = Height / 2;
+
+            using var pen = new Pen(
+                c.Accent, 2.2f)
+            {
+                StartCap = LineCap.Round,
+                EndCap = LineCap.Round,
+                LineJoin = LineJoin.Round
+            };
+
+            g.DrawLines(
+                pen,
+                new[]
+                {
+                    new Point(iconX + 4, iconY - 6),
+                    new Point(iconX - 2, iconY),
+                    new Point(iconX + 4, iconY + 6)
+                });
+
+            TextRenderer.DrawText(
+                g,
+                "Back",
+                Font,
+                new Rectangle(
+                    31,
+                    0,
+                    Math.Max(0, Width - 34),
+                    Height),
+                c.Text,
+                TextFormatFlags.Left |
+                TextFormatFlags.VerticalCenter);
+
+            if (Focused && ShowFocusCues)
+            {
+                ControlPaint.DrawFocusRectangle(
+                    g,
+                    new Rectangle(
+                        3,
+                        3,
+                        Math.Max(0, Width - 6),
+                        Math.Max(0, Height - 6)));
+            }
+        }
+    }
 }
 
 /// <summary>Local Windows profile photo cache, not a shared/database attachment.</summary>
@@ -584,6 +753,12 @@ internal static class StudentPhotoStore
     {
         byte[] key = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(studentNo));
         return Path.Combine(DirectoryPath, Convert.ToHexString(key) + ".png");
+    }
+    public static void TryDelete(string studentNo)
+    {
+        try { string file = PathFor(studentNo); if (File.Exists(file)) File.Delete(file); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
     public static Image? Load(string studentNo)
     {

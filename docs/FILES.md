@@ -90,3 +90,13 @@ LiteraHub/
 - `LiteraHub.WinForms/Pages/BookEditorPage.cs` — Book actions in a separate footer outside the book content surface.
 - `LiteraHub.WinForms/Pages/StudentDetailsPage.cs` — Student actions in a separate footer, custom Back chevron, centered and responsive avatar.
 - `LiteraHub.WinForms/Pages/StudentsPage.cs` — pagination alignment/typography and `Rows:` label.
+
+### Step 6C.5 modified source files (replacement paths)
+- `LiteraHub.WinForms/Pages/StudentsPage.cs`: Direct page-row binding, Books-style pagination and row action, passes delete permission.
+- `LiteraHub.WinForms/Pages/StudentDetailsPage.cs`: Matched Book Editor Back control, action styling, field spacing, guarded Delete handler.
+- `LiteraHub.WinForms/Forms/ShellForm.cs`: Pass existing `IPermissionService` into `StudentsPage`.
+- `LiteraHub.Core/Interfaces/IStudentService.cs`: `DeleteAsync(int studentId)` contract.
+- `LiteraHub.Core/Interfaces/IStudentRepository.cs`: `DeleteAsync(int studentId)` contract.
+- `LiteraHub.Services/Students/StudentService.cs`: Authorized delete with meaningful failure results.
+- `LiteraHub.Data/Repositories/StudentRepository.cs`: Parameterized SQL guarded by dependent user/loan records.
+- Existing docs updated: `docs/PROGRESS.md`, `docs/SESSION_HANDOFF.md`, `docs/FILES.md`.

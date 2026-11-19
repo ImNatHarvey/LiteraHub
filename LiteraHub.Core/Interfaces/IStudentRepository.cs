@@ -10,4 +10,5 @@ public interface IStudentRepository
     Task<int> CreateAsync(StudentInput input);
     Task<bool> UpdateAsync(int studentId, StudentInput input);
     Task<bool> SetActiveAsync(int studentId, bool isActive);
+    Task<bool> DeleteAsync(int studentId);
 }

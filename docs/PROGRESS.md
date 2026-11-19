@@ -2,7 +2,7 @@
 
 **Updated:** 2026-11-20  
 **Repository:** `ImNatHarvey/LiteraHub`  
-**Handoff checkpoint:** Combined Step 6B.1 + 6C Student List styling and Student Details/Add/Edit package delivered; awaiting developer tests
+**Handoff checkpoint:** Step 6C.4 user-reported pushed; Step 6C.5 source replacements prepared, awaiting Visual Studio build and runtime acceptance
 
 > **Status definitions:** “Developer-tested” means the user reported successful Visual Studio/runtime tests. “Pushed” means the user reported pushing; check GitHub again to establish the current remote SHA. ChatGPT has not independently compiled the Windows application. Older GitHub `docs/` files were still dated 2026-11-12 when this handoff was prepared.
 
@@ -37,7 +37,7 @@
 
 ## Pending / not yet accepted
 
-- **Step 6: Student Management:** complete 6B UI acceptance, then Add/Edit, archive/restore and deletion policy.
+- **Step 6: Student Management:** Step 6C.5 UI and protected student deletion pending user build, workflow, and responsive acceptance. Do not claim success until explicitly tested.
 - **Step 7: Login polish and Forgot Password:** review existing login/auth contracts, design a secure recovery mechanism, implement UI and tests; no recovery mechanism is yet verified.
 - **Step 8: Borrow & Return:** connect student records and book inventory with atomic transaction handling, due dates, return conditions, borrowing history and required search.
 - **Reports:** four required summary lists and final case-study acceptance.
@@ -45,7 +45,7 @@
 
 ## Immediate next batch
 
-**Step 6B — Student List UI acceptance:** build, navigate to Students, verify empty/populated directory, search/status/sort/paging/refresh, all themes and screen sizes, and regression across existing modules. Then proceed to Step 6C.
+**Step 6C.5 acceptance:** rebuild; verify footer typography/Rows: matching Books/Categories, no unexpected grid separators, identical Book/Student Back chevrons, field spacing, and delete/archive/restore behavior. Test blocked deletion with referenced records, all roles, three screen sizes, and nine themes. Proceed to Books View/Edit only after acceptance.
 
 ## UI invariants
 
@@ -94,3 +94,13 @@
 - Student directory pagination uses the same Theme.Body/Theme.Caption conventions as Books and explicitly displays `Rows:`.
 - Existing data-layer operations, local-only student photo cache, generated StudentNo, and disabled hard-delete remain unchanged.
 - **Not compiled or runtime-tested in this environment; verify 1280×720, 1920×1080, 390×844, all presets and existing Books behavior.**
+
+### Step 6C.5 — UI parity and permission-safe student delete (prepared; NOT yet accepted)
+- Verified the user-reported pushed Step 6C.4 GitHub source SHA against the 6C.4 ZIP before editing.
+- Student directory now binds the page row list directly, like Books, instead of using a separate BindingSource. Explicitly match the Books pagination table margin/300px region, 42px `Rows:` label, and default label typography; preserve `Showing x–y of z`, filter/sort, row chevron and grid theme.
+- Student Details Back button copies the **actual Book Editor control behavior** (painting, border, focus, mouse hover, keyboard). Cancel uses the same surface/border/hover palette.
+- Adjusted field label-to-input spacing and compact 1280px desktop avatar to leave more bottom breathing room. Action footer remains outside the form surface. Book Editor was not modified in this batch.
+- Added service- and repository-backed `DeleteAsync`; UI button enables only with `Permission.HardDelete`; service demands **both** `ManageStudents` and `HardDelete`. SQL delete is parameterized and atomically guards against dependent `BorrowReturns` and `Users` records; existing foreign-key constraints remain the final protection. No cascading delete and no migration. User must verify deletions and dependency protection before accepting this behavior.
+- Archive/Restore icon draws upward/downward arrows consistent with Book Editor. Profile photo cache is best-effort deleted only after successful student deletion. Student photos are still local to the current PC/user and not shared database assets.
+- Files: `StudentsPage.cs`, `StudentDetailsPage.cs`, `ShellForm.cs`, `IStudentService.cs`, `IStudentRepository.cs`, `StudentService.cs`, `StudentRepository.cs`. No other modules' source modified.
+- **Not compiled or runtime-tested in this environment. No commit/push made by assistant.**

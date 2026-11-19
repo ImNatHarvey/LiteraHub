@@ -93,6 +93,25 @@ public sealed class StudentService : IStudentService
         }
     }
 
+    public async Task<ServiceResult> DeleteAsync(int studentId)
+    {
+        _permissions.Demand(Permission.ManageStudents);
+        _permissions.Demand(Permission.HardDelete);
+        if (studentId <= 0) return ServiceResult.Fail("Invalid student record ID.");
+        if (await _repository.GetByIdAsync(studentId) is null)
+            return ServiceResult.Fail("Student not found.");
+        try
+        {
+            return await _repository.DeleteAsync(studentId)
+                ? ServiceResult.Ok()
+                : ServiceResult.Fail("This student cannot be deleted because the record is referenced by borrowing history or a linked account.");
+        }
+        catch (DbException)
+        {
+            return ServiceResult.Fail("Unable to delete student. The record may be in use by other records.");
+        }
+    }
+
     private static ServiceResult Validate(StudentInput? input)
     {
         if (input is null) return ServiceResult.Fail("Student data is required.");

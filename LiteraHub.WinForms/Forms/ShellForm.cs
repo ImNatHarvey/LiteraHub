@@ -393,7 +393,7 @@ public sealed class ShellForm : Form
 
         else if (key == "students")
         {
-            next = new StudentsPage(_students);
+            next = new StudentsPage(_students, _permissions);
         }
         else if (key == "authors")
         {

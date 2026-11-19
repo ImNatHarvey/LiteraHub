@@ -93,3 +93,12 @@ The user reported unthemed native Student filter popup and date picker, native s
 
 ### Latest delivered batch: Step 6C.4
 Separate fixed action footer below content surfaces for both Student Details and Book Editor; align Student Back chevron/initials and list footer. No student database migration, deletion service, or new Markdown file. Await developer build/UI regression tests; focus 1280×720, 1920×1080, portrait 390×844 and nine themes.
+
+### Step 6C.5 prepared (latest; pending developer tests)
+- User confirmed pushing Step 6C.4. Verified matching GitHub file blob SHAs for `StudentsPage.cs`, `StudentDetailsPage.cs`, and `BookEditorPage.cs` against the 6C.4 package.
+- Package changes Student pagination layout and data binding to match Books, copies the actual Book Editor Back control into Student Details, adjusts field label/input gaps, and adds proper upward/downward Archive/Restore icons. Book Editor's layout is preserved.
+- **Student hard delete newly implemented:** Core `IStudentService`/`IStudentRepository` add `DeleteAsync(int)`, `StudentService` enforces `ManageStudents` + `HardDelete`, `StudentRepository` executes parameterized guarded delete (not referenced by `BorrowReturns`/`Users`), and Shell passes existing `IPermissionService` to `StudentsPage`/`StudentDetailsPage` to control Delete permission. Existing FK constraints are preserved.
+- Test Admin vs Librarian permissions, delete an unreferenced test student, ensure a linked user/loan record cannot be deleted, and confirm Archive/Restore still works. Do not fabricate fixtures or delete actual school records.
+- Visual acceptance: compare list pagination and separators side by side with Books/Categories; compare Back button to Book Editor; test 1280×720, 1920×1080, 390×844 and nine themes.
+- No database migration or additional Markdown file. Source not compiled; user must build, test, and approve before any commit recommendation.
+- Next after acceptance: Books View → Edit → Save with full associated-author display.

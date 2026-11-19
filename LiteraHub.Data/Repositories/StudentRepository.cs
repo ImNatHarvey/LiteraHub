@@ -93,6 +93,21 @@ public sealed class StudentRepository : IStudentRepository
         }) > 0;
     }
 
+    // Hard delete is atomic and guarded by the database's existing foreign keys.
+    // Never cascade into loan history or user accounts.
+    public async Task<bool> DeleteAsync(int studentId)
+    {
+        await using var conn = _factory.CreateConnection();
+        await conn.OpenAsync();
+        const string sql = """
+            DELETE s FROM dbo.Students AS s
+            WHERE s.StudentId = @StudentId
+              AND NOT EXISTS (SELECT 1 FROM dbo.BorrowReturns AS br WHERE br.StudentId = s.StudentId)
+              AND NOT EXISTS (SELECT 1 FROM dbo.Users AS u WHERE u.StudentId = s.StudentId);
+            """;
+        return await conn.ExecuteAsync(sql, new { StudentId = studentId }) > 0;
+    }
+
     public async Task<bool> SetActiveAsync(int studentId, bool isActive)
     {
         await using var conn = _factory.CreateConnection();
