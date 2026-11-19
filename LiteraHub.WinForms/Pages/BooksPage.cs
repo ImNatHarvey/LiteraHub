@@ -416,7 +416,7 @@ public sealed class BooksPage : ThemedUserControl
         if (CanManage)
         {
             AddColumn(
-                "Active", "Active",
+                "Active", "Status",
                 nameof(Book.IsActive), 8, 75);
 
             _grid.Columns.Add(
@@ -578,13 +578,15 @@ public sealed class BooksPage : ThemedUserControl
         if (hit.Type != DataGridViewHitTestType.Cell ||
             hit.RowIndex < 0 ||
             hit.ColumnIndex < 0 ||
-            _grid.Columns[hit.ColumnIndex].Name != "Actions")
+            (_grid.Columns[hit.ColumnIndex].Name != "Actions" &&
+             _grid.Columns[hit.ColumnIndex].Name != "Active"))
         {
             ClearActionHover();
             return;
         }
 
-        _grid.Cursor = Cursors.Hand;
+        _grid.Cursor = _grid.Columns[hit.ColumnIndex].Name == "Actions"
+            ? Cursors.Hand : Cursors.Default;
 
         if (_hoverRow == hit.RowIndex &&
             _hoverColumn == hit.ColumnIndex)
@@ -628,8 +630,14 @@ public sealed class BooksPage : ThemedUserControl
             _hoverRow,
             false);
 
+        if (_grid.Rows[_hoverRow].DataBoundItem is not Book book)
+            return;
+
+        string tooltip = _grid.Columns[_hoverColumn].Name == "Active"
+            ? (book.IsActive ? "Active" : "Inactive")
+            : "View Details";
         _actionTooltip.Show(
-            "Edit book",
+            tooltip,
             _grid,
             rect.Left + rect.Width / 2,
             rect.Bottom + 3,

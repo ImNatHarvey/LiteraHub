@@ -148,6 +148,12 @@ public sealed class CategoriesPage : ThemedUserControl
             Size = new Size(68, 32)
         };
 
+    private readonly ToolTip _statusTooltip = new()
+    {
+        ShowAlways = true,
+        AutoPopDelay = 2500
+    };
+
     private readonly ToolTip _actionTooltip = new()
     {
         InitialDelay = 400,
@@ -273,12 +279,26 @@ public sealed class CategoriesPage : ThemedUserControl
             await OpenDialogAsync(null);
 
         _grid.CellPainting += PaintSpecialCells;
+        _grid.CellMouseEnter += (_, e) =>
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0 ||
+                _grid.Columns[e.ColumnIndex].Name != "IsActive" ||
+                _grid.Rows[e.RowIndex].DataBoundItem is not Category category) return;
+            Rectangle rect = _grid.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, false);
+            _statusTooltip.Show(category.IsActive ? "Active" : "Inactive", _grid,
+                rect.Left + rect.Width / 2, rect.Bottom + 3, 2500);
+        };
+        _grid.CellMouseLeave += (_, e) =>
+        {
+            if (e.ColumnIndex >= 0 && _grid.Columns[e.ColumnIndex].Name == "IsActive")
+                _statusTooltip.Hide(_grid);
+        };
         _grid.CellMouseUp += HandleActionMouseUp;
 
         // Use actual mouse coordinates for each icon.
         _grid.MouseMove += HandleGridMouseMove;
-        _grid.MouseLeave += (_, _) => ClearActionHover();
-        _grid.Scroll += (_, _) => ClearActionHover();
+        _grid.MouseLeave += (_, _) => { ClearActionHover(); _statusTooltip.Hide(_grid); };
+        _grid.Scroll += (_, _) => { ClearActionHover(); _statusTooltip.Hide(_grid); };
 
         _grid.ShowCellToolTips = false;
 
@@ -383,7 +403,7 @@ public sealed class CategoriesPage : ThemedUserControl
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = "IsActive",
-            HeaderText = "Active",
+            HeaderText = "Status",
             DataPropertyName = nameof(Category.IsActive),
             FillWeight = 10,
             MinimumWidth = 75,
@@ -1335,6 +1355,7 @@ public sealed class CategoriesPage : ThemedUserControl
             _hoverTimer.Stop();
             _hoverTimer.Dispose();
             _actionTooltip.Dispose();
+            _statusTooltip.Dispose();
         }
 
         base.Dispose(disposing);

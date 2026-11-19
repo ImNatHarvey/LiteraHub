@@ -1,10 +1,11 @@
-﻿using System;
+﻿using LiteraHub.WinForms.Theming;
+using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
-using LiteraHub.WinForms.Theming;
 
 namespace LiteraHub.WinForms.Controls;
 
@@ -17,6 +18,10 @@ public sealed class ThemedCatalogFilterSort : Button
     public int StatusIndex { get; private set; }
     public int ExtraIndex { get; private set; }
     public int SortIndex { get; private set; }
+
+    // Only Authors enables ID sorting; Categories keeps its approved A–Z/Z–A menu.
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool EnableIdSort { get; set; }
     public event EventHandler? SelectionChanged;
 
     public ThemedCatalogFilterSort(string extraTitle, params string[] extraOptions)
@@ -270,7 +275,9 @@ public sealed class ThemedCatalogFilterSort : Button
         }
 
         Heading("SORT BY");
-        string[] sortLabels = { "A–Z", "Z–A" };
+        string[] sortLabels = EnableIdSort
+            ? new[] { "Name A–Z", "Name Z–A", "Author ID ↑", "Author ID ↓" }
+            : new[] { "A–Z", "Z–A" };
         Option("Sort By: " + sortLabels[SortIndex], "submenu", SortIndex != 0, () => { },
             child: true, openChild: anchor =>
             {

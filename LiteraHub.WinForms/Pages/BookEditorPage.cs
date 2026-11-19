@@ -100,6 +100,7 @@ public sealed class BookEditorPage : ThemedUserControl
     };
 
     private readonly ThemedAuthorPicker _authors = new();
+    private const string UnknownAuthorName = "Unknown Author";
 
     // Reuse the same themed popup dropdown as the Books toolbar.
     // Category options remain placeholders until database integration.
@@ -377,15 +378,25 @@ public sealed class BookEditorPage : ThemedUserControl
 
             if (_pendingMetadataAuthors.Count > 0)
             {
-                var unmatched = _authors.MatchMetadataNames(
-                    _pendingMetadataAuthors);
+                // No author field in ISBN metadata: select the shared fallback
+                // only after the real author list has finished loading.
+                bool unknownFallback = _pendingMetadataAuthors.Count == 1 &&
+                    string.Equals(_pendingMetadataAuthors[0], UnknownAuthorName,
+                        StringComparison.OrdinalIgnoreCase);
+                var names = _pendingMetadataAuthors;
                 _pendingMetadataAuthors = Array.Empty<string>();
-                if (unmatched.Count > 0)
-                    await CreateMissingMetadataAuthorsAsync(unmatched);
+                if (unknownFallback)
+                    SelectUnknownAuthorFallback();
                 else
-                    _description.Text = _authors.SelectedAuthorIds.Count > 0
-                        ? "ISBN authors matched to existing records."
-                        : "Metadata found, but no author was matched or created. Select an author manually.";
+                {
+                    var unmatched = _authors.MatchMetadataNames(names);
+                    if (unmatched.Count > 0)
+                        await CreateMissingMetadataAuthorsAsync(unmatched);
+                    else
+                        _description.Text = _authors.SelectedAuthorIds.Count > 0
+                            ? "ISBN authors matched to existing records."
+                            : "Metadata found, but no author was matched or created. Select an author manually.";
+                }
             }
 
             if (selectAuthorId.HasValue)
@@ -500,6 +511,42 @@ public sealed class BookEditorPage : ThemedUserControl
         return Task.CompletedTask;
     }
 
+    // ISBN results may omit authors entirely. Do not create an author until
+    // the book itself is saved; the existing repository resolves staged names
+    // transactionally and reuses an active author with the same display name.
+    private void SelectUnknownAuthorFallback()
+    {
+        if (_authors.SelectedAuthorIds.Count > 0 ||
+            _authors.SelectedPendingAuthorNames.Count > 0)
+        {
+            _description.Text = "No author metadata provided. Your selection was kept.";
+            return;
+        }
+
+        var matches = _loadedAuthorOptions
+            .Where(a => a.IsActive && string.Equals(a.Name.Trim(),
+                UnknownAuthorName, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (matches.Length == 1)
+        {
+            _authors.SelectAuthor(matches[0].Id);
+            _description.Text = "No author metadata provided. Unknown Author was selected.";
+        }
+        else if (matches.Length > 1)
+        {
+            _description.Text = "Multiple Unknown Author records exist. Select the correct one manually.";
+        }
+        else if (_authors.AllowCreateAuthor)
+        {
+            _authors.StageAuthor(UnknownAuthorName);
+            _description.Text = "No author metadata provided. Unknown Author is selected and will be created only when you save.";
+        }
+        else
+        {
+            _description.Text = "No author metadata provided and author creation is restricted. Select an existing author.";
+        }
+    }
+
     private async Task LookupIsbnAsync()
     {
         if (!_editing || _lookupBusy || _metadataService is null)
@@ -532,7 +579,16 @@ public sealed class BookEditorPage : ThemedUserControl
             _ = LoadCoverAsync(book.CoverUrl);
             if (book.Authors.Count == 0)
             {
-                _description.Text = "Metadata found, but no author information was provided. Select an author manually.";
+                if (_authorsLoaded)
+                    SelectUnknownAuthorFallback();
+                else if (_authors.SelectedAuthorIds.Count == 0 &&
+                         _authors.SelectedPendingAuthorNames.Count == 0)
+                {
+                    _pendingMetadataAuthors = new[] { UnknownAuthorName };
+                    _description.Text = "No author metadata provided. Unknown Author will be selected after authors load.";
+                }
+                else
+                    _description.Text = "No author metadata provided. Your selection was kept.";
             }
             else if (_authorsLoaded)
             {

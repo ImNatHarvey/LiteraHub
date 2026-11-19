@@ -51,6 +51,7 @@ public sealed class AuthorsPage : ThemedUserControl
 
     private readonly ThemedCatalogFilterSort _filter = new("GENDER", "All", "Male", "Female", "Other")
     {
+        EnableIdSort = true,
         Dock = DockStyle.Fill,
         Margin = new Padding(0, 4, 8, 4)
     };
@@ -176,7 +177,7 @@ public sealed class AuthorsPage : ThemedUserControl
         ConfigureGrid();
 
         _loading.SetContent(_grid);
-        _search.Placeholder = "Search authors...";
+        _search.Placeholder = "Search author ID, name or gender...";
 
         _filter.Visible = CanManage;
 
@@ -270,6 +271,28 @@ public sealed class AuthorsPage : ThemedUserControl
         {
             Interval = 450
         };
+
+        // Status icons are informational; action icons keep their separate tooltips.
+        var statusTooltip = new ToolTip { ShowAlways = true, AutoPopDelay = 2500 };
+        _grid.CellMouseEnter += (_, e) =>
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0 ||
+                _grid.Columns[e.ColumnIndex].Name != "Status") return;
+
+            bool active = string.Equals(
+                Convert.ToString(_grid.Rows[e.RowIndex].Cells["Status"].Value),
+                "Active", StringComparison.OrdinalIgnoreCase);
+            Rectangle rect = _grid.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, false);
+            statusTooltip.Show(active ? "Active" : "Inactive", _grid,
+                rect.Left + rect.Width / 2, rect.Bottom + 3, 2500);
+        };
+        _grid.CellMouseLeave += (_, e) =>
+        {
+            if (e.ColumnIndex >= 0 && _grid.Columns[e.ColumnIndex].Name == "Status")
+                statusTooltip.Hide(_grid);
+        };
+        _grid.MouseLeave += (_, _) => statusTooltip.Hide(_grid);
+        _grid.Scroll += (_, _) => statusTooltip.Hide(_grid);
 
         int hoverRow = -1;
         int hoverColumn = -1;
@@ -378,11 +401,9 @@ public sealed class AuthorsPage : ThemedUserControl
 
             string tooltipText = hoverSlot switch
             {
-                0 => "Edit Author",
-                1 => active
-                    ? "Archive Author"
-                    : "Restore Author",
-                2 when CanDelete => "Delete Author",
+                0 => "Edit",
+                1 => active ? "Archive" : "Restore",
+                2 when CanDelete => "Delete",
                 _ => ""
             };
 
@@ -409,6 +430,7 @@ public sealed class AuthorsPage : ThemedUserControl
             hoverTimer.Stop();
             hoverTimer.Dispose();
             actionTooltip.Dispose();
+            statusTooltip.Dispose();
         };
 
 
@@ -1117,6 +1139,8 @@ public sealed class AuthorsPage : ThemedUserControl
                  (status == 1 && a.IsActive) ||
                  (status == 2 && !a.IsActive)) &&
                 (query.Length == 0 ||
+                 a.AuthorId.ToString().Contains(
+                     query, StringComparison.OrdinalIgnoreCase) ||
                  a.FullName.Contains(
                      query,
                      StringComparison.OrdinalIgnoreCase) ||
@@ -1131,9 +1155,13 @@ public sealed class AuthorsPage : ThemedUserControl
                 (_filter.ExtraIndex == 2 && a.Gender.Equals("Female", StringComparison.OrdinalIgnoreCase)) ||
                 (_filter.ExtraIndex == 3 && !a.Gender.Equals("Male", StringComparison.OrdinalIgnoreCase) && !a.Gender.Equals("Female", StringComparison.OrdinalIgnoreCase)))
             .ToArray();
-        filtered = _filter.SortIndex == 0
-            ? filtered.OrderBy(a => a.FullName, StringComparer.OrdinalIgnoreCase).ToArray()
-            : filtered.OrderByDescending(a => a.FullName, StringComparer.OrdinalIgnoreCase).ToArray();
+        filtered = _filter.SortIndex switch
+        {
+            1 => filtered.OrderByDescending(a => a.FullName, StringComparer.OrdinalIgnoreCase).ToArray(),
+            2 => filtered.OrderBy(a => a.AuthorId).ToArray(),
+            3 => filtered.OrderByDescending(a => a.AuthorId).ToArray(),
+            _ => filtered.OrderBy(a => a.FullName, StringComparer.OrdinalIgnoreCase).ToArray()
+        };
 
         _filteredCount = filtered.Length;
         _page = Math.Clamp(_page, 1, TotalPages);

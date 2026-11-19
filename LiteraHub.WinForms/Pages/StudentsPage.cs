@@ -110,6 +110,25 @@ public sealed class StudentsPage : ThemedUserControl
                 await OpenDetailsAsync(student.StudentId);
         };
         _grid.CellMouseMove += (_, e) => _grid.Cursor = e.RowIndex >= 0 && e.ColumnIndex >= 0 && _grid.Columns[e.ColumnIndex].Name == "Actions" ? Cursors.Hand : Cursors.Default;
+        // Use native DataGridView cell tooltips rather than showing and hiding
+        // a separate ToolTip in CellMouseEnter/Leave. The Status and Actions
+        // cells are custom-painted, but remain normal bound grid cells.
+        _grid.ShowCellToolTips = true;
+        _grid.CellToolTipTextNeeded += (_, e) =>
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex < 0 ||
+                e.RowIndex >= _grid.Rows.Count ||
+                e.ColumnIndex >= _grid.Columns.Count ||
+                _grid.Rows[e.RowIndex].DataBoundItem is not Student student)
+                return;
+
+            e.ToolTipText = _grid.Columns[e.ColumnIndex].Name switch
+            {
+                "Actions" => "View Details",
+                "Status" => student.IsActive ? "Active" : "Inactive",
+                _ => string.Empty
+            };
+        };
         _grid.MouseLeave += (_, _) => _grid.Cursor = Cursors.Default;
         _search.TextChanged += (_, _) => Filter();
         _filter.SelectionChanged += (_, _) => Filter();
@@ -230,16 +249,16 @@ public sealed class StudentsPage : ThemedUserControl
     private void PaintStudentCell(object? sender, DataGridViewCellPaintingEventArgs e)
     {
         if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
-        if (e.Graphics is null) return;
+        if (e.Graphics is not Graphics graphics) return;
 
         var c = Theme.Colors;
         var rect = e.CellBounds;
         using (var fill = new SolidBrush(e.RowIndex % 2 == 0 ? c.Surface : c.SurfaceAlt))
-            e.Graphics.FillRectangle(fill, rect);
+            graphics.FillRectangle(fill, rect);
 
         // Categories has a single subtle divider below each row, not cell boxes.
         using (var divider = new Pen(c.Border))
-            e.Graphics.DrawLine(divider, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
+            graphics.DrawLine(divider, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
 
         if (_grid.Columns[e.ColumnIndex].Name == "Status")
         {
@@ -249,25 +268,25 @@ public sealed class StudentsPage : ThemedUserControl
                 student.IsActive;
             int cx = rect.Left + rect.Width / 2;
             int cy = rect.Top + rect.Height / 2;
-            var previous = e.Graphics.SmoothingMode;
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            var previous = graphics.SmoothingMode;
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
             using var pen = new Pen(active ? c.PillGoodText : c.Danger, 2f);
-            e.Graphics.DrawEllipse(pen, cx - 9, cy - 9, 18, 18);
+            graphics.DrawEllipse(pen, cx - 9, cy - 9, 18, 18);
             if (active)
-                e.Graphics.DrawLines(pen, new[]
+                graphics.DrawLines(pen, new[]
                 {
                     new Point(cx - 5, cy),
                     new Point(cx - 1, cy + 4),
                     new Point(cx + 6, cy - 4)
                 });
             else
-                e.Graphics.DrawLine(pen, cx - 4, cy, cx + 4, cy);
-            e.Graphics.SmoothingMode = previous;
+                graphics.DrawLine(pen, cx - 4, cy, cx + 4, cy);
+            graphics.SmoothingMode = previous;
         }
         else if (_grid.Columns[e.ColumnIndex].Name == "Actions")
         {
-            var previous = e.Graphics.SmoothingMode;
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            var previous = graphics.SmoothingMode;
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
             using var pen = new Pen(c.Accent, 2.2f)
             {
                 StartCap = LineCap.Round,
@@ -276,11 +295,11 @@ public sealed class StudentsPage : ThemedUserControl
             };
             int x = rect.Left + rect.Width / 2;
             int y = rect.Top + rect.Height / 2;
-            e.Graphics.DrawLines(pen, new[]
+            graphics.DrawLines(pen, new[]
             {
                 new Point(x - 4, y - 7), new Point(x + 3, y), new Point(x - 4, y + 7)
             });
-            e.Graphics.SmoothingMode = previous;
+            graphics.SmoothingMode = previous;
         }
         else
         {
