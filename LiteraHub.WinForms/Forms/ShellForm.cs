@@ -103,6 +103,7 @@ public sealed class ShellForm : Form
 
     private int _presetWidth = 1280;
     private int _presetHeight = 720;
+    private bool _userCollapsedSidebar;
 
     public bool LoggedOut { get; private set; }
 
@@ -151,7 +152,9 @@ public sealed class ShellForm : Form
 
         Text = "LiteraHub";
         FormBorderStyle = FormBorderStyle.FixedSingle;
-        MaximizeBox = false;
+        // Keep the native Windows maximize caption button, but interpret it
+        // as a switch between the two supported desktop demo sizes.
+        MaximizeBox = true;
         StartPosition = FormStartPosition.CenterScreen;
         DoubleBuffered = true;
 
@@ -207,13 +210,8 @@ public sealed class ShellForm : Form
                 new NavItem(p.Key, p.Title, p.Icon)));
 
         _nav.ItemSelected += (_, key) => ShowPage(key);
-
-        _nav.LogoutRequested += (_, _) =>
-        {
-            _auth.Logout();
-            LoggedOut = true;
-            Close();
-        };
+        _nav.ToggleRequested += (_, _) => ToggleNavigation();
+        _nav.LogoutRequested += (_, _) => Logout();
 
         // No page-title label in the upper header.
         _topBar.Controls.Add(_demoButton, 1, 0);
@@ -254,8 +252,7 @@ public sealed class ShellForm : Form
         foreach (var (label, w, h) in new[]
                  {
                      ("1920 x 1080", 1920, 1080),
-                     ("1280 x 720 (primary)", 1280, 720),
-                     ("390 x 844 (portrait)", 390, 844)
+                     ("1280 x 720 (primary)", 1280, 720)
                  })
         {
             var item = new ToolStripMenuItem(label);
@@ -314,55 +311,103 @@ public sealed class ShellForm : Form
                 new Point(0, _demoButton.Height));
     }
 
+    // Windows sends SC_MAXIMIZE when the square title-bar button is pressed.
+    // We deliberately keep WindowState=Normal, sizing to one of LiteraHub's
+    // two desktop design presets instead of using OS full-screen maximize.
+    // Native title-bar double-click follows the same behavior.
+    private const int WmSysCommand = 0x0112;
+    private const long ScMaximize = 0xF030;
+    private const int WmNcLButtonDblClk = 0x00A3;
+    private const long HtCaption = 2;
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WmSysCommand &&
+            (m.WParam.ToInt64() & 0xFFF0) == ScMaximize)
+        {
+            ToggleDesktopWindowSize();
+            return;
+        }
+        if (m.Msg == WmNcLButtonDblClk && m.WParam.ToInt64() == HtCaption)
+        {
+            ToggleDesktopWindowSize();
+            return;
+        }
+        base.WndProc(ref m);
+    }
+
+    private void ToggleDesktopWindowSize()
+    {
+        if (!IsHandleCreated || Disposing || IsDisposed)
+            return;
+
+        // A repeated click toggles 1280x720 <-> 1920x1080. The current
+        // record/page and collapsed state are not rebuilt or reset.
+        bool expand = _presetWidth == 1280;
+        ApplyWindowSize(expand ? 1920 : 1280, expand ? 1080 : 720);
+    }
+
     private int Px(int designPixels) =>
         (int)Math.Round(designPixels * DeviceDpi / 96f);
 
     private void ApplyWindowSize(int width, int height)
     {
+        // Only the approved desktop presets are exposed. 390x844 is retired.
+        if (width != 1280 && width != 1920)
+            throw new ArgumentOutOfRangeException(nameof(width));
+        if (height != (width == 1280 ? 720 : 1080))
+            throw new ArgumentOutOfRangeException(nameof(height));
+
         _presetWidth = width;
         _presetHeight = height;
 
-        var work = Screen.FromControl(this).WorkingArea;
-
+        // Clamp to the working area, accounting for Windows frame/title bar.
+        // The preset remains 1920x1080 logically when the monitor is smaller.
+        var workingArea = Screen.FromControl(this).WorkingArea;
         var frame = new Size(
-            Width - ClientSize.Width,
-            Height - ClientSize.Height);
-
-        var wanted = new Size(Px(width), Px(height));
-
-        var maxClient = new Size(
-            work.Width - frame.Width,
-            work.Height - frame.Height);
-
+            Math.Max(0, Width - ClientSize.Width),
+            Math.Max(0, Height - ClientSize.Height));
+        var requested = new Size(Px(width), Px(height));
+        var available = new Size(
+            Math.Max(1, workingArea.Width - frame.Width),
+            Math.Max(1, workingArea.Height - frame.Height));
         var actual = new Size(
-            Math.Min(wanted.Width, maxClient.Width),
-            Math.Min(wanted.Height, maxClient.Height));
-
-        var clamped = actual != wanted;
+            Math.Min(requested.Width, available.Width),
+            Math.Min(requested.Height, available.Height));
+        bool fitted = actual != requested;
 
         SuspendLayout();
-
-        ClientSize = actual;
-
-        var logicalWidth =
-            actual.Width * 96f / DeviceDpi;
-
-        var compact = logicalWidth < 700;
-
-        _nav.Compact = compact;
-
-        _root.ColumnStyles[0].Width =
-            Px(compact ? 64 : 220);
-
-        _main.RowStyles[0].Height = Px(56);
-
-        ResumeLayout(performLayout: true);
+        try
+        {
+            ClientSize = actual;
+            _nav.Compact = _userCollapsedSidebar;
+            _root.ColumnStyles[0].Width = Px(_userCollapsedSidebar ? 64 : 220);
+            _main.RowStyles[0].Height = Px(56);
+        }
+        finally { ResumeLayout(performLayout: true); }
 
         CenterToScreen();
+        Text = $"LiteraHub - {width} x {height}" +
+               (fitted ? " (fit to screen)" : "");
+    }
 
-        Text =
-            $"LiteraHub - {width} x {height}" +
-            (clamped ? " (fit to screen)" : "");
+    private void ToggleNavigation()
+    {
+        _userCollapsedSidebar = !_userCollapsedSidebar;
+        _root.SuspendLayout();
+        try
+        {
+            _nav.Compact = _userCollapsedSidebar;
+            _root.ColumnStyles[0].Width = Px(_userCollapsedSidebar ? 64 : 220);
+        }
+        finally { _root.ResumeLayout(true); }
+    }
+
+    private void Logout()
+    {
+        _auth.Logout();
+        LoggedOut = true;
+        Close();
     }
 
     private void ShowPage(string key)

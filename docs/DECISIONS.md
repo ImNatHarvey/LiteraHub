@@ -47,3 +47,15 @@
 - Source-of-truth priority: latest explicit user direction, latest working files, verified GitHub, developer-confirmed decisions; the case study remains binding for mandatory scope.
 - Complete replacements, exact paths, concise tests, docs updates, user-controlled commits.
 - Developer “All passed” is evidence of developer testing, not independent ChatGPT execution.
+
+## 2026-11-21 — Desktop-only UI decision
+
+- Supported desktop presets: 1280×720 and 1920×1080.
+- The 390×844 portrait preset is retired.
+- The native Shell maximize button switches between the two desktop presets.
+- Sidebar collapse is independent of window size.
+- The LiteraHub logo uses an embedded transparent PNG,
+  dynamically tinted using Theme.Colors.Accent.
+- The hamburger uses the existing FontAwesome.Sharp library.
+- Existing responsive fallback code may remain, but portrait
+  testing is no longer an acceptance requirement.

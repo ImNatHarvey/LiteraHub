@@ -217,7 +217,10 @@ public sealed class StudentDetailsPage : ThemedUserControl
             int[] x = portrait ? new[] { pad, pad, pad } : new[] { pad, pad + columnWidth + gap, pad + (columnWidth + gap) * 2 };
             int startY = 14;
             int fieldHeight = 40;
-            int fieldStep = portrait ? 74 : 72;
+            // At 1280x720, the four Student Information fields plus a large
+            // avatar used to exceed the viewport, forcing an unnecessary bar.
+            // Retain full desktop spacing whenever there is room.
+            int fieldStep = portrait ? 74 : (_scroll.ClientSize.Height < 600 ? 70 : 72);
             int y1 = startY, y2 = startY, y3 = startY;
             void Heading(Label label, int left, ref int top)
             {
@@ -255,10 +258,26 @@ public sealed class StudentDetailsPage : ThemedUserControl
             {
                 Heading(_studentHeading, x[0], ref y1);
                 int avatarSize = width >= 1300 ? 148 : width >= 1150 ? 120 : 78;
+                // Budget space for heading, photo button, four inputs and the
+                // bottom padding. The ScrollHost still scrolls if the actual
+                // available viewport is too short (e.g. high-DPI small display).
+                // Photo button is hidden in View mode; do not reserve its
+                // 33px row there. That unused space caused the 1280px scrollbar.
+                int photoRow = _editing ? 33 : 0;
+                int maxAvatarThatFits = _scroll.ClientSize.Height -
+                    (startY + 31 + 4 + photoRow + 4 * fieldStep + 14);
+                avatarSize = Math.Min(avatarSize, Math.Max(78, maxAvatarThatFits));
                 _avatar.SetBounds(x[0] + (columnWidth - avatarSize) / 2, y1, avatarSize, avatarSize);
                 y1 += avatarSize + 4;
-                _photoButton.SetBounds(x[0], y1, columnWidth, 28);
-                y1 += 33;
+                if (_editing)
+                {
+                    _photoButton.SetBounds(x[0], y1, columnWidth, 28);
+                    y1 += 33;
+                }
+                else
+                {
+                    _photoButton.Bounds = Rectangle.Empty;
+                }
                 foreach (var key in new[] { "StudentNo", "FirstName", "MiddleName", "LastName" }) Field(key, x[0], ref y1);
 
                 Heading(_addressHeading, x[1], ref y2);
