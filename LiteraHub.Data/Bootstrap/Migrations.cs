@@ -9,6 +9,7 @@ internal static class Migrations
         new Migration(1, "Create core tables and indexes", V1()),
         new Migration(2, "Seed roles, statuses, categories, settings", V2()),
         new Migration(3, "Rename Good Condition status to Good", V3()),
+        new Migration(4, "Link books to multiple categories", V4()),
     };
 
     private static string Index(string name, string table, string columns) =>
@@ -219,4 +220,43 @@ internal static class Migrations
         END;
         """,
     };
+    // V4 is additive and transactionally applied by DatabaseBootstrapper.
+    // Keep Books.CategoryId as the primary category for older queries/clients.
+    private static string[] V4() => new[]
+    {
+        """
+        IF OBJECT_ID(N'dbo.BookCategories', N'U') IS NULL
+        BEGIN
+            CREATE TABLE dbo.BookCategories (
+                BookId INT NOT NULL
+                    CONSTRAINT FK_BookCategories_Books
+                    REFERENCES dbo.Books(BookId),
+                CategoryId INT NOT NULL
+                    CONSTRAINT FK_BookCategories_Categories
+                    REFERENCES dbo.Categories(CategoryId),
+                CONSTRAINT PK_BookCategories PRIMARY KEY (BookId, CategoryId)
+            );
+        END;
+        """,
+        """
+        IF NOT EXISTS (
+            SELECT 1 FROM sys.indexes
+            WHERE name = N'IX_BookCategories_CategoryId'
+              AND object_id = OBJECT_ID(N'dbo.BookCategories')
+        )
+            CREATE INDEX IX_BookCategories_CategoryId
+            ON dbo.BookCategories (CategoryId, BookId);
+        """,
+        """
+        -- Backfill existing books and repair missing primary links on rerun.
+        INSERT INTO dbo.BookCategories (BookId, CategoryId)
+        SELECT b.BookId, b.CategoryId
+        FROM dbo.Books b
+        WHERE NOT EXISTS (
+            SELECT 1 FROM dbo.BookCategories bc
+            WHERE bc.BookId = b.BookId AND bc.CategoryId = b.CategoryId
+        );
+        """
+    };
+
 }

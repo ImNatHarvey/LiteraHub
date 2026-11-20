@@ -102,14 +102,8 @@ public sealed class BookEditorPage : ThemedUserControl
     private readonly ThemedAuthorPicker _authors = new();
     private const string UnknownAuthorName = "Unknown Author";
 
-    // Reuse the same themed popup dropdown as the Books toolbar.
-    // Category options remain placeholders until database integration.
-    private ThemedFilterDropdown _category =
-        new(new[] { "Select category" })
-        {
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(12, 0, 8, 0)
-        };
+    // Searchable single-category selection; reuses the existing CategoryDialog.
+    private readonly ThemedCategoryPicker _category = new();
 
     private ThemedFilterDropdown _condition =
         new(new[] { "Good", "Damaged" })
@@ -191,14 +185,10 @@ public sealed class BookEditorPage : ThemedUserControl
     private CancellationTokenSource? _coverLoad;
     private static readonly HttpClient CoverHttp = new() { Timeout = TimeSpan.FromSeconds(12) };
     private bool _categoriesLoading;
-    private int[] _categoryIds = Array.Empty<int>();
 
-    // This is populated from the database. Zero means no selection.
-    public int SelectedCategoryId =>
-        _category.SelectedIndex >= 0 &&
-        _category.SelectedIndex < _categoryIds.Length
-            ? _categoryIds[_category.SelectedIndex]
-            : 0;
+    // Category IDs are loaded from dbo.Categories. Zero means no selection.
+    public int SelectedCategoryId => _category.SelectedCategoryId;
+    public IReadOnlyList<int> SelectedCategoryIds => _category.SelectedCategoryIds;
 
     public void ConfigureServices(
         ICategoryService categories,
@@ -227,6 +217,11 @@ public sealed class BookEditorPage : ThemedUserControl
         _authors.AllowCreateAuthor = canCreateAuthors;
         _authors.AddAuthorRequested -= HandleAddAuthorRequested;
         _authors.AddAuthorRequested += HandleAddAuthorRequested;
+        // BooksPage passes Permission.CreateLookups for this parameter.
+        // It governs both Add Author and Add Category.
+        _category.AllowCreateCategory = canCreateAuthors;
+        _category.AddCategoryRequested -= HandleAddCategoryRequested;
+        _category.AddCategoryRequested += HandleAddCategoryRequested;
         _lookup.Enabled = _editing;
 
         if (IsHandleCreated)
@@ -297,7 +292,7 @@ public sealed class BookEditorPage : ThemedUserControl
                 int index = Array.IndexOf(_statusIds, _existing.StatusId);
                 if (index >= 0) _condition.SelectedIndex = index;
             }
-            _save.Enabled = !_editing || (_authorsLoaded && _categoryIds.Length > 1);
+            _save.Enabled = !_editing || (_authorsLoaded && _category.HasCategories);
         }
         catch (Exception ex)
         {
@@ -374,7 +369,7 @@ public sealed class BookEditorPage : ThemedUserControl
             _authors.SetAuthors(records, selected);
             _authorsLoaded = true;
             _save.Enabled = !_editing || (_statusesLoaded &&
-                _categoryIds.Length > 1 && !_saving);
+                _category.HasCategories && !_saving);
 
             if (_pendingMetadataAuthors.Count > 0)
             {
@@ -418,10 +413,56 @@ public sealed class BookEditorPage : ThemedUserControl
         }
     }
 
-    private async Task LoadCategoriesAsync()
+    private async void HandleAddCategoryRequested(object? sender, EventArgs e)
+    {
+        try
+        {
+            await OpenAddCategoryAsync();
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed && !Disposing)
+                ThemedMessageDialog.ShowAlert(
+                    FindForm(), "Add Category", ex.Message, danger: true);
+        }
+    }
+
+    private async Task OpenAddCategoryAsync()
+    {
+        if (_saving || !_editing || _categoriesLoading ||
+            _categoryService is null || !_category.AllowCreateCategory)
+            return;
+
+        _category.Enabled = false;
+        try
+        {
+            using var dialog = new CategoryDialog(
+                _categoryService,
+                suggestedName: _category.RequestedCategoryName);
+
+            if (dialog.ShowDialog(FindForm()) != DialogResult.OK)
+                return;
+
+            // The category is created by CategoryDialog/CategoryService.
+            // Reload persisted IDs and select the new category by its saved name.
+            await LoadCategoriesAsync(selectName: dialog.SavedCategoryName);
+            if (!IsDisposed && !Disposing)
+                _description.Text = SelectedCategoryIds.Count > 0
+                    ? "Category created and selected."
+                    : "Category saved. Choose it from the category selector.";
+        }
+        finally
+        {
+            if (!IsDisposed && !Disposing)
+                _category.Enabled = _editing;
+        }
+    }
+
+    private async Task LoadCategoriesAsync(string? selectName = null)
     {
         if (_categoriesLoading || _categoryService is null)
             return;
+
         _categoriesLoading = true;
         try
         {
@@ -430,35 +471,34 @@ public sealed class BookEditorPage : ThemedUserControl
                 return;
 
             var active = items.Where(c => c.IsActive)
-                .OrderBy(c => c.Name).ToArray();
-            string[] options = new string[active.Length + 1];
-            int[] ids = new int[active.Length + 1];
-            options[0] = "Select category";
-            for (int i = 0; i < active.Length; i++)
+                .OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToArray();
+
+            // On first load, restore every stored category, not just the
+            // legacy primary. On refresh, retain all current checkboxes.
+            var selected = _category.SelectedCategoryIds.ToList();
+            if (selected.Count == 0 && _existing is not null &&
+                string.IsNullOrWhiteSpace(selectName))
             {
-                options[i + 1] = active[i].Name;
-                ids[i + 1] = active[i].CategoryId;
+                selected = (_existing.CategoryIds.Count > 0
+                    ? _existing.CategoryIds
+                    : new List<int> { _existing.CategoryId }).ToList();
+            }
+            if (!string.IsNullOrWhiteSpace(selectName))
+            {
+                var matches = active.Where(c =>
+                    string.Equals(c.Name.Trim(), selectName.Trim(),
+                        StringComparison.OrdinalIgnoreCase)).ToArray();
+                if (matches.Length == 1 &&
+                    !selected.Contains(matches[0].CategoryId))
+                    selected.Add(matches[0].CategoryId);
             }
 
-            var previous = _category;
-            var replacement = new ThemedFilterDropdown(options)
-            {
-                TextAlign = ContentAlignment.MiddleLeft,
-                Padding = new Padding(12, 0, 8, 0)
-            };
-            _category = replacement;
-            _categoryIds = ids;
-            _save.Enabled = !_editing || (_authorsLoaded && _statusesLoaded);
-            _content.Controls.Add(replacement);
-            previous.Dispose();
-            if (_existing is not null)
-            {
-                int index = Array.IndexOf(ids, _existing.CategoryId);
-                if (index > 0)
-                    replacement.SelectedIndex = index;
-            }
-            replacement.ApplyTheme();
-            replacement.Enabled = _editing;
+            _category.SetCategories(active, selected);
+            _category.ApplyTheme();
+            _category.Enabled = _editing;
+            _save.Enabled = !_editing || (_authorsLoaded &&
+                _statusesLoaded && _category.HasCategories && !_saving);
             ArrangeForm();
         }
         catch (Exception ex)
@@ -688,7 +728,7 @@ public sealed class BookEditorPage : ThemedUserControl
         _titleLabel = MakeLabel("Book Title");
         _descriptionLabel = MakeLabel("Description");
         _authorsLabel = MakeLabel("Authors");
-        _categoryLabel = MakeLabel("Category");
+        _categoryLabel = MakeLabel("Categories");
         _conditionLabel = MakeLabel("Condition");
         _totalLabel = MakeLabel("Total Copies");
         _availableLabel = MakeLabel("Available Copies");
@@ -816,11 +856,9 @@ public sealed class BookEditorPage : ThemedUserControl
             _editing = false;
             _pendingMetadataAuthors = Array.Empty<string>();
             PopulateExistingBook();
-            if (_categoryIds.Length > 0)
-            {
-                int category = Array.IndexOf(_categoryIds, _existing.CategoryId);
-                if (category >= 0) _category.SelectedIndex = category;
-            }
+            _category.SelectCategories(_existing.CategoryIds.Count > 0
+                ? _existing.CategoryIds.AsEnumerable()
+                : new[] { _existing.CategoryId });
             if (_statusIds.Length > 0)
             {
                 int condition = Array.IndexOf(_statusIds, _existing.StatusId);
@@ -1336,6 +1374,7 @@ public sealed class BookEditorPage : ThemedUserControl
         _viewValues["Authors"].Text = string.IsNullOrWhiteSpace(_existing.Authors)
             ? "No authors listed" : _existing.Authors;
         _viewValues["Category"].Text = _existing.CategoryName;
+        _viewValues["Category"].AutoEllipsis = true;
         _viewValues["Condition"].Text = _existing.StatusName;
         _viewValues["Total"].Text = _existing.TotalCopies.ToString();
         _viewValues["Available"].Text = _existing.AvailableCopies.ToString();
@@ -1382,7 +1421,7 @@ public sealed class BookEditorPage : ThemedUserControl
             (_editing ? "Editing: " : "Viewing: ") + _existing.Title;
         _save.AccessibleName = _editing ? "Save Book" : "Edit Book";
         // The view action is always available. Saving requires loaded lookups.
-        _save.Enabled = !_editing || (_authorsLoaded && _statusesLoaded && _categoryIds.Length > 1);
+        _save.Enabled = !_editing || (_authorsLoaded && _statusesLoaded && _category.HasCategories);
         _archive.Visible = _existing is not null;
         _delete.Visible = _existing is not null;
         _cancelEdit.Visible = _existing is not null && _editing;
@@ -1408,6 +1447,12 @@ public sealed class BookEditorPage : ThemedUserControl
             return;
         }
 
+        if (SelectedCategoryIds.Count == 0)
+        {
+            _description.Text = "Select at least one category before saving this book.";
+            return;
+        }
+
         if (_authors.SelectedAuthorIds.Count == 0 &&
             _authors.SelectedPendingAuthorNames.Count == 0)
         {
@@ -1426,7 +1471,8 @@ public sealed class BookEditorPage : ThemedUserControl
             _available.Value,
             _coverPath,
             _authors.SelectedAuthorIds,
-            _authors.SelectedPendingAuthorNames);
+            _authors.SelectedPendingAuthorNames,
+            SelectedCategoryIds);
 
         _saving = true;
         _save.Enabled = false;
@@ -1459,7 +1505,7 @@ public sealed class BookEditorPage : ThemedUserControl
             _saving = false;
             if (!IsDisposed && !Disposing)
             {
-                _save.Enabled = !_editing || (_authorsLoaded && _statusesLoaded && _categoryIds.Length > 1);
+                _save.Enabled = !_editing || (_authorsLoaded && _statusesLoaded && _category.HasCategories);
                 _archive.Enabled = true;
                 _delete.Enabled = _canHardDelete;
             }
@@ -1521,7 +1567,7 @@ public sealed class BookEditorPage : ThemedUserControl
             _saving = false;
             if (!IsDisposed && !Disposing)
             {
-                _save.Enabled = !_editing || (_authorsLoaded && _statusesLoaded && _categoryIds.Length > 1);
+                _save.Enabled = !_editing || (_authorsLoaded && _statusesLoaded && _category.HasCategories);
                 _archive.Enabled = true;
                 _delete.Enabled = _canHardDelete;
             }

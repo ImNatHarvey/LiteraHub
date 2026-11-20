@@ -80,6 +80,7 @@ public sealed class BookRepository : IBookRepository
             }
         }
 
+        await PopulateCategoriesAsync(conn, books);
         return books;
     }
 
@@ -105,6 +106,7 @@ public sealed class BookRepository : IBookRepository
             new { BookId = bookId });
 
         book.AuthorIds = ids.ToList();
+        await PopulateCategoriesAsync(conn, new[] { book });
         return book;
     }
 
@@ -113,9 +115,12 @@ public sealed class BookRepository : IBookRepository
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
 
-        return await conn.QuerySingleOrDefaultAsync<Book>(
+        var book = await conn.QuerySingleOrDefaultAsync<Book>(
             SelectBooks + " WHERE b.Isbn = @Isbn;",
             new { Isbn = isbn });
+        if (book is not null)
+            await PopulateCategoriesAsync(conn, new[] { book });
+        return book;
     }
 
     public async Task<IReadOnlyList<BookLookupOption>> GetAuthorsAsync()
@@ -179,6 +184,7 @@ public sealed class BookRepository : IBookRepository
 
             await InsertAuthorsAsync(
                 conn, tx, id, resolvedAuthors);
+            await ReplaceCategoriesAsync(conn, tx, id, input);
 
             await tx.CommitAsync();
             return id;
@@ -285,6 +291,7 @@ public sealed class BookRepository : IBookRepository
 
             await InsertAuthorsAsync(
                 conn, tx, bookId, resolvedAuthors);
+            await ReplaceCategoriesAsync(conn, tx, bookId, input);
 
             await tx.CommitAsync();
             return true;
@@ -356,6 +363,9 @@ public sealed class BookRepository : IBookRepository
                 DELETE FROM dbo.BookAuthors
                 WHERE BookId = @BookId;
                 """,
+                new { BookId = bookId }, tx);
+            await conn.ExecuteAsync(
+                "DELETE FROM dbo.BookCategories WHERE BookId = @BookId;",
                 new { BookId = bookId }, tx);
 
             int affected = await conn.ExecuteAsync(
@@ -487,6 +497,22 @@ public sealed class BookRepository : IBookRepository
             throw new InvalidOperationException(
                 "Select an active category and book status.");
 
+        int[] selectedCategories =
+            (input.CategoryIds ?? new[] { input.CategoryId }).Distinct().ToArray();
+        if (selectedCategories.Length == 0 ||
+            !selectedCategories.Contains(input.CategoryId))
+            throw new InvalidOperationException("Select a primary category from the selected categories.");
+
+        int validCategories = await conn.ExecuteScalarAsync<int>(
+            """
+            SELECT COUNT(*) FROM dbo.Categories WITH (HOLDLOCK)
+            WHERE CategoryId IN @Ids AND IsActive = 1;
+            """,
+            new { Ids = selectedCategories }, tx);
+
+        if (validCategories != selectedCategories.Length)
+            throw new InvalidOperationException("One or more selected categories are inactive or missing.");
+
         int[] ids = input.AuthorIds.Distinct().ToArray();
 
         int count = await conn.ExecuteScalarAsync<int>(
@@ -524,6 +550,73 @@ public sealed class BookRepository : IBookRepository
                 },
                 tx);
         }
+    }
+
+
+    private static async Task PopulateCategoriesAsync(
+        System.Data.Common.DbConnection conn,
+        IReadOnlyCollection<Book> books)
+    {
+        if (books.Count == 0) return;
+
+        var ids = books.Select(b => b.BookId).ToArray();
+        var links = (await conn.QueryAsync<BookCategoryLink>(
+            """
+            SELECT bc.BookId, bc.CategoryId, c.Name
+            FROM dbo.BookCategories bc
+            INNER JOIN dbo.Categories c ON c.CategoryId = bc.CategoryId
+            WHERE bc.BookId IN @Ids
+            ORDER BY c.Name, bc.CategoryId;
+            """, new { Ids = ids })).ToArray();
+
+        var groups = links.GroupBy(x => x.BookId)
+            .ToDictionary(x => x.Key, x => x.ToArray());
+
+        foreach (var book in books)
+        {
+            if (!groups.TryGetValue(book.BookId, out var rows) || rows.Length == 0)
+            {
+                // Defensive fallback for older/mid-migration data.
+                book.CategoryIds = new List<int> { book.CategoryId };
+                book.CategoryNames = new List<string> { book.CategoryName };
+                continue;
+            }
+
+            // Preserve the primary category at the beginning of the list.
+            var ordered = rows.OrderBy(x => x.CategoryId == book.CategoryId ? 0 : 1)
+                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+            book.CategoryIds = ordered.Select(x => x.CategoryId).ToList();
+            book.CategoryNames = ordered.Select(x => x.Name).ToList();
+            book.CategoryName = string.Join(", ", book.CategoryNames);
+        }
+    }
+
+    private static async Task ReplaceCategoriesAsync(
+        System.Data.Common.DbConnection conn,
+        System.Data.Common.DbTransaction tx,
+        int bookId,
+        BookInput input)
+    {
+        var ids = (input.CategoryIds ?? new[] { input.CategoryId })
+            .Distinct().ToArray();
+        if (ids.Length == 0 || !ids.Contains(input.CategoryId))
+            throw new InvalidOperationException("Choose at least one category.");
+
+        await conn.ExecuteAsync(
+            "DELETE FROM dbo.BookCategories WHERE BookId = @BookId;",
+            new { BookId = bookId }, tx);
+
+        foreach (int categoryId in ids)
+            await conn.ExecuteAsync(
+                "INSERT INTO dbo.BookCategories (BookId, CategoryId) VALUES (@BookId, @CategoryId);",
+                new { BookId = bookId, CategoryId = categoryId }, tx);
+    }
+
+    private sealed class BookCategoryLink
+    {
+        public int BookId { get; set; }
+        public int CategoryId { get; set; }
+        public string Name { get; set; } = "";
     }
 
     private sealed class AuthorLink

@@ -1,5 +1,6 @@
 ﻿
 using System;
+using System.ComponentModel;
 using System.Drawing;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -72,9 +73,15 @@ public sealed class CategoryDialog : Form
 
     private bool _saving;
 
+    // Allows Book Editor to auto-select the newly saved category.
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public string? SavedCategoryName { get; private set; }
+
     public CategoryDialog(
         ICategoryService service,
-        Category? existing = null)
+        Category? existing = null,
+        string? suggestedName = null)
     {
         _service = service ??
             throw new ArgumentNullException(nameof(service));
@@ -102,6 +109,10 @@ public sealed class CategoryDialog : Form
         {
             _name.Text = existing.Name;
             _description.Text = existing.Description ?? "";
+        }
+        else if (!string.IsNullOrWhiteSpace(suggestedName))
+        {
+            _name.Text = suggestedName.Trim();
         }
 
         ApplyTheme();
@@ -240,6 +251,7 @@ public sealed class CategoryDialog : Form
 
             if (saved)
             {
+                SavedCategoryName = name;
                 _saving = false;
                 DialogResult = DialogResult.OK;
                 Close();

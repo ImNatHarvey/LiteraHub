@@ -230,9 +230,15 @@ public sealed class BookService : IBookService
             return ServiceResult.Fail(
                 "Book title must not exceed 300 characters.");
 
-        if (input.CategoryId <= 0)
+        if (input.CategoryId <= 0 ||
+            (input.CategoryIds is not null &&
+             (input.CategoryIds.Count == 0 ||
+              input.CategoryIds.Any(id => id <= 0) ||
+              !input.CategoryIds.Contains(input.CategoryId))))
+        {
             return ServiceResult.Fail(
-                "Select a category.");
+                "Select at least one valid category, including a primary category.");
+        }
 
         if (input.StatusId <= 0)
             return ServiceResult.Fail(
@@ -280,6 +286,8 @@ public sealed class BookService : IBookService
             CoverPath = string.IsNullOrEmpty(cover)
                 ? null : cover,
             AuthorIds = input.AuthorIds.Distinct().ToArray(),
+            CategoryIds = (input.CategoryIds ?? new[] { input.CategoryId })
+                .Distinct().ToArray(),
             PendingAuthorNames = input.PendingAuthorNames?
                 .Where(n => !string.IsNullOrWhiteSpace(n))
                 .Select(n => n.Trim())

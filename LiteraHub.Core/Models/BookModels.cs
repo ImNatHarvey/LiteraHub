@@ -12,6 +12,9 @@ public sealed class Book
     public string? Description { get; set; }
     public int CategoryId { get; set; }
     public string CategoryName { get; set; } = "";
+    // CategoryId is the primary category, retained for backwards compatibility.
+    public List<int> CategoryIds { get; set; } = new();
+    public List<string> CategoryNames { get; set; } = new();
     public int StatusId { get; set; }
     public string StatusName { get; set; } = "";
     public int TotalCopies { get; set; }
@@ -33,7 +36,8 @@ public sealed record BookInput(
     int AvailableCopies,
     string? CoverPath,
     IReadOnlyList<int> AuthorIds,
-    IReadOnlyList<string>? PendingAuthorNames = null
+    IReadOnlyList<string>? PendingAuthorNames = null,
+    IReadOnlyList<int>? CategoryIds = null
 );
 
 public sealed class BookLookupOption

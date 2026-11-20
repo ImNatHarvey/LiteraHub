@@ -156,6 +156,12 @@ public sealed class CategoryRepository : ICategoryRepository
                   SELECT 1
                   FROM dbo.Books
                   WHERE CategoryId = @CategoryId
+              )
+              AND NOT EXISTS
+              (
+                  SELECT 1
+                  FROM dbo.BookCategories
+                  WHERE CategoryId = @CategoryId
               );
             """;
 

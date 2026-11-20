@@ -794,7 +794,9 @@ public sealed class BooksPage : ThemedUserControl
 
             _allBooks = books.ToList();
             _filter.SetCategories(_allBooks
-                .Select(b => b.CategoryName)
+                .SelectMany(b => b.CategoryNames.Count > 0
+                    ? b.CategoryNames.AsEnumerable()
+                    : new[] { b.CategoryName })
                 .Where(n => !string.IsNullOrWhiteSpace(n))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(n => n, StringComparer.OrdinalIgnoreCase));
@@ -860,8 +862,11 @@ public sealed class BooksPage : ThemedUserControl
 
         if (_filter.CategoryIndex > 0)
             filtered = filtered.Where(b =>
-                string.Equals(b.CategoryName, _filter.SelectedCategory,
-                    StringComparison.OrdinalIgnoreCase)).ToList();
+                (b.CategoryNames.Count > 0
+                    ? b.CategoryNames.AsEnumerable()
+                    : new[] { b.CategoryName }).Any(name =>
+                    string.Equals(name, _filter.SelectedCategory,
+                        StringComparison.OrdinalIgnoreCase))).ToList();
 
         filtered = _filter.AvailabilityIndex switch
         {
