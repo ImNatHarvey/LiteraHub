@@ -89,6 +89,11 @@ public sealed class BookEditorPage : ThemedUserControl
             Padding = new Padding(12, 0, 8, 0)
         };
 
+    // F4.2: reusable validation keeps the accepted compact layout unchanged.
+    private readonly CatalogValidationController _validation = new();
+    private bool _validationReady;
+    private bool _validationAttempted;
+
     private readonly NumberField _total = new();
     private readonly NumberField _available = new();
 
@@ -250,6 +255,7 @@ public sealed class BookEditorPage : ThemedUserControl
             _content.Controls.Add(replacement);
             previous.Dispose();
             replacement.ApplyTheme();
+            replacement.SelectedIndexChanged += (_, _) => RefreshValidationCaptions();
             replacement.Enabled = _editing;
             _statusesLoaded = true;
             // Default only new books to a Good condition; never override edits.
@@ -814,6 +820,7 @@ public sealed class BookEditorPage : ThemedUserControl
             if (_saving || _existing is null) return;
             // Restore every saved field, not just the fields visible in View mode.
             // No validation, confirmation, or database write on Cancel.
+            ClearBookValidation();
             _editing = false;
             _pendingMetadataAuthors = Array.Empty<string>();
             PopulateExistingBook();
@@ -844,6 +851,11 @@ public sealed class BookEditorPage : ThemedUserControl
                 : title[..1].ToUpperInvariant();
         };
 
+        _title.TextChanged += (_, _) => RefreshValidationCaptions();
+        _category.SelectionChanged += (_, _) => RefreshValidationCaptions();
+        _authors.SelectionChanged += (_, _) => RefreshValidationCaptions();
+        _total.ValueChanged += (_, _) => RefreshValidationCaptions();
+        _available.ValueChanged += (_, _) => RefreshValidationCaptions();
         _total.ValueChanged += (_, _) => SyncInventory();
         _available.ValueChanged += (_, _) => SyncInventory();
 
@@ -1359,28 +1371,94 @@ public sealed class BookEditorPage : ThemedUserControl
         _save.Invalidate();
     }
 
+    private void EnsureBookValidation()
+    {
+        if (_validationReady) return;
+        // Conditions are loaded asynchronously and the placeholder control
+        // is replaced. Register only after the final dropdown exists.
+        _validation.Register(_title,
+            () => !string.IsNullOrWhiteSpace(_title.Text),
+            "Book title is required.");
+        _validation.Register(_category,
+            () => SelectedCategoryId > 0,
+            "Select a category.");
+        _validation.Register(_condition,
+            () => _condition.SelectedIndex >= 0 &&
+                  _condition.SelectedIndex < _statusIds.Length,
+            "Select a valid book condition.");
+        _validation.Register(_authors,
+            () => _authors.SelectedAuthorIds.Count > 0 ||
+                  _authors.SelectedPendingAuthorNames.Count > 0,
+            "Select at least one author.");
+        _validationReady = true;
+    }
+
+    private void RefreshValidationCaptions()
+    {
+        if (!_validationAttempted || !_validationReady || IsDisposed || Disposing)
+            return;
+        // Revalidation clears corrected borders immediately. Caption hints
+        // occupy the EXISTING 19px label rows and never change field widths.
+        _validation.Validate();
+        SetValidationCaption(_titleLabel, "Book Title",
+            !string.IsNullOrWhiteSpace(_title.Text), "Required");
+        SetValidationCaption(_categoryLabel, "Category",
+            SelectedCategoryId > 0, "Select a category");
+        SetValidationCaption(_conditionLabel, "Condition",
+            _condition.SelectedIndex >= 0 && _condition.SelectedIndex < _statusIds.Length,
+            "Select a condition");
+        SetValidationCaption(_authorsLabel, "Authors",
+            _authors.SelectedAuthorIds.Count > 0 ||
+            _authors.SelectedPendingAuthorNames.Count > 0, "Select an author");
+    }
+
+    private static void SetValidationCaption(Label label, string caption,
+        bool valid, string guidance)
+    {
+        label.Text = valid ? caption : caption + "  •  " + guidance;
+        label.ForeColor = valid ? Theme.Colors.Text : Theme.Colors.Danger;
+        label.AutoEllipsis = true;
+    }
+
+    private void ClearBookValidation()
+    {
+        _validationAttempted = false;
+        _validation.Clear();
+        foreach (var (label, caption) in new[]
+        {
+            (_titleLabel, "Book Title"), (_categoryLabel, "Category"),
+            (_conditionLabel, "Condition"), (_authorsLabel, "Authors")
+        })
+        {
+            label.Text = caption;
+            label.ForeColor = Theme.Colors.Text;
+        }
+    }
+
     private async Task SaveAsync()
     {
         if (!_editing || _saving || _bookService is null || !_authorsLoaded || !_statusesLoaded)
             return;
-        int statusIndex = _condition.SelectedIndex;
-        if (statusIndex < 0 || statusIndex >= _statusIds.Length)
+
+        EnsureBookValidation();
+        _validationAttempted = true;
+        var errors = _validation.Validate();
+        RefreshValidationCaptions();
+        if (errors.Count > 0)
         {
-            _detailsHeader.SubtitleText = "Select a valid book condition.";
+            _validation.ShowSummary(FindForm(), "this book");
+            if (!IsDisposed && !Disposing)
+                _validation.FocusFirstInvalid();
             return;
         }
 
-        if (SelectedCategoryId <= 0)
+        // Numeric controls already clamp invalid input. Keep the existing
+        // reserved-copy protection and explicitly verify it before saving.
+        if (_total.Value < _reservedCopies || _available.Value < 0 ||
+            _available.Value > _total.Value - _reservedCopies)
         {
-            _detailsHeader.SubtitleText = "Select a category before saving this book.";
-            return;
-        }
-
-        if (_authors.SelectedAuthorIds.Count == 0 &&
-            _authors.SelectedPendingAuthorNames.Count == 0)
-        {
-            _detailsHeader.SubtitleText = "Select an author, or select an existing " +
-                "'Unknown Author' record if the author is genuinely unknown.";
+            ThemedMessageDialog.ShowAlert(FindForm(), "Check Inventory",
+                "Available copies cannot exceed total copies minus reserved copies.", danger: true);
             return;
         }
 
@@ -1389,7 +1467,7 @@ public sealed class BookEditorPage : ThemedUserControl
             _title.Text.Trim(),
             _bookDescription.Text,
             SelectedCategoryId,
-            _statusIds[statusIndex],
+            _statusIds[_condition.SelectedIndex],
             _total.Value,
             _available.Value,
             _coverPath,
@@ -1657,12 +1735,14 @@ public sealed class BookEditorPage : ThemedUserControl
 
         ArrangeForm();
         PositionViewValues();
+        RefreshValidationCaptions();
     }
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
+            _validation.Dispose();
             _coverLoad?.Cancel();
             _coverLoad?.Dispose();
             _cover.CoverImage = null;

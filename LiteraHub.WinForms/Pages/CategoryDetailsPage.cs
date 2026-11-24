@@ -39,6 +39,8 @@ public sealed class CategoryDetailsPage : ThemedUserControl
     private readonly Dictionary<string, (Label Caption, Label Value, Control Edit)> _fields = new();
     private readonly ThemedTextField _name = new() { MaxLength = 100 };
     private readonly ThemedTextField _description = new() { MaxLength = 500, Multiline = true };
+    private readonly CatalogValidationController _validation = new();
+    private bool _validationAttempted;
     private readonly Label _id = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
     // Shared gallery. Preserve the accepted Category card dimensions when
     // its one-row information panel leaves more vertical gallery space.
@@ -95,7 +97,7 @@ public sealed class CategoryDetailsPage : ThemedUserControl
         _layout.Controls.Add(_actions, 0, 4);
         Controls.Add(_layout);
         _header.BackRequested += (_, _) => { if (!_busy) BackRequested?.Invoke(this, EventArgs.Empty); };
-        _cancel.Click += (_, _) => { if (_busy) return; _editing = false; Populate(); UpdateMode(); };
+        _cancel.Click += (_, _) => { if (_busy) return; _editing = false; _validation.Clear(); _validationAttempted = false; Populate(); UpdateMode(); RefreshValidationCaption(); };
         _primary.Click += async (_, _) =>
         {
             if (_busy) return;
@@ -104,6 +106,9 @@ public sealed class CategoryDetailsPage : ThemedUserControl
         };
         _archive.Click += async (_, _) => await ChangeActiveAsync();
         _delete.Click += async (_, _) => await DeleteAsync();
+        _validation.Register(_name, () => !string.IsNullOrWhiteSpace(_name.Text),
+            "Category name is required.");
+        _name.TextChanged += (_, _) => RefreshValidationCaption();
         Populate();
         UpdateMode();
         PositionFooterActions();
@@ -197,12 +202,29 @@ public sealed class CategoryDetailsPage : ThemedUserControl
         _delete.Invalidate();
     }
 
+    private void RefreshValidationCaption()
+    {
+        if (!_validationAttempted || IsDisposed || Disposing) return;
+        if (!_fields.TryGetValue("Name", out var field)) return;
+        bool invalid = _name.HasValidationError;
+        field.Caption.Text = invalid ? "Category Name • Required" : "Category Name";
+        field.Caption.ForeColor = invalid ? Theme.Colors.Danger : Theme.Colors.Text;
+        field.Caption.AutoEllipsis = true;
+    }
+
     private async Task SaveAsync()
     {
         if (_busy || !_editing) return;
         var name = _name.Text.Trim();
         var description = _description.Text.Trim();
-        if (string.IsNullOrWhiteSpace(name)) { Alert("Category name is required."); return; }
+        _validationAttempted = true;
+        if (_validation.Validate().Count > 0)
+        {
+            RefreshValidationCaption();
+            _validation.ShowSummary(FindForm(), "this category");
+            if (!IsDisposed && !Disposing) _validation.FocusFirstInvalid();
+            return;
+        }
         var input = new CategoryInput(name, description.Length == 0 ? null : description);
         bool creating = _category is null;
         _busy = true;
@@ -232,6 +254,8 @@ public sealed class CategoryDetailsPage : ThemedUserControl
             }
             if (IsDisposed || Disposing) return;
             _editing = false;
+            _validation.Clear();
+            _validationAttempted = false;
             Populate(); UpdateMode();
             CatalogActionFeedback.Notify(this,
                 creating ? "Category added successfully." : "Category updated successfully.");
@@ -447,6 +471,7 @@ public sealed class CategoryDetailsPage : ThemedUserControl
 
     protected override void Dispose(bool disposing)
     {
+        if (disposing) _validation.Dispose();
         base.Dispose(disposing);
     }
 }

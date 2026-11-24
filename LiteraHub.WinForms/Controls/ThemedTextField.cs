@@ -41,6 +41,21 @@ public sealed class ThemedTextField : ThemedUserControl
         Visible = false
     };
 
+    private bool _hasValidationError;
+
+    /// <summary>Draws a danger border without changing size or control layout.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool HasValidationError
+    {
+        get => _hasValidationError;
+        set
+        {
+            if (_hasValidationError == value) return;
+            _hasValidationError = value;
+            Invalidate();
+        }
+    }
+
     private bool _focused;
     private bool _multiline;
     private bool _updatingScroll;
@@ -412,9 +427,9 @@ public sealed class ThemedTextField : ThemedUserControl
         var c = Theme.Colors;
 
         using var pen = new Pen(
-            _focused
-                ? c.Accent
-                : c.Border);
+            _hasValidationError ? c.Danger :
+            _focused ? c.Accent : c.Border,
+            _hasValidationError ? 2f : 1f);
 
         var rect = ClientRectangle;
 

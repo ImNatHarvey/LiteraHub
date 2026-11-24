@@ -61,11 +61,14 @@ public sealed class ThemedAuthorPicker : Button
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
+
     public ThemedAuthorPicker()
     {
         FlatStyle = FlatStyle.Flat;
         TextAlign = ContentAlignment.MiddleLeft;
+        Padding = new Padding(12, 0, 8, 0);
         Cursor = Cursors.Hand;
+
         TabStop = true;
         Theme.Changed += ThemeChanged;
         Click += (_, _) => OpenPicker();

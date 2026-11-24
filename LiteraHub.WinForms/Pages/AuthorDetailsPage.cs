@@ -51,6 +51,8 @@ public sealed class AuthorDetailsPage : ThemedUserControl
     private readonly Button _archive = new() { FlatStyle = FlatStyle.Flat, Width = 210, Height = 40, Cursor = Cursors.Hand };
     private readonly Button _delete = new() { FlatStyle = FlatStyle.Flat, Width = 210, Height = 40, Cursor = Cursors.Hand };
     private readonly ToolTip _tips = new();
+    private readonly CatalogValidationController _validation = new();
+    private bool _validationAttempted;
 
     public event EventHandler? BackRequested;
     public event EventHandler<int>? BookRequested;
@@ -103,7 +105,7 @@ public sealed class AuthorDetailsPage : ThemedUserControl
         Controls.Add(_layout);
         _tips.SetToolTip(_calendar, "Choose birth date");
         _header.BackRequested += (_, _) => { if (!_busy) BackRequested?.Invoke(this, EventArgs.Empty); };
-        _cancel.Click += (_, _) => { if (_busy) return; _editing = false; Populate(); UpdateMode(); };
+        _cancel.Click += (_, _) => { if (_busy) return; _editing = false; _validation.Clear(); _validationAttempted = false; Populate(); UpdateMode(); RefreshValidationCaptions(); };
         _primary.Click += async (_, _) =>
         {
             if (_busy) return;
@@ -112,6 +114,16 @@ public sealed class AuthorDetailsPage : ThemedUserControl
         };
         _archive.Click += async (_, _) => await ChangeActiveAsync();
         _delete.Click += async (_, _) => await DeleteAsync();
+        // Fixed-height caption rows: no added width or horizontal scrolling.
+        _validation.Register(_first, () => !string.IsNullOrWhiteSpace(_first.Text),
+            "First name is required.");
+        _validation.Register(_last, () => !string.IsNullOrWhiteSpace(_last.Text),
+            "Last name is required.");
+        _validation.Register(_birthDate, IsBirthDateValid,
+            "Birth date must use YYYY-MM-DD and cannot be in the future.");
+        _first.TextChanged += (_, _) => RefreshValidationCaptions();
+        _last.TextChanged += (_, _) => RefreshValidationCaptions();
+        _birthDate.TextChanged += (_, _) => RefreshValidationCaptions();
         Populate();
         UpdateMode();
         PositionFooterActions();
@@ -230,24 +242,50 @@ public sealed class AuthorDetailsPage : ThemedUserControl
             _birthDate.Text = dialog.SelectedDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "";
     }
 
+    private bool IsBirthDateValid()
+    {
+        string value = _birthDate.Text.Trim();
+        return value.Length == 0 ||
+            (DateTime.TryParseExact(value, "yyyy-MM-dd",
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime date) &&
+             date.Date <= DateTime.Today);
+    }
+
+    private void RefreshValidationCaptions()
+    {
+        if (!_validationAttempted || IsDisposed || Disposing) return;
+        UpdateValidationCaption("First", "First Name", _first.HasValidationError, "Required");
+        UpdateValidationCaption("Last", "Last Name", _last.HasValidationError, "Required");
+        UpdateValidationCaption("DOB", "Birth Date (YYYY-MM-DD)",
+            _birthDate.HasValidationError, "Invalid date");
+    }
+
+    private void UpdateValidationCaption(string key, string title, bool invalid, string error)
+    {
+        if (!_fields.TryGetValue(key, out var field)) return;
+        field.Caption.Text = invalid ? title + " • " + error : title;
+        field.Caption.ForeColor = invalid ? Theme.Colors.Danger : Theme.Colors.Text;
+        field.Caption.AutoEllipsis = true;
+    }
+
     private async Task SaveAsync()
     {
         if (_busy || !_editing) return;
-        string first = _first.Text.Trim(), last = _last.Text.Trim(), middle = _middle.Text.Trim();
-        if (first.Length == 0 || last.Length == 0)
+        _validationAttempted = true;
+        var errors = _validation.Validate();
+        RefreshValidationCaptions();
+        if (errors.Count > 0)
         {
-            Alert("First and last name are required.");
+            _validation.ShowSummary(FindForm(), "this author");
+            if (!IsDisposed && !Disposing) _validation.FocusFirstInvalid();
             return;
         }
+        string first = _first.Text.Trim(), last = _last.Text.Trim(), middle = _middle.Text.Trim();
         DateTime? dob = null;
         if (_birthDate.Text.Trim().Length > 0)
         {
-            if (!DateTime.TryParseExact(_birthDate.Text.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture,
-                    DateTimeStyles.None, out DateTime parsed) || parsed > DateTime.Today)
-            {
-                Alert("Enter a valid birth date in YYYY-MM-DD format, not in the future.");
-                return;
-            }
+            DateTime.TryParseExact(_birthDate.Text.Trim(), "yyyy-MM-dd",
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime parsed);
             dob = parsed.Date;
         }
         var input = new AuthorInput(first, middle.Length == 0 ? null : middle, last,
@@ -273,6 +311,8 @@ public sealed class AuthorDetailsPage : ThemedUserControl
             }
             if (IsDisposed || Disposing) return;
             _editing = false;
+            _validation.Clear();
+            _validationAttempted = false;
             Populate();
             UpdateMode();
             Saved?.Invoke(this, EventArgs.Empty);
@@ -492,6 +532,7 @@ public sealed class AuthorDetailsPage : ThemedUserControl
         if (disposing)
         {
             _tips.Dispose();
+            _validation.Dispose();
         }
         base.Dispose(disposing);
     }

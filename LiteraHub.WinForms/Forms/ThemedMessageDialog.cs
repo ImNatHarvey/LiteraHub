@@ -153,6 +153,37 @@ public sealed class ThemedMessageDialog : Form
 
         Controls.Add(root);
 
+
+        // Expand the dialog to fit longer messages.
+        // Keeps short confirmation dialogs at their original size.
+
+        int messageWidth = ClientSize.Width
+            - root.Padding.Horizontal
+            - (int)content.ColumnStyles[0].Width
+            - 12;
+
+
+        Size measured = TextRenderer.MeasureText(
+            message,
+            Theme.Body,
+            new Size(Math.Max(200, messageWidth), int.MaxValue),
+            TextFormatFlags.WordBreak |
+            TextFormatFlags.NoPrefix);
+
+        // Allow room for the header, footer, paddings,
+        // and extra space between wrapped text lines.
+        int requiredHeight = measured.Height + 170;
+
+        int maxHeight = Math.Max(
+            230,
+            Screen.FromControl(this).WorkingArea.Height - 100);
+
+        ClientSize = new Size(
+            ClientSize.Width,
+            Math.Clamp(requiredHeight, 230, maxHeight));
+
+
+
         // Destructive confirmations must not be accepted
         // accidentally by pressing Enter.
         AcceptButton = confirmation && danger

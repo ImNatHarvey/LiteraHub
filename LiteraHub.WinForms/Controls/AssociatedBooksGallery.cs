@@ -202,7 +202,11 @@ public sealed class AssociatedBooksGallery : ThemedUserControl
                         if (Equals(label.Tag, "title"))
                             label.Bounds = new Rectangle(0, frameHeight, cardWidth, TitleHeight);
                 }
-                _gallery.Height = rows * rowHeight + 1;
+
+                _gallery.Height = _bookCount == 0
+                    ? Math.Min(64, Math.Max(1, viewportHeight - 4))
+                    : rows * rowHeight + 1;
+
             }
             finally { _gallery.ResumeLayout(true); }
             _scroll.RefreshMetrics();

@@ -53,6 +53,8 @@ public sealed class StudentDetailsPage : ThemedUserControl
     private Image? _pendingPhoto;
     private bool _editing;
     private bool _busy;
+    private readonly CatalogValidationController _validation = new();
+    private bool _validationAttempted;
     private bool _arranging;
     private bool _responsive;
 
@@ -131,7 +133,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
             if (!_editing) { SetEditing(true); return; }
             await SaveAsync();
         };
-        _cancel.Click += (_, _) => { if (_busy) return; RestoreOriginal(); SetEditing(false); };
+        _cancel.Click += (_, _) => { if (_busy) return; _validation.Clear(); _validationAttempted = false; ResetValidationCaptions(); RestoreOriginal(); SetEditing(false); };
         _archive.Click += async (_, _) => await ToggleActiveAsync();
         _delete.Click += async (_, _) => await DeleteStudentAsync();
         _photoButton.Click += (_, _) => SelectPhoto();
@@ -143,6 +145,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
         Resize += (_, _) => ArrangeForm();
         _scroll.Resize += (_, _) => ArrangeForm();
         _actionFooter.Resize += (_, _) => PositionFooterButtons();
+        ConfigureValidation();
         SetEditing(_editing);
         ApplyTheme();
     }
@@ -457,12 +460,133 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _gender.SelectedIndex == 0 ? "" : new[] { "", "Male", "Female", "Other", "Prefer not to say" }[_gender.SelectedIndex],
         _inputs["MobileNo"].Text, _inputs["LandlineNo"].Text, _inputs["Email"].Text);
 
+    private void ConfigureValidation()
+    {
+        // Mirror StudentService.Validate required fields. Existing caption rows
+        // carry inline warnings without increasing form or horizontal width.
+        RegisterText("StudentNo", () => !string.IsNullOrWhiteSpace(_inputs["StudentNo"].Text),
+            "Student ID is required.");
+        RegisterText("FirstName", () => !string.IsNullOrWhiteSpace(_inputs["FirstName"].Text),
+            "First name is required.");
+        RegisterText("LastName", () => !string.IsNullOrWhiteSpace(_inputs["LastName"].Text),
+            "Last name is required.");
+
+        RegisterText("HouseNo", () => !string.IsNullOrWhiteSpace(_inputs["HouseNo"].Text),
+            "House number is required.");
+        RegisterText("Street", () => !string.IsNullOrWhiteSpace(_inputs["Street"].Text),
+            "Street is required.");
+        RegisterText("Municipality", () => !string.IsNullOrWhiteSpace(_inputs["Municipality"].Text),
+            "Municipality is required.");
+        RegisterText("CityProvince", () => !string.IsNullOrWhiteSpace(_inputs["CityProvince"].Text),
+            "City/province is required.");
+        RegisterText("ZipCode", () => !string.IsNullOrWhiteSpace(_inputs["ZipCode"].Text),
+            "ZIP code is required.");
+
+        _validation.Register(_birthDate,
+            () => _selectedBirthDate.HasValue &&
+                  _selectedBirthDate.Value.Date >= new DateTime(1900, 1, 1) &&
+                  _selectedBirthDate.Value.Date <= DateTime.Today,
+            "Select a birthdate between 1900 and today.");
+        _birthDate.TextChanged += (_, _) => RefreshValidationCaptions();
+
+        _validation.Register(_gender,
+            () => _gender.SelectedIndex > 0,
+            "Select a gender.");
+        _gender.SelectedIndexChanged += (_, _) => RefreshValidationCaptions();
+
+        RegisterText("MobileNo", () => !string.IsNullOrWhiteSpace(_inputs["MobileNo"].Text),
+            "Mobile number is required.");
+        RegisterText("Email", () =>
+        {
+            string email = _inputs["Email"].Text.Trim();
+            return email.Length > 0 &&
+                System.Net.Mail.MailAddress.TryCreate(email, out var parsed) &&
+                string.Equals(parsed.Address, email, StringComparison.OrdinalIgnoreCase);
+        }, "Enter a valid email address (required).");
+        // Middle name and landline remain optional, per StudentService.
+    }
+
+    private void RegisterText(string key, Func<bool> predicate, string error)
+    {
+        var control = _inputs[key];
+        _validation.Register(control, predicate, error);
+        control.TextChanged += (_, _) => RefreshValidationCaptions();
+    }
+
+    private void RefreshValidationCaptions()
+    {
+        if (!_validationAttempted || IsDisposed || Disposing) return;
+        foreach (var (key, label) in new (string Key, string Caption)[]
+        {
+            ("StudentNo", "Student ID"),
+            ("FirstName", "First name"),
+            ("LastName", "Last name"),
+            ("HouseNo", "House number"),
+            ("Street", "Street"),
+            ("Municipality", "Municipality"),
+            ("CityProvince", "City / province"),
+            ("ZipCode", "ZIP code"),
+            ("MobileNo", "Mobile number"),
+            ("Email", "Email address")
+        })
+        {
+            bool invalid = _inputs[key].HasValidationError;
+            string warning = key == "Email" ? "Invalid email" : "Required";
+            UpdateValidationCaption(key, label, invalid, warning);
+        }
+
+        bool birthInvalid = !_selectedBirthDate.HasValue ||
+                            _selectedBirthDate.Value.Date < new DateTime(1900, 1, 1) ||
+                            _selectedBirthDate.Value.Date > DateTime.Today;
+        UpdateValidationCaption("BirthDate", "Birthdate", birthInvalid, "Invalid date");
+        UpdateValidationCaption("Gender", "Gender", _gender.SelectedIndex == 0, "Required");
+    }
+
+    private void UpdateValidationCaption(string key, string name, bool invalid, string warning)
+    {
+        if (!_fields.TryGetValue(key, out var field)) return;
+        field.Caption.Text = invalid ? name + " • " + warning : name;
+        field.Caption.ForeColor = invalid ? Theme.Colors.Danger : Theme.Colors.Text;
+        field.Caption.AutoEllipsis = true;
+    }
+
+    private void ResetValidationCaptions()
+    {
+        foreach (var (key, field) in _fields)
+        {
+            // Retain the original captions, including optional-field labels.
+            string caption = key switch
+            {
+                "StudentNo" => "Student ID",
+                "FirstName" => "First name",
+                "MiddleName" => "Middle name (optional)",
+                "LastName" => "Last name",
+                "HouseNo" => "House number",
+                "Street" => "Street",
+                "Municipality" => "Municipality",
+                "CityProvince" => "City / province",
+                "ZipCode" => "ZIP code",
+                "BirthDate" => "Birthdate",
+                "Gender" => "Gender",
+                "MobileNo" => "Mobile number",
+                "LandlineNo" => "Landline (optional)",
+                "Email" => "Email address",
+                _ => field.Caption.Text
+            };
+            field.Caption.Text = caption;
+            field.Caption.ForeColor = Theme.Colors.Text;
+        }
+    }
+
     private async Task SaveAsync()
     {
         if (_busy) return;
-        if (_selectedBirthDate is null)
+        _validationAttempted = true;
+        if (_validation.Validate().Count > 0)
         {
-            ThemedMessageDialog.ShowAlert(FindForm(), "Student Validation", "Select a birthdate before saving.");
+            RefreshValidationCaptions();
+            _validation.ShowSummary(FindForm(), "this student");
+            if (!IsDisposed && !Disposing) _validation.FocusFirstInvalid();
             return;
         }
         bool creating = _original is null;
@@ -485,6 +609,9 @@ public sealed class StudentDetailsPage : ThemedUserControl
                     ThemedMessageDialog.ShowAlert(FindForm(), "Student Saved", "Student was saved, but the local photo could not be stored: " + ex.Message);
                 }
             }
+            _validation.Clear();
+            _validationAttempted = false;
+            ResetValidationCaptions();
             CatalogActionFeedback.Notify(this,
                 creating ? "Student added successfully." : "Student updated successfully.");
             BackRequested?.Invoke(this, EventArgs.Empty);
@@ -710,6 +837,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
         // Shared DetailsPageHeader refreshes itself when the theme changes.
         _avatar.Invalidate();
         ArrangeForm();
+        RefreshValidationCaptions();
     }
 
     protected override void Dispose(bool disposing)
@@ -718,6 +846,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
         {
             _pendingPhoto?.Dispose();
             _toolTip.Dispose();
+            _validation.Dispose();
         }
         base.Dispose(disposing);
     }
