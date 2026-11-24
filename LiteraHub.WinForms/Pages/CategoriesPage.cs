@@ -87,6 +87,8 @@ public sealed class CategoriesPage : ThemedUserControl
         Margin = Padding.Empty
     };
 
+    private readonly CatalogEmptyState _emptyState = new();
+
     private readonly LoadingHost _loading = new()
     {
         Dock = DockStyle.Fill,
@@ -221,6 +223,26 @@ public sealed class CategoriesPage : ThemedUserControl
         ConfigureGrid();
 
         _loading.SetContent(_grid);
+        _loading.Controls.Add(_emptyState);
+        _emptyState.BringToFront();
+        _emptyState.ActionRequested += (_, _) =>
+        {
+            if (_loadingData || _loadFailed || !_hasLoadedData) return;
+
+            if (_allCategories.Count == 0)
+            {
+                if (_permissions.Can(Permission.CreateLookups))
+                    OpenCategoryDetails(null);
+            }
+            else if (!string.IsNullOrWhiteSpace(_search.Text))
+            {
+                _search.Text = string.Empty;
+            }
+            else
+            {
+                _filterSort.ClearFilters();
+            }
+        };
 
         _filterSort.Visible = CanManage;
 
@@ -512,8 +534,29 @@ public sealed class CategoriesPage : ThemedUserControl
         _grid.DataSource = pageRows;
         _grid.ClearRowSelection();
 
+        if (_hasLoadedData && !_loadFailed && _filteredCount == 0)
+        {
+            var kind = _allCategories.Count == 0
+                ? CatalogEmptyKind.NoRecords
+                : !string.IsNullOrWhiteSpace(query)
+                    ? CatalogEmptyKind.NoSearchResults
+                    : CatalogEmptyKind.NoFilterResults;
+
+            _emptyState.Configure(kind,
+                _permissions.Can(Permission.CreateLookups),
+                "category", "categories", "category name or description");
+            _emptyState.Visible = true;
+            _emptyState.BringToFront();
+        }
+        else
+        {
+            _emptyState.Visible = false;
+        }
+
         _status.Text = _filteredCount == 0
-            ? "No matching categories."
+            ? (_allCategories.Count == 0
+                ? "The catalog has no categories yet."
+                : "No matching categories.")
             : $"{_filteredCount} of " +
               $"{_allCategories.Count} categories match.";
 
@@ -587,6 +630,17 @@ public sealed class CategoriesPage : ThemedUserControl
         _details = null;
         _layout.Visible = true;
         _layout.BringToFront();
+
+        BeginInvoke(new Action(() =>
+        {
+            if (!IsDisposed && !Disposing &&
+                _details is null && _grid.CanFocus)
+            {
+                _grid.Focus();
+                _grid.ClearRowSelection();
+            }
+        }));
+
     }
 
     private void ClearActionHover()
@@ -808,6 +862,7 @@ public sealed class CategoriesPage : ThemedUserControl
 
         _loadingData = true;
         _loadFailed = false;
+        _emptyState.Visible = false;
 
         _status.Text = "Loading categories...";
         _grid.Enabled = false;
@@ -833,6 +888,7 @@ public sealed class CategoriesPage : ThemedUserControl
                 return;
 
             _loadFailed = true;
+            _emptyState.Visible = false;
 
             _status.Text =
                 "Unable to load categories: " + ex.Message;

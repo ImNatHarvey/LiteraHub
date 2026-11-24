@@ -85,6 +85,8 @@ public sealed class AuthorsPage : ThemedUserControl
         Margin = Padding.Empty
     };
 
+    private readonly CatalogEmptyState _emptyState = new();
+
     private readonly LoadingHost _loading = new()
     {
         Dock = DockStyle.Fill,
@@ -155,6 +157,8 @@ public sealed class AuthorsPage : ThemedUserControl
     private int _filteredCount;
     private bool _loadStarted;
     private bool _loadingData;
+    private bool _hasLoadedData;
+    private bool _loadFailed;
     private bool _working;
     private bool _compact;
 
@@ -182,6 +186,25 @@ public sealed class AuthorsPage : ThemedUserControl
         ConfigureGrid();
 
         _loading.SetContent(_grid);
+        _loading.Controls.Add(_emptyState);
+        _emptyState.BringToFront();
+        _emptyState.ActionRequested += (_, _) =>
+        {
+            if (_loadingData || _loadFailed) return;
+            if (_authors.Length == 0)
+            {
+                if (_permissions.Can(Permission.CreateLookups))
+                    OpenAuthorDetails(null);
+            }
+            else if (!string.IsNullOrWhiteSpace(_search.Text))
+            {
+                _search.Text = string.Empty;
+            }
+            else
+            {
+                _filter.ClearFilters();
+            }
+        };
         _search.Placeholder = "Search author ID, name or gender...";
 
         _filter.Visible = CanManage;
@@ -730,6 +753,17 @@ public sealed class AuthorsPage : ThemedUserControl
         _details = null;
         _layout.Visible = true;
         _layout.BringToFront();
+
+        BeginInvoke(new Action(() =>
+        {
+            if (!IsDisposed && !Disposing &&
+                _details is null && _grid.CanFocus)
+            {
+                _grid.Focus();
+                _grid.ClearRowSelection();
+            }
+        }));
+
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -751,6 +785,8 @@ public sealed class AuthorsPage : ThemedUserControl
             return;
 
         _loadingData = true;
+        _loadFailed = false;
+        _emptyState.Visible = false;
         _add.Enabled = false;
         _status.Text = "Loading authors...";
 
@@ -766,10 +802,13 @@ public sealed class AuthorsPage : ThemedUserControl
                 .OrderBy(a => a.FullName)
                 .ToArray();
 
+            _hasLoadedData = true;
             RenderRows();
         }
         catch (Exception ex)
         {
+            _loadFailed = true;
+            _emptyState.Visible = false;
             if (!IsDisposed && !Disposing)
             {
                 ThemedMessageDialog.ShowAlert(
@@ -802,11 +841,9 @@ public sealed class AuthorsPage : ThemedUserControl
 
         string query = _search.Text.Trim();
 
-
         int status = CanManage
             ? _filter.StatusIndex
             : 1;
-
 
         var filtered = _authors
             .Where(a =>
@@ -867,8 +904,29 @@ public sealed class AuthorsPage : ThemedUserControl
 
         _grid.ClearRowSelection();
 
+        if (_hasLoadedData && !_loadFailed && _filteredCount == 0)
+        {
+            bool noRecords = _authors.Length == 0;
+            bool hasSearch = !string.IsNullOrWhiteSpace(query);
+            var kind = noRecords
+                ? CatalogEmptyKind.NoRecords
+                : hasSearch
+                    ? CatalogEmptyKind.NoSearchResults
+                    : CatalogEmptyKind.NoFilterResults;
+            _emptyState.Configure(kind,
+                _permissions.Can(Permission.CreateLookups),
+                "author", "authors", "author ID, name, or gender");
+            _emptyState.Visible = true;
+            _emptyState.BringToFront();
+        }
+        else
+        {
+            _emptyState.Visible = false;
+        }
+
         _status.Text = _filteredCount == 0
-            ? "No matching authors."
+            ? (_authors.Length == 0 ? "The catalog has no authors yet."
+                : "No matching authors.")
             : $"{_filteredCount} of {_authors.Length} authors match.";
 
         int start = _filteredCount == 0

@@ -93,6 +93,8 @@ public sealed class BooksPage : ThemedUserControl
         ScrollBars = ScrollBars.Vertical
     };
 
+    private readonly CatalogEmptyState _emptyState = new();
+
     private readonly LoadingHost _loading = new()
     {
         Dock = DockStyle.Fill,
@@ -226,6 +228,24 @@ public sealed class BooksPage : ThemedUserControl
         ConfigureGrid();
 
         _loading.SetContent(_grid);
+        _loading.Controls.Add(_emptyState);
+        _emptyState.BringToFront();
+        _emptyState.ActionRequested += async (_, _) =>
+        {
+            if (_loadingData || _loadFailed) return;
+            if (_allBooks.Count == 0)
+            {
+                if (CanManage) await OpenEditorAsync();
+            }
+            else if (!string.IsNullOrWhiteSpace(_search.Text))
+            {
+                _search.Text = string.Empty;
+            }
+            else
+            {
+                _filter.ClearFilters();
+            }
+        };
 
         _search.Placeholder =
             "Search ISBN, title, author, category, status...";
@@ -263,6 +283,17 @@ public sealed class BooksPage : ThemedUserControl
         {
             _page = 1;
             FilterBooks();
+
+            BeginInvoke(new Action(() =>
+            {
+                if (!IsDisposed && !Disposing &&
+                    _editor is null && _grid.CanFocus)
+                {
+                    _grid.Focus();
+                    _grid.ClearRowSelection();
+                }
+            }));
+
         };
 
         _filter.SelectionChanged += (_, _) =>
@@ -766,6 +797,7 @@ public sealed class BooksPage : ThemedUserControl
         }
     }
 
+
     private void HandleBackRequested(
         object? sender,
         EventArgs e)
@@ -783,7 +815,35 @@ public sealed class BooksPage : ThemedUserControl
         _layout.BringToFront();
 
         FilterBooks();
+
+        // Restore focus after the Details page closes.
+        // Prevent Search from receiving keyboard focus.
+        if (!IsDisposed && !Disposing && IsHandleCreated)
+        {
+            BeginInvoke(new Action(() =>
+            {
+                if (IsDisposed || Disposing || _editor is not null)
+                    return;
+
+                if (_grid.CanFocus && _grid.Focus())
+                {
+                    _grid.ClearRowSelection();
+                    return;
+                }
+
+                // Fallback when the empty-state overlay is visible.
+                if (_addButton.CanFocus)
+                {
+                    _addButton.Focus();
+                    return;
+                }
+
+                if (_sortControl.CanFocus)
+                    _sortControl.Focus();
+            }));
+        }
     }
+
 
     private async Task LoadBooksAsync()
     {
@@ -793,6 +853,7 @@ public sealed class BooksPage : ThemedUserControl
         _loadingData = true;
         _loadFailed = false;
 
+        _emptyState.Visible = false;
         _status.Text = "Loading books...";
         _grid.Enabled = false;
         _addButton.Enabled = false;
@@ -801,10 +862,8 @@ public sealed class BooksPage : ThemedUserControl
 
         try
         {
-
             var books = await _loading.RunAsync(
                 () => _books.GetAllAsync(CanManage));
-
 
             if (IsDisposed || Disposing)
                 return;
@@ -837,6 +896,8 @@ public sealed class BooksPage : ThemedUserControl
 
                 if (!_loadFailed)
                     FilterBooks();
+                else
+                    _emptyState.Visible = false;
 
                 UpdatePaginationButtons();
                 _grid.ClearRowSelection();
@@ -910,8 +971,27 @@ public sealed class BooksPage : ThemedUserControl
 
         _grid.ClearRowSelection();
 
+        if (_hasLoadedData && _filteredCount == 0)
+        {
+            bool noRecords = _allBooks.Count == 0;
+            bool hasSearch = !string.IsNullOrWhiteSpace(query);
+            var kind = noRecords
+                ? CatalogEmptyKind.NoRecords
+                : hasSearch
+                    ? CatalogEmptyKind.NoSearchResults
+                    : CatalogEmptyKind.NoFilterResults;
+            _emptyState.Configure(kind, CanManage);
+            _emptyState.Visible = true;
+            _emptyState.BringToFront();
+        }
+        else
+        {
+            _emptyState.Visible = false;
+        }
+
         _status.Text = _filteredCount == 0
-            ? "No matching books."
+            ? (_allBooks.Count == 0 ? "The catalog has no books yet."
+                : "No matching books.")
             : $"{_filteredCount} of {_allBooks.Count} books match.";
 
         int start = _filteredCount == 0

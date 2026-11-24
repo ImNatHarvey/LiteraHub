@@ -25,6 +25,8 @@ public sealed class StudentsPage : ThemedUserControl
 
     private readonly Label _status = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
     private readonly ThemedDataGridView _grid = new() { Dock = DockStyle.Fill, Margin = Padding.Empty, ReadOnlyDisplayMode = true };
+    private readonly Panel _resultsHost = new() { Dock = DockStyle.Fill, Margin = Padding.Empty, Padding = Padding.Empty };
+    private readonly CatalogEmptyState _emptyState = new();
     private readonly TableLayoutPanel _pagination = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty, Padding = new Padding(0, 12, 0, 0) };
     private readonly Label _pageInfo = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
     private readonly FlowLayoutPanel _pageControls = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Margin = Padding.Empty, Padding = Padding.Empty };
@@ -39,6 +41,8 @@ public sealed class StudentsPage : ThemedUserControl
     private int _page = 1;
     private int _size = 10;
     private bool _loading;
+    private bool _hasLoadedData;
+    private bool _loadFailed;
     private bool _compact;
     private bool _responsiveInitialized;
 
@@ -69,7 +73,27 @@ public sealed class StudentsPage : ThemedUserControl
         _layout.Controls.Add(_heading, 0, 0);
         _layout.Controls.Add(_toolbar, 0, 1);
         _layout.Controls.Add(_status, 0, 2);
-        _layout.Controls.Add(_grid, 0, 3);
+        _resultsHost.Controls.Add(_grid);
+        _resultsHost.Controls.Add(_emptyState);
+        _emptyState.BringToFront();
+        _emptyState.ActionRequested += (_, _) =>
+        {
+            if (_loading || _loadFailed || !_hasLoadedData) return;
+            if (_all.Count == 0)
+            {
+                if (_permissions.Can(Permission.ManageStudents))
+                    _ = OpenDetailsAsync(null);
+            }
+            else if (!string.IsNullOrWhiteSpace(_search.Text))
+            {
+                _search.Text = string.Empty;
+            }
+            else
+            {
+                _filter.ClearFilters();
+            }
+        };
+        _layout.Controls.Add(_resultsHost, 0, 3);
         _layout.Controls.Add(_pagination, 0, 4);
         _host.Controls.Add(_layout);
         Controls.Add(_host);
@@ -79,8 +103,6 @@ public sealed class StudentsPage : ThemedUserControl
         AddColumn("MobileNo", "Mobile", nameof(Student.MobileNo), 14, 120);
         AddColumn("Email", "Email", nameof(Student.Email), 20, 160);
         AddColumn("Status", "Status", null, 10, 90);
-        // Keep the Status icon centered 90px left of the 55px View Details
-        // column, exactly as in Books, Authors, and Categories.
         _grid.Columns["Status"]!.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
         _grid.Columns["Status"]!.MinimumWidth = 90;
         _grid.Columns["Status"]!.Width = 90;
@@ -170,6 +192,8 @@ public sealed class StudentsPage : ThemedUserControl
     {
         if (_loading) return;
         _loading = true;
+        _loadFailed = false;
+        _emptyState.Visible = false;
         _add.Enabled = false;
         _status.Text = "Loading students...";
         try
@@ -178,11 +202,14 @@ public sealed class StudentsPage : ThemedUserControl
             if (IsDisposed || Disposing) return;
             _all.Clear();
             _all.AddRange(students);
+            _hasLoadedData = true;
             Filter();
         }
         catch (Exception ex)
         {
             if (IsDisposed || Disposing) return;
+            _loadFailed = true;
+            _emptyState.Visible = false;
             _status.Text = "Unable to load students.";
             MessageBox.Show(FindForm(), ex.Message, "Students", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
@@ -195,6 +222,7 @@ public sealed class StudentsPage : ThemedUserControl
 
     private void Filter()
     {
+        if (IsDisposed || Disposing || _loadFailed || !_hasLoadedData) return;
         string query = _search.Text.Trim();
         IEnumerable<Student> items = _all.Where(s =>
             (_filter.StatusIndex == 0 || (_filter.StatusIndex == 1 ? s.IsActive : !s.IsActive)) &&
@@ -227,11 +255,35 @@ public sealed class StudentsPage : ThemedUserControl
         _page = Math.Clamp(_page, 1, pages);
         _grid.DataSource = _filtered.Skip((_page - 1) * _size).Take(_size).ToList();
         _grid.ClearRowSelection();
-        _status.Text = _all.Count == 0 ? "No matching students." : $"{_filtered.Count} of {_all.Count} students match.";
+        UpdateEmptyState();
+        _status.Text = _filtered.Count == 0
+            ? (_all.Count == 0 ? "The catalog has no students yet." : "No matching students.")
+            : $"{_filtered.Count} of {_all.Count} students match.";
         _pageInfo.Text = _filtered.Count == 0 ? "Showing 0 students" : $"Showing {(_page - 1) * _size + 1}–{Math.Min(_page * _size, _filtered.Count)} of {_filtered.Count}";
         _pageNumber.Text = $"{_page} / {pages}";
         _previous.Enabled = _page > 1;
         _next.Enabled = _page < pages;
+    }
+
+    private void UpdateEmptyState()
+    {
+        if (IsDisposed || Disposing || _loadFailed || !_hasLoadedData || _filtered.Count > 0)
+        {
+            _emptyState.Visible = false;
+            return;
+        }
+
+        var kind = _all.Count == 0
+            ? CatalogEmptyKind.NoRecords
+            : !string.IsNullOrWhiteSpace(_search.Text)
+                ? CatalogEmptyKind.NoSearchResults
+                : CatalogEmptyKind.NoFilterResults;
+
+        _emptyState.Configure(kind,
+            _permissions.Can(Permission.ManageStudents),
+            "student", "students", "student ID, name, email, or address");
+        _emptyState.Visible = true;
+        _emptyState.BringToFront();
     }
 
     private async Task OpenDetailsAsync(int? id)
@@ -260,6 +312,17 @@ public sealed class StudentsPage : ThemedUserControl
         _details = null;
         _layout.Visible = true;
         _layout.BringToFront();
+
+        BeginInvoke(new Action(() =>
+        {
+            if (!IsDisposed && !Disposing &&
+                _details is null && _grid.CanFocus)
+            {
+                _grid.Focus();
+                _grid.ClearRowSelection();
+            }
+        }));
+
     }
 
     // Paint every Student cell as one horizontal-banded table. The shared
@@ -383,7 +446,7 @@ public sealed class StudentsPage : ThemedUserControl
     {
         base.ApplyTheme();
         var c = Theme.Colors;
-        foreach (Control control in new Control[] { _host, _layout, _toolbar, _pagination, _pageControls }) control.BackColor = c.Background;
+        foreach (Control control in new Control[] { _host, _layout, _toolbar, _pagination, _pageControls, _resultsHost }) control.BackColor = c.Background;
         _heading.ForeColor = c.Text;
         _heading.Font = _compact ? Theme.BodyStrong : Theme.Title;
         _status.ForeColor = c.TextMuted;
