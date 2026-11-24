@@ -24,10 +24,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
     private readonly Student? _original;
     private readonly bool _canHardDelete;
     private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Margin = Padding.Empty, Padding = Padding.Empty };
-    private readonly TableLayoutPanel _header = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
-    private readonly Label _heading = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
-    private readonly StudentBackButton _back = new() { Dock = DockStyle.Fill, Margin = new Padding(8, 4, 2, 4) };
-    private readonly Label _subtitle = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+    private readonly DetailsPageHeader _detailsHeader = new() { Dock = DockStyle.Fill };
     private readonly ScrollHost _scroll = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
     private readonly Panel _surface = new() { Margin = Padding.Empty };
     private readonly Panel _actionFooter = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
@@ -70,17 +67,12 @@ public sealed class StudentDetailsPage : ThemedUserControl
         Dock = DockStyle.Fill;
         Padding = new Padding(Space.L);
         _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        _layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
-        _layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        // Shared header occupies the same 56px title row + 42px subtitle row.
+        _layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 98));
+        _layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
         _layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         _layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
-        _header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        _header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
-        _header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        _header.Controls.Add(_heading, 0, 0);
-        _header.Controls.Add(_back, 1, 0);
-        _layout.Controls.Add(_header, 0, 0);
-        _layout.Controls.Add(_subtitle, 0, 1);
+        _layout.Controls.Add(_detailsHeader, 0, 0);
         _layout.Controls.Add(_scroll, 0, 2);
         _layout.Controls.Add(_actionFooter, 0, 3);
 
@@ -127,7 +119,10 @@ public sealed class StudentDetailsPage : ThemedUserControl
             catch (UnauthorizedAccessException) { /* Local photo access denied. */ }
         }
 
-        _back.Click += (_, _) => { if (!_busy) BackRequested?.Invoke(this, EventArgs.Empty); };
+        _detailsHeader.BackRequested += (_, _) =>
+        {
+            if (!_busy) BackRequested?.Invoke(this, EventArgs.Empty);
+        };
 
         _save.Click += async (_, _) =>
         {
@@ -296,7 +291,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
             _viewBirthDate.BringToFront();
             _viewGender.BringToFront();
             PositionFooterButtons();
-            _heading.Font = portrait ? Theme.BodyStrong : Theme.Title;
+            // The shared DetailsPageHeader owns title font and theme styling.
             _save.Invalidate(); _archive.Invalidate(); _delete.Invalidate();
         }
         finally { _arranging = false; }
@@ -427,8 +422,9 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _delete.Visible = _original is not null;
         _delete.Enabled = _canHardDelete && !_busy;
         _cancel.Visible = _original is not null && editing;
-        _heading.Text = _original is null ? "Add Student" : editing ? "Edit Student" : "Student Details";
-        _subtitle.Text = _original is null ? "Register a new student." : editing ? "Update student information." : "Viewing student record.";
+        _detailsHeader.HeadingText = _original is null ? "Add Student" : editing ? "Edit Student" : "Student Details";
+        _detailsHeader.SubtitleText = _original is null ? "Register a new student." : editing ? "Update student information." : "Viewing student record.";
+        _detailsHeader.BackEnabled = !_busy;
         if (IsHandleCreated)
         {
             ArrangeForm();
@@ -646,13 +642,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
         base.ApplyTheme();
         var c = Theme.Colors;
         _layout.BackColor = c.Background;
-        _header.BackColor = c.Background;
-        _heading.BackColor = c.Background;
-        _heading.ForeColor = c.Text;
-        _heading.Font = Theme.Title;
-        _subtitle.BackColor = c.Background;
-        _subtitle.ForeColor = c.TextMuted;
-        _subtitle.Font = Theme.Body;
+        _detailsHeader.ApplyTheme();
         _surface.BackColor = c.Surface;
         _actionFooter.BackColor = c.Background;
         foreach (var section in new[] { _studentHeading, _addressHeading, _contactHeading })
@@ -720,7 +710,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _delete.FlatAppearance.BorderSize = 0;
         _delete.FlatAppearance.MouseOverBackColor = ControlPaint.Dark(deleteRed, 0.12f);
         _delete.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(deleteRed, 0.23f);
-        _back.RefreshTheme();
+        // Shared DetailsPageHeader refreshes itself when the theme changes.
         _avatar.Invalidate();
         ArrangeForm();
     }
@@ -779,128 +769,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
         }
         protected override void Dispose(bool disposing) { if (disposing) _photo?.Dispose(); base.Dispose(disposing); }
     }
-    private sealed class StudentBackButton : Control
-    {
-        private bool _hovered;
 
-        public StudentBackButton()
-        {
-            SetStyle(
-                ControlStyles.UserPaint |
-                ControlStyles.AllPaintingInWmPaint |
-                ControlStyles.OptimizedDoubleBuffer |
-                ControlStyles.ResizeRedraw |
-                ControlStyles.Selectable,
-                true);
-
-            Cursor = Cursors.Hand;
-            TabStop = true;
-            AccessibleName = "Back to Students";
-        }
-
-        public void RefreshTheme()
-        {
-            BackColor = Theme.Colors.Surface;
-            ForeColor = Theme.Colors.Text;
-            Font = Theme.Body;
-            Invalidate();
-        }
-
-        protected override void OnMouseEnter(EventArgs e)
-        {
-            base.OnMouseEnter(e);
-            _hovered = true;
-            Invalidate();
-        }
-
-        protected override void OnMouseLeave(EventArgs e)
-        {
-            base.OnMouseLeave(e);
-            _hovered = false;
-            Invalidate();
-        }
-
-        protected override void OnKeyDown(KeyEventArgs e)
-        {
-            base.OnKeyDown(e);
-
-            if (e.KeyCode is Keys.Enter or Keys.Space)
-            {
-                OnClick(EventArgs.Empty);
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-            }
-        }
-
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            base.OnPaint(e);
-
-            var c = Theme.Colors;
-            var g = e.Graphics;
-
-            g.SmoothingMode =
-                SmoothingMode.AntiAlias;
-
-            using var background = new SolidBrush(
-                _hovered ? c.SurfaceAlt : c.Surface);
-
-            g.FillRectangle(
-                background, ClientRectangle);
-
-            using var border = new Pen(c.Border);
-
-            g.DrawRectangle(
-                border,
-                0, 0,
-                Math.Max(0, Width - 1),
-                Math.Max(0, Height - 1));
-
-            int iconX = 18;
-            int iconY = Height / 2;
-
-            using var pen = new Pen(
-                c.Accent, 2.2f)
-            {
-                StartCap = LineCap.Round,
-                EndCap = LineCap.Round,
-                LineJoin = LineJoin.Round
-            };
-
-            g.DrawLines(
-                pen,
-                new[]
-                {
-                    new Point(iconX + 4, iconY - 6),
-                    new Point(iconX - 2, iconY),
-                    new Point(iconX + 4, iconY + 6)
-                });
-
-            TextRenderer.DrawText(
-                g,
-                "Back",
-                Font,
-                new Rectangle(
-                    31,
-                    0,
-                    Math.Max(0, Width - 34),
-                    Height),
-                c.Text,
-                TextFormatFlags.Left |
-                TextFormatFlags.VerticalCenter);
-
-            if (Focused && ShowFocusCues)
-            {
-                ControlPaint.DrawFocusRectangle(
-                    g,
-                    new Rectangle(
-                        3,
-                        3,
-                        Math.Max(0, Width - 6),
-                        Math.Max(0, Height - 6)));
-            }
-        }
-    }
 }
 
 /// <summary>Local Windows profile photo cache, not a shared/database attachment.</summary>

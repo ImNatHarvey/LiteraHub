@@ -28,14 +28,7 @@ public sealed class AuthorDetailsPage : ThemedUserControl
     private bool _loadingCovers;
 
     private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(0, 0, 0, 16), Margin = Padding.Empty };
-    private readonly TableLayoutPanel _header = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
-    private readonly Label _heading = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
-    private readonly BackButton _back = new()
-    {
-        Dock = DockStyle.Fill,
-        Margin = new Padding(8, 4, 2, 4)
-    };
-    private readonly Label _subtitle = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+    private readonly DetailsPageHeader _header = new();
     private readonly Panel _infoPanel = new()
     {
         Dock = DockStyle.Fill,
@@ -75,12 +68,8 @@ public sealed class AuthorDetailsPage : ThemedUserControl
         _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         foreach (var h in new[] { 56f, 42f, 176f, 0f, 52f })
             _layout.RowStyles.Add(h == 0 ? new RowStyle(SizeType.Percent, 100) : new RowStyle(SizeType.Absolute, h));
-        _header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        _header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
-        _header.Controls.Add(_heading, 0, 0);
-        _header.Controls.Add(_back, 1, 0);
         _layout.Controls.Add(_header, 0, 0);
-        _layout.Controls.Add(_subtitle, 0, 1);
+        _layout.SetRowSpan(_header, 2);
         _layout.Controls.Add(_infoPanel, 0, 2);
 
         _info.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
@@ -113,7 +102,7 @@ public sealed class AuthorDetailsPage : ThemedUserControl
         _layout.Controls.Add(_actions, 0, 4);
         Controls.Add(_layout);
         _tips.SetToolTip(_calendar, "Choose birth date");
-        _back.Click += (_, _) => { if (!_busy) BackRequested?.Invoke(this, EventArgs.Empty); };
+        _header.BackRequested += (_, _) => { if (!_busy) BackRequested?.Invoke(this, EventArgs.Empty); };
         _cancel.Click += (_, _) => { if (_busy) return; _editing = false; Populate(); UpdateMode(); };
         _primary.Click += async (_, _) =>
         {
@@ -188,8 +177,8 @@ public sealed class AuthorDetailsPage : ThemedUserControl
     private void UpdateMode()
     {
         bool existing = _author is not null;
-        _heading.Text = !existing ? "Add Author" : _editing ? "Edit Author" : "View Author";
-        _subtitle.Text = !existing ? "Create a new author record." :
+        _header.HeadingText = !existing ? "Add Author" : _editing ? "Edit Author" : "View Author";
+        _header.SubtitleText = !existing ? "Create a new author record." :
             (_editing ? "Editing: " : "Viewing: ") + _author!.FullName;
         _primary.Text = _editing ? "Save Author" : "Edit Author";
         _primary.Visible = _editing || _permissions.Can(Permission.ManageLookups);
@@ -369,9 +358,7 @@ public sealed class AuthorDetailsPage : ThemedUserControl
         base.ApplyTheme();
         var c = Theme.Colors;
         _layout.BackColor = c.Background;
-        _header.BackColor = c.Background;
-        _heading.ForeColor = c.Text; _heading.Font = Theme.Title;
-        _subtitle.ForeColor = c.TextMuted; _subtitle.Font = Theme.Body;
+        _header.ApplyTheme();
         _infoPanel.BackColor = c.Surface; _info.BackColor = c.Surface;
         _actions.BackColor = c.Background;
         foreach (var (_, pair) in _fields)
@@ -383,7 +370,6 @@ public sealed class AuthorDetailsPage : ThemedUserControl
             pair.Value.Paint += DrawFieldBorder;
         }
         _gender.ApplyTheme(); // ThemedTextField applies themes via its own lifecycle.
-        _back.RefreshTheme();
         _cancel.BackColor = c.SurfaceAlt;
         _cancel.ForeColor = c.Text;
         _cancel.Font = Theme.Body;
@@ -509,61 +495,6 @@ public sealed class AuthorDetailsPage : ThemedUserControl
             TextFormatFlags.VerticalCenter | TextFormatFlags.Left |
             TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
         g.SmoothingMode = previous;
-    }
-
-    // Ported from the working BookEditorPage.BackButton.
-    private sealed class BackButton : Control
-    {
-        private bool _hovered;
-        public BackButton()
-        {
-            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
-                ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw |
-                ControlStyles.Selectable, true);
-            Cursor = Cursors.Hand;
-            TabStop = true;
-            AccessibleName = "Back to Authors";
-        }
-        public void RefreshTheme()
-        {
-            BackColor = Theme.Colors.Surface;
-            ForeColor = Theme.Colors.Text;
-            Font = Theme.Body;
-            Invalidate();
-        }
-        protected override void OnMouseEnter(EventArgs e)
-        { base.OnMouseEnter(e); _hovered = true; Invalidate(); }
-        protected override void OnMouseLeave(EventArgs e)
-        { base.OnMouseLeave(e); _hovered = false; Invalidate(); }
-        protected override void OnKeyDown(KeyEventArgs e)
-        {
-            base.OnKeyDown(e);
-            if (e.KeyCode is Keys.Enter or Keys.Space)
-            { OnClick(EventArgs.Empty); e.Handled = true; e.SuppressKeyPress = true; }
-        }
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            base.OnPaint(e);
-            var c = Theme.Colors;
-            var g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            using var background = new SolidBrush(_hovered ? c.SurfaceAlt : c.Surface);
-            g.FillRectangle(background, ClientRectangle);
-            using var border = new Pen(c.Border);
-            g.DrawRectangle(border, 0, 0, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
-            int iconX = 18;
-            int iconY = Height / 2;
-            using var pen = new Pen(c.Accent, 2.2f)
-            { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
-            g.DrawLines(pen, new[] { new Point(iconX + 4, iconY - 6),
-                new Point(iconX - 2, iconY), new Point(iconX + 4, iconY + 6) });
-            TextRenderer.DrawText(g, "Back", Font,
-                new Rectangle(31, 0, Math.Max(0, Width - 34), Height), c.Text,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
-            if (Focused && ShowFocusCues)
-                ControlPaint.DrawFocusRectangle(g, new Rectangle(3, 3,
-                    Math.Max(0, Width - 6), Math.Max(0, Height - 6)));
-        }
     }
 
     protected override void Dispose(bool disposing)
