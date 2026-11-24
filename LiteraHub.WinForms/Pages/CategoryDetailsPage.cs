@@ -204,6 +204,7 @@ public sealed class CategoryDetailsPage : ThemedUserControl
         var description = _description.Text.Trim();
         if (string.IsNullOrWhiteSpace(name)) { Alert("Category name is required."); return; }
         var input = new CategoryInput(name, description.Length == 0 ? null : description);
+        bool creating = _category is null;
         _busy = true;
         try
         {
@@ -215,7 +216,13 @@ public sealed class CategoryDetailsPage : ThemedUserControl
                 var list = await _categories.GetAllAsync(true);
                 _category = list.Where(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
                     .OrderByDescending(c => c.CategoryId).FirstOrDefault();
-                if (_category is null) { Saved?.Invoke(this, EventArgs.Empty); BackRequested?.Invoke(this, EventArgs.Empty); return; }
+                if (_category is null)
+                {
+                    CatalogActionFeedback.Notify(this, "Category added successfully.");
+                    Saved?.Invoke(this, EventArgs.Empty);
+                    BackRequested?.Invoke(this, EventArgs.Empty);
+                    return;
+                }
             }
             else
             {
@@ -226,6 +233,8 @@ public sealed class CategoryDetailsPage : ThemedUserControl
             if (IsDisposed || Disposing) return;
             _editing = false;
             Populate(); UpdateMode();
+            CatalogActionFeedback.Notify(this,
+                creating ? "Category added successfully." : "Category updated successfully.");
             Saved?.Invoke(this, EventArgs.Empty);
             await LoadBooksAsync();
         }
@@ -247,7 +256,10 @@ public sealed class CategoryDetailsPage : ThemedUserControl
             if (!result.Success) { Alert(result.Error ?? "Unable to change category status."); return; }
             _category = await _categories.GetByIdAsync(_category.CategoryId);
             if (IsDisposed || Disposing) return;
-            Populate(); UpdateMode(); Saved?.Invoke(this, EventArgs.Empty);
+            Populate(); UpdateMode();
+            CatalogActionFeedback.Notify(this,
+                restore ? "Category restored successfully." : "Category archived successfully.");
+            Saved?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex) { if (!IsDisposed && !Disposing) Alert(ex.Message); }
         finally { _busy = false; if (!IsDisposed && !Disposing) UpdateMode(); }
@@ -265,6 +277,7 @@ public sealed class CategoryDetailsPage : ThemedUserControl
         {
             var result = await _categories.DeleteAsync(_category.CategoryId);
             if (!result.Success) { Alert(result.Error ?? "Deletion blocked."); return; }
+            CatalogActionFeedback.Notify(this, "Category deleted successfully.");
             Saved?.Invoke(this, EventArgs.Empty);
             BackRequested?.Invoke(this, EventArgs.Empty);
         }

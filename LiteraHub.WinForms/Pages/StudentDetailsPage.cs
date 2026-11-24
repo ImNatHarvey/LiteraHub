@@ -465,6 +465,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
             ThemedMessageDialog.ShowAlert(FindForm(), "Student Validation", "Select a birthdate before saving.");
             return;
         }
+        bool creating = _original is null;
         _busy = true;
         _save.Enabled = false;
         try
@@ -484,6 +485,8 @@ public sealed class StudentDetailsPage : ThemedUserControl
                     ThemedMessageDialog.ShowAlert(FindForm(), "Student Saved", "Student was saved, but the local photo could not be stored: " + ex.Message);
                 }
             }
+            CatalogActionFeedback.Notify(this,
+                creating ? "Student added successfully." : "Student updated successfully.");
             BackRequested?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
@@ -506,7 +509,12 @@ public sealed class StudentDetailsPage : ThemedUserControl
         {
             var result = await _service.SetActiveAsync(_original.StudentId, active);
             if (IsDisposed || Disposing) return;
-            if (result.Success) BackRequested?.Invoke(this, EventArgs.Empty);
+            if (result.Success)
+            {
+                CatalogActionFeedback.Notify(this,
+                    active ? "Student restored successfully." : "Student archived successfully.");
+                BackRequested?.Invoke(this, EventArgs.Empty);
+            }
             else ThemedMessageDialog.ShowAlert(FindForm(), "Student Status", result.Error ?? "Operation failed.", danger: true);
         }
         catch (Exception ex) { if (!IsDisposed && !Disposing) ThemedMessageDialog.ShowAlert(FindForm(), "Student Status", ex.Message, danger: true); }
@@ -534,6 +542,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
                 // Photo cache is intentionally left untouched if local deletion fails;
                 // database deletion is authoritative and always happens first.
                 StudentPhotoStore.TryDelete(_original.StudentNo);
+                CatalogActionFeedback.Notify(this, "Student deleted successfully.");
                 BackRequested?.Invoke(this, EventArgs.Empty);
             }
             else

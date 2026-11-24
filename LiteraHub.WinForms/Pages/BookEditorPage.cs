@@ -1396,6 +1396,7 @@ public sealed class BookEditorPage : ThemedUserControl
             _authors.SelectedAuthorIds,
             _authors.SelectedPendingAuthorNames);
 
+        bool creating = _existing is null;
         _saving = true;
         _save.Enabled = false;
         _archive.Enabled = false;
@@ -1414,6 +1415,10 @@ public sealed class BookEditorPage : ThemedUserControl
                     "Book Validation", _detailsHeader.SubtitleText);
                 return;
             }
+            // BooksPage closes this editor synchronously on Saved.
+            // Notify the shell before that navigation disposes this page.
+            CatalogActionFeedback.Notify(this,
+                creating ? "Book added successfully." : "Book updated successfully.");
             Saved?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
@@ -1446,7 +1451,8 @@ public sealed class BookEditorPage : ThemedUserControl
                 confirmText: activate ? "Restore" : "Archive"))
             return;
         await RunLifecycleAsync(
-            () => _bookService.SetActiveAsync(_existing.BookId, activate));
+            () => _bookService.SetActiveAsync(_existing.BookId, activate),
+            activate ? "Book restored successfully." : "Book archived successfully.");
     }
 
     private async Task DeleteAsync()
@@ -1460,10 +1466,11 @@ public sealed class BookEditorPage : ThemedUserControl
                 confirmText: "Delete"))
             return;
         await RunLifecycleAsync(
-            () => _bookService.DeleteAsync(_existing.BookId));
+            () => _bookService.DeleteAsync(_existing.BookId),
+            "Book deleted successfully.");
     }
 
-    private async Task RunLifecycleAsync(Func<Task<ServiceResult>> action)
+    private async Task RunLifecycleAsync(Func<Task<ServiceResult>> action, string successMessage)
     {
         _saving = true;
         _save.Enabled = false;
@@ -1473,7 +1480,12 @@ public sealed class BookEditorPage : ThemedUserControl
         {
             var result = await action();
             if (IsDisposed || Disposing) return;
-            if (result.Success) Saved?.Invoke(this, EventArgs.Empty);
+            if (result.Success)
+            {
+                // Notify before Saved closes the editor.
+                CatalogActionFeedback.Notify(this, successMessage);
+                Saved?.Invoke(this, EventArgs.Empty);
+            }
             else ThemedMessageDialog.ShowAlert(FindForm(),
                 "Book Operation",
                 result.Error ?? "The operation could not be completed.");

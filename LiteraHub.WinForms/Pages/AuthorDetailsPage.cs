@@ -252,6 +252,7 @@ public sealed class AuthorDetailsPage : ThemedUserControl
         }
         var input = new AuthorInput(first, middle.Length == 0 ? null : middle, last,
             _gender.SelectedIndex switch { 1 => "Male", 2 => "Female", 3 => "Other", _ => "Unknown" }, dob);
+        bool creating = _author is null;
         _busy = true;
         try
         {
@@ -275,6 +276,8 @@ public sealed class AuthorDetailsPage : ThemedUserControl
             Populate();
             UpdateMode();
             Saved?.Invoke(this, EventArgs.Empty);
+            CatalogActionFeedback.Notify(this,
+                creating ? "Author added successfully." : "Author updated successfully.");
             await LoadBooksAsync();
         }
         catch (Exception ex) { if (!IsDisposed && !Disposing) Alert(ex.Message); }
@@ -296,6 +299,8 @@ public sealed class AuthorDetailsPage : ThemedUserControl
             _author = await _authors.GetByIdAsync(_author.AuthorId);
             if (IsDisposed || Disposing) return;
             Populate(); UpdateMode(); Saved?.Invoke(this, EventArgs.Empty);
+            CatalogActionFeedback.Notify(this,
+                restore ? "Author restored successfully." : "Author archived successfully.");
         }
         catch (Exception ex) { if (!IsDisposed && !Disposing) Alert(ex.Message); }
         finally { _busy = false; if (!IsDisposed && !Disposing) UpdateMode(); }
@@ -314,6 +319,7 @@ public sealed class AuthorDetailsPage : ThemedUserControl
             var result = await _authors.DeleteAsync(_author.AuthorId);
             if (!result.Success) { Alert(result.Error ?? "Deletion blocked."); return; }
             Saved?.Invoke(this, EventArgs.Empty);
+            CatalogActionFeedback.Notify(this, "Author deleted successfully.");
             BackRequested?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex) { if (!IsDisposed && !Disposing) Alert(ex.Message); }
