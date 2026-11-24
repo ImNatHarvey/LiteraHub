@@ -510,9 +510,9 @@ public sealed class AuthorsPage : ThemedUserControl
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = "Id",
-            HeaderText = "ID",
-            FillWeight = 9,
-            MinimumWidth = 55
+            HeaderText = "Author ID",
+            FillWeight = 12,
+            MinimumWidth = 85
         });
 
         _grid.Columns.Add(new DataGridViewTextBoxColumn
@@ -963,7 +963,7 @@ public sealed class AuthorsPage : ThemedUserControl
 
             if (compact)
             {
-                _grid.Columns["Id"]!.Width = 60;
+                _grid.Columns["Id"]!.Width = 95;
                 _grid.Columns["Name"]!.Width = 180;
                 _grid.Columns["Gender"]!.Width = 100;
                 _grid.Columns["BirthDate"]!.Width = 135;

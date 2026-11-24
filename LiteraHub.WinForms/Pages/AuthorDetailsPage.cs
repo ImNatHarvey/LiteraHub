@@ -45,7 +45,7 @@ public sealed class AuthorDetailsPage : ThemedUserControl
         Margin = Padding.Empty,
         Padding = new Padding(16)
     };
-    private readonly TableLayoutPanel _info = new() { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 2 };
+    private readonly TableLayoutPanel _info = new() { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 2, Margin = Padding.Empty, Padding = Padding.Empty };
     private readonly Dictionary<string, (Label Caption, Label Value, Control Edit)> _fields = new();
     private readonly ThemedTextField _first = new() { MaxLength = 100 };
     private readonly ThemedTextField _middle = new() { MaxLength = 100 };
@@ -86,7 +86,7 @@ public sealed class AuthorDetailsPage : ThemedUserControl
         _editing = author is null;
         Dock = DockStyle.Fill;
         _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        foreach (var h in new[] { 56f, 42f, 184f, 0f, 52f })
+        foreach (var h in new[] { 56f, 42f, 176f, 0f, 52f })
             _layout.RowStyles.Add(h == 0 ? new RowStyle(SizeType.Percent, 100) : new RowStyle(SizeType.Absolute, h));
         _header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         _header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
@@ -99,8 +99,8 @@ public sealed class AuthorDetailsPage : ThemedUserControl
         _info.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
         _info.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
         _info.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34f));
-        _info.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-        _info.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        _info.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
+        _info.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
         _infoPanel.Controls.Add(_info);
         AddField("ID", "Author ID", _id, 0, 0);
         AddField("First", "First Name", _first, 1, 0);
@@ -148,22 +148,45 @@ public sealed class AuthorDetailsPage : ThemedUserControl
         PositionFooterActions();
     }
 
+    // Match Student Details: 19px caption, 8px spacing, 40px input,
+    // and a 72px field row. A Panel prevents TableLayoutPanel from
+    // stretching the visible input to consume unused vertical space.
     private void AddField(string key, string caption, Control editor, int col, int row)
     {
-        var cell = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 1, Margin = new Padding(0, 0, 12, 4) };
-        cell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        cell.RowStyles.Add(new RowStyle(SizeType.Absolute, 23));
-        cell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        var label = new Label { Text = caption, TextAlign = ContentAlignment.MiddleLeft, Dock = DockStyle.Fill };
-        var value = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(12, 0, 0, 0) };
+        var cell = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 0, 12, 0),
+            Padding = Padding.Empty
+        };
+        var label = new Label
+        {
+            Text = caption,
+            TextAlign = ContentAlignment.MiddleLeft,
+            AutoSize = false
+        };
+        var value = new Label
+        {
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(12, 0, 0, 0)
+        };
+        var area = new Panel { Margin = Padding.Empty, Padding = Padding.Empty };
         editor.Dock = DockStyle.Fill;
-        cell.Controls.Add(label, 0, 0);
-        var area = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
         area.Controls.Add(value);
         area.Controls.Add(editor);
-        cell.Controls.Add(area, 0, 1);
+        cell.Controls.Add(label);
+        cell.Controls.Add(area);
+
+        void PositionField()
+        {
+            label.SetBounds(0, 0, Math.Max(1, cell.ClientSize.Width), 19);
+            area.SetBounds(0, 27, Math.Max(1, cell.ClientSize.Width), 40);
+        }
+        cell.Resize += (_, _) => PositionField();
         _info.Controls.Add(cell, col, row);
         _fields[key] = (label, value, editor);
+        PositionField();
     }
 
     private void Populate()
