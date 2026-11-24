@@ -801,8 +801,10 @@ public sealed class BooksPage : ThemedUserControl
 
         try
         {
+
             var books = await _loading.RunAsync(
                 () => _books.GetAllAsync(CanManage));
+
 
             if (IsDisposed || Disposing)
                 return;

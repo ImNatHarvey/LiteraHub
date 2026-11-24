@@ -1,15 +1,29 @@
-﻿using System.ComponentModel;
+﻿using System;
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace LiteraHub.WinForms.Controls;
 
-// Wraps a content control. RunAsync shows a skeleton only when the work takes longer than DelayMs.
+/// <summary>
+/// Wraps existing page content with a delayed, theme-aware skeleton.
+/// Quick requests never show a skeleton; slower requests keep it visible
+/// briefly to avoid flicker. Only the latest request controls visibility.
+/// </summary>
 public sealed class LoadingHost : ThemedUserControl
 {
-    private const int DelayMs = 150;      // avoid flicker for fast loads
-    private const int MinVisibleMs = 300; // once shown, do not flash away
+    private const int DelayMs = 150;
+    private const int MinVisibleMs = 300;
 
-    private readonly SkeletonView _skeleton = new() { Dock = DockStyle.Fill, Visible = false };
+    private readonly SkeletonView _skeleton = new()
+    {
+        Dock = DockStyle.Fill,
+        Visible = false,
+        AccessibleName = "Loading content",
+        AccessibleDescription = "Please wait while the content is loaded."
+    };
+
     private Control? _content;
     private int _runId;
 
@@ -26,13 +40,19 @@ public sealed class LoadingHost : ThemedUserControl
         set => _skeleton.Style = value;
     }
 
-    // True if the most recent RunAsync had to show the skeleton (useful for testing).
     [Browsable(false)]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool LastRunShowedSkeleton { get; private set; }
 
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool IsLoading { get; private set; }
+
     public void SetContent(Control content)
     {
+        ArgumentNullException.ThrowIfNull(content);
+
+        if (ReferenceEquals(_content, content)) return;
         if (_content is not null) Controls.Remove(_content);
 
         _content = content;
@@ -43,34 +63,59 @@ public sealed class LoadingHost : ThemedUserControl
 
     public async Task<T> RunAsync<T>(Func<Task<T>> work)
     {
-        var id = ++_runId;
+        ArgumentNullException.ThrowIfNull(work);
+
+        int id = ++_runId;
         LastRunShowedSkeleton = false;
-
-        var task = work();
-        var finishedFirst = await Task.WhenAny(task, Task.Delay(DelayMs));
-        if (finishedFirst == task) return await task;
-
-        if (IsDisposed) return await task;
-        LastRunShowedSkeleton = true;
-        _skeleton.Visible = true;
-        _skeleton.BringToFront();
-        var shown = Stopwatch.StartNew();
+        IsLoading = true;
+        _skeleton.Visible = false;
 
         try
         {
-            return await task;
+            Task<T> task = work();
+            ArgumentNullException.ThrowIfNull(task);
+
+            // No placeholder for work completing during the initial delay.
+            Task first = await Task.WhenAny(task, Task.Delay(DelayMs));
+            if (first == task || task.IsCompleted || IsDisposed)
+                return await task;
+
+            // Do not let an older overlapping request show the skeleton.
+            if (id != _runId)
+                return await task;
+
+            LastRunShowedSkeleton = true;
+            _skeleton.Visible = true;
+            _skeleton.BringToFront();
+            var visibleTime = Stopwatch.StartNew();
+
+            try
+            {
+                return await task;
+            }
+            finally
+            {
+                // Only delay when this request actually displayed a skeleton.
+                int remaining = MinVisibleMs - (int)visibleTime.ElapsedMilliseconds;
+                if (remaining > 0 && !IsDisposed && id == _runId)
+                    await Task.Delay(remaining);
+            }
         }
         finally
         {
-            var remaining = MinVisibleMs - (int)shown.ElapsedMilliseconds;
-            if (remaining > 0) await Task.Delay(remaining);
-
-            if (!IsDisposed && id == _runId) _skeleton.Visible = false;
+            // A previous request must never hide a newer request's placeholder.
+            if (id == _runId)
+            {
+                IsLoading = false;
+                if (!IsDisposed && !Disposing)
+                    _skeleton.Visible = false;
+            }
         }
     }
 
     public async Task RunAsync(Func<Task> work)
     {
+        ArgumentNullException.ThrowIfNull(work);
         await RunAsync<bool>(async () =>
         {
             await work();
