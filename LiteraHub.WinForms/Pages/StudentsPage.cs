@@ -76,9 +76,15 @@ public sealed class StudentsPage : ThemedUserControl
         _resultsHost.Controls.Add(_grid);
         _resultsHost.Controls.Add(_emptyState);
         _emptyState.BringToFront();
-        _emptyState.ActionRequested += (_, _) =>
+        _emptyState.ActionRequested += async (_, _) =>
         {
-            if (_loading || _loadFailed || !_hasLoadedData) return;
+            if (_loading) return;
+            if (_loadFailed)
+            {
+                await ReloadAsync();
+                return;
+            }
+            if (!_hasLoadedData) return;
             if (_all.Count == 0)
             {
                 if (_permissions.Can(Permission.ManageStudents))
@@ -209,14 +215,23 @@ public sealed class StudentsPage : ThemedUserControl
         {
             if (IsDisposed || Disposing) return;
             _loadFailed = true;
-            _emptyState.Visible = false;
-            _status.Text = "Unable to load students.";
-            MessageBox.Show(FindForm(), ex.Message, "Students", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            System.Diagnostics.Debug.WriteLine("Students load failed: " + ex);
+            _status.Text = "Unable to load students. Please retry.";
         }
         finally
         {
             _loading = false;
-            if (!IsDisposed && !Disposing) _add.Enabled = true;
+            if (!IsDisposed && !Disposing)
+            {
+                _add.Enabled = _permissions.Can(Permission.ManageStudents);
+                if (_loadFailed)
+                {
+                    _emptyState.Configure(CatalogEmptyKind.LoadFailed, false,
+                        "student", "students");
+                    _emptyState.Visible = true;
+                    _emptyState.BringToFront();
+                }
+            }
         }
     }
 
@@ -313,6 +328,7 @@ public sealed class StudentsPage : ThemedUserControl
         _layout.Visible = true;
         _layout.BringToFront();
 
+        // Return focus to the list rather than automatically selecting Search.
         BeginInvoke(new Action(() =>
         {
             if (!IsDisposed && !Disposing &&
@@ -322,7 +338,6 @@ public sealed class StudentsPage : ThemedUserControl
                 _grid.ClearRowSelection();
             }
         }));
-
     }
 
     // Paint every Student cell as one horizontal-banded table. The shared

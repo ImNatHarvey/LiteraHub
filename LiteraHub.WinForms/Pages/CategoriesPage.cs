@@ -225,9 +225,15 @@ public sealed class CategoriesPage : ThemedUserControl
         _loading.SetContent(_grid);
         _loading.Controls.Add(_emptyState);
         _emptyState.BringToFront();
-        _emptyState.ActionRequested += (_, _) =>
+        _emptyState.ActionRequested += async (_, _) =>
         {
-            if (_loadingData || _loadFailed || !_hasLoadedData) return;
+            if (_loadingData) return;
+            if (_loadFailed)
+            {
+                await LoadCategoriesAsync();
+                return;
+            }
+            if (!_hasLoadedData) return;
 
             if (_allCategories.Count == 0)
             {
@@ -485,7 +491,7 @@ public sealed class CategoriesPage : ThemedUserControl
 
     private void FilterCategories()
     {
-        if (IsDisposed || Disposing || _loadingData)
+        if (IsDisposed || Disposing || _loadingData || _loadFailed)
             return;
 
         string query = _search.Text.Trim();
@@ -631,6 +637,7 @@ public sealed class CategoriesPage : ThemedUserControl
         _layout.Visible = true;
         _layout.BringToFront();
 
+        // Return focus to the list rather than automatically selecting Search.
         BeginInvoke(new Action(() =>
         {
             if (!IsDisposed && !Disposing &&
@@ -640,7 +647,6 @@ public sealed class CategoriesPage : ThemedUserControl
                 _grid.ClearRowSelection();
             }
         }));
-
     }
 
     private void ClearActionHover()
@@ -888,10 +894,8 @@ public sealed class CategoriesPage : ThemedUserControl
                 return;
 
             _loadFailed = true;
-            _emptyState.Visible = false;
-
-            _status.Text =
-                "Unable to load categories: " + ex.Message;
+            System.Diagnostics.Debug.WriteLine("Categories load failed: " + ex);
+            _status.Text = "Unable to load categories. Please retry.";
         }
         finally
         {
@@ -909,6 +913,13 @@ public sealed class CategoriesPage : ThemedUserControl
                 // becomes false in CRUD operations.
                 if (!_loadFailed)
                     FilterCategories();
+                else
+                {
+                    _emptyState.Configure(CatalogEmptyKind.LoadFailed, false,
+                        "category", "categories");
+                    _emptyState.Visible = true;
+                    _emptyState.BringToFront();
+                }
 
                 UpdatePaginationButtons();
 

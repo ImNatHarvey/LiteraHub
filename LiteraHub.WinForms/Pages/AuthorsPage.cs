@@ -188,9 +188,14 @@ public sealed class AuthorsPage : ThemedUserControl
         _loading.SetContent(_grid);
         _loading.Controls.Add(_emptyState);
         _emptyState.BringToFront();
-        _emptyState.ActionRequested += (_, _) =>
+        _emptyState.ActionRequested += async (_, _) =>
         {
-            if (_loadingData || _loadFailed) return;
+            if (_loadingData) return;
+            if (_loadFailed)
+            {
+                await LoadAuthorsAsync();
+                return;
+            }
             if (_authors.Length == 0)
             {
                 if (_permissions.Can(Permission.CreateLookups))
@@ -754,6 +759,7 @@ public sealed class AuthorsPage : ThemedUserControl
         _layout.Visible = true;
         _layout.BringToFront();
 
+        // Return focus to the list rather than automatically selecting Search.
         BeginInvoke(new Action(() =>
         {
             if (!IsDisposed && !Disposing &&
@@ -763,7 +769,6 @@ public sealed class AuthorsPage : ThemedUserControl
                 _grid.ClearRowSelection();
             }
         }));
-
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -807,16 +812,10 @@ public sealed class AuthorsPage : ThemedUserControl
         }
         catch (Exception ex)
         {
+            if (IsDisposed || Disposing) return;
             _loadFailed = true;
-            _emptyState.Visible = false;
-            if (!IsDisposed && !Disposing)
-            {
-                ThemedMessageDialog.ShowAlert(
-                    FindForm(),
-                    "Authors",
-                    ex.Message,
-                    danger: true);
-            }
+            System.Diagnostics.Debug.WriteLine("Authors load failed: " + ex);
+            _status.Text = "Unable to load authors. Please retry.";
         }
         finally
         {
@@ -827,6 +826,13 @@ public sealed class AuthorsPage : ThemedUserControl
                 _add.Enabled =
                     _permissions.Can(Permission.CreateLookups);
 
+                if (_loadFailed)
+                {
+                    _emptyState.Configure(CatalogEmptyKind.LoadFailed, false,
+                        "author", "authors");
+                    _emptyState.Visible = true;
+                    _emptyState.BringToFront();
+                }
                 UpdatePagination();
             }
         }
@@ -836,7 +842,7 @@ public sealed class AuthorsPage : ThemedUserControl
 
     private void RenderRows()
     {
-        if (IsDisposed || Disposing)
+        if (IsDisposed || Disposing || _loadFailed)
             return;
 
         string query = _search.Text.Trim();

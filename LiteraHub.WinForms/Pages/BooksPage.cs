@@ -232,7 +232,12 @@ public sealed class BooksPage : ThemedUserControl
         _emptyState.BringToFront();
         _emptyState.ActionRequested += async (_, _) =>
         {
-            if (_loadingData || _loadFailed) return;
+            if (_loadingData) return;
+            if (_loadFailed)
+            {
+                await LoadBooksAsync();
+                return;
+            }
             if (_allBooks.Count == 0)
             {
                 if (CanManage) await OpenEditorAsync();
@@ -283,17 +288,6 @@ public sealed class BooksPage : ThemedUserControl
         {
             _page = 1;
             FilterBooks();
-
-            BeginInvoke(new Action(() =>
-            {
-                if (!IsDisposed && !Disposing &&
-                    _editor is null && _grid.CanFocus)
-                {
-                    _grid.Focus();
-                    _grid.ClearRowSelection();
-                }
-            }));
-
         };
 
         _filter.SelectionChanged += (_, _) =>
@@ -797,7 +791,6 @@ public sealed class BooksPage : ThemedUserControl
         }
     }
 
-
     private void HandleBackRequested(
         object? sender,
         EventArgs e)
@@ -816,8 +809,7 @@ public sealed class BooksPage : ThemedUserControl
 
         FilterBooks();
 
-        // Restore focus after the Details page closes.
-        // Prevent Search from receiving keyboard focus.
+        // Restore focus after the Details page closes, never to Search.
         if (!IsDisposed && !Disposing && IsHandleCreated)
         {
             BeginInvoke(new Action(() =>
@@ -831,7 +823,6 @@ public sealed class BooksPage : ThemedUserControl
                     return;
                 }
 
-                // Fallback when the empty-state overlay is visible.
                 if (_addButton.CanFocus)
                 {
                     _addButton.Focus();
@@ -843,7 +834,6 @@ public sealed class BooksPage : ThemedUserControl
             }));
         }
     }
-
 
     private async Task LoadBooksAsync()
     {
@@ -882,8 +872,8 @@ public sealed class BooksPage : ThemedUserControl
                 return;
 
             _loadFailed = true;
-            _status.Text =
-                "Unable to load books: " + ex.Message;
+            System.Diagnostics.Debug.WriteLine("Books load failed: " + ex);
+            _status.Text = "Unable to load books. Please retry.";
         }
         finally
         {
@@ -897,7 +887,12 @@ public sealed class BooksPage : ThemedUserControl
                 if (!_loadFailed)
                     FilterBooks();
                 else
-                    _emptyState.Visible = false;
+                {
+                    // Keep errors distinct from empty results and retain a retry action.
+                    _emptyState.Configure(CatalogEmptyKind.LoadFailed, false);
+                    _emptyState.Visible = true;
+                    _emptyState.BringToFront();
+                }
 
                 UpdatePaginationButtons();
                 _grid.ClearRowSelection();
@@ -907,7 +902,7 @@ public sealed class BooksPage : ThemedUserControl
 
     private void FilterBooks()
     {
-        if (IsDisposed || Disposing || _loadingData)
+        if (IsDisposed || Disposing || _loadingData || _loadFailed)
             return;
 
         string query = _search.Text.Trim();

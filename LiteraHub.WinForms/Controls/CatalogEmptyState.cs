@@ -10,7 +10,8 @@ public enum CatalogEmptyKind
 {
     NoRecords,
     NoSearchResults,
-    NoFilterResults
+    NoFilterResults,
+    LoadFailed
 }
 
 /// <summary>
@@ -89,6 +90,13 @@ public sealed class CatalogEmptyState : ThemedUserControl
                     : char.ToUpperInvariant(itemPlural[0]) + itemPlural.Substring(1) + " will appear here after they are added.";
                 _action.Text = "Add " + char.ToUpperInvariant(itemSingular[0]) + itemSingular.Substring(1);
                 _showAction = allowAdd;
+                break;
+            case CatalogEmptyKind.LoadFailed:
+                _glyph.Text = "!";
+                _title.Text = "Unable to load " + itemPlural;
+                _description.Text = "Something went wrong while loading. Please try again.";
+                _action.Text = "Retry";
+                _showAction = true;
                 break;
             case CatalogEmptyKind.NoSearchResults:
                 _glyph.Text = "⌕";
