@@ -4,23 +4,47 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
+using FontAwesome.Sharp;
 using LiteraHub.WinForms.Theming;
 
 namespace LiteraHub.WinForms.Controls;
 
 /// <summary>Combined themed Books filter/sort popup. Filters are applied together.</summary>
-public sealed class ThemedStudentsFilterSort : Button
+public sealed class ThemedStudentsFilterSort : IconButton
 {
     private Form? _popup;
     public int StatusIndex { get; private set; }
+    public int GenderIndex { get; private set; }
     public int SortIndex { get; private set; }
     public event EventHandler? SelectionChanged;
+
+    public void SetSort(int index)
+    {
+        if (index < 0 || index >= SortOptions.Length) return;
+        SortIndex = index;
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ClearFilters()
+    {
+        StatusIndex = GenderIndex = 0;
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ClearGender() { GenderIndex = 0; SelectionChanged?.Invoke(this, EventArgs.Empty); }
+    public void ClearStatus() { StatusIndex = 0; SelectionChanged?.Invoke(this, EventArgs.Empty); }
+    public string[] SortOptions => new[] { "Name A–Z", "Name Z–A", "ID A–Z", "ID Z–A", "Newest" };
+
 
     public ThemedStudentsFilterSort()
     {
         FlatStyle = FlatStyle.Flat;
         Cursor = Cursors.Hand;
         TextAlign = ContentAlignment.MiddleCenter;
+        IconChar = IconChar.SlidersH;
+        IconSize = 18;
+        TextImageRelation = TextImageRelation.Overlay;
+        ImageAlign = ContentAlignment.MiddleCenter;
         Click += (_, _) => OpenMenu();
         Theme.Changed += HandleThemeChanged;
         ApplyTheme();
@@ -43,8 +67,9 @@ public sealed class ThemedStudentsFilterSort : Button
         FlatAppearance.BorderColor = c.Border;
         FlatAppearance.MouseOverBackColor = c.SurfaceAlt;
         FlatAppearance.MouseDownBackColor = c.AccentSoft;
-        Text = "Filter && Sort  ▾";
-        AccessibleName = "Filter and sort students";
+        Text = "";
+        IconColor = c.Accent;
+        AccessibleName = "Filter students";
         Invalidate();
     }
 
@@ -219,7 +244,7 @@ public sealed class ThemedStudentsFilterSort : Button
             sub.Activate();
         }
 
-        Heading("STATUS");
+        Heading("RECORD STATUS");
         string[] statuses = { "All", "Active", "Archived" };
         string[] statusIcons = { "all", "active", "inactive" };
         for (int i = 0; i < statuses.Length; i++)
@@ -228,25 +253,26 @@ public sealed class ThemedStudentsFilterSort : Button
             Option(statuses[i], statusIcons[i], StatusIndex == i, () => StatusIndex = index);
         }
 
-        Heading("SORT BY");
-        string[] sortLabels = { "Name A–Z", "Name Z–A", "ID A–Z", "ID Z–A", "Newest" };
-        Option("Sort By: " + sortLabels[SortIndex], "submenu", SortIndex != 0, () => { },
+        Heading("GENDER");
+        Option(GenderIndex == 0 ? "All Genders" :
+            "Gender: " + new[] { "All", "Male", "Female", "Other / Unspecified" }[GenderIndex],
+            "submenu", GenderIndex != 0, () => { },
             child: true, openChild: anchor =>
             {
+                string[] names = { "All Genders", "Male", "Female", "Other / Unspecified" };
                 var choices = new List<(string, string, bool, Action)>();
-                for (int i = 0; i < sortLabels.Length; i++)
+                for (int i = 0; i < names.Length; i++)
                 {
                     int index = i;
-                    choices.Add((sortLabels[i], i == 0 || i == 2 ? "az" : i == 1 || i == 3 ? "za" : "date",
-                        SortIndex == index, () => SortIndex = index));
+                    choices.Add((names[i], "category", GenderIndex == i, () => GenderIndex = index));
                 }
-                OpenSubmenu(anchor, "SORT BY", choices);
+                OpenSubmenu(anchor, "GENDER", choices);
             });
 
         Heading("OPTIONS");
         Option("Reset Filters", "reset", false, () =>
         {
-            StatusIndex = SortIndex = 0;
+            StatusIndex = GenderIndex = 0;
         });
 
         menu.Height = menu.Controls.Cast<Control>().Sum(x => x.Height);

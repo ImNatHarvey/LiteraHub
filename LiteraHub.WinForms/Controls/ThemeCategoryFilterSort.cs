@@ -1,16 +1,16 @@
-﻿using LiteraHub.WinForms.Theming;
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
+using FontAwesome.Sharp;
+using LiteraHub.WinForms.Theming;
 
 namespace LiteraHub.WinForms.Controls;
 
 /// <summary>Combined themed Books filter/sort popup. Filters are applied together.</summary>
-public sealed class ThemedCatalogFilterSort : Button
+public sealed class ThemedCatalogFilterSort : IconButton
 {
     private Form? _popup;
     private readonly string _extraTitle;
@@ -20,9 +20,34 @@ public sealed class ThemedCatalogFilterSort : Button
     public int SortIndex { get; private set; }
 
     // Only Authors enables ID sorting; Categories keeps its approved A–Z/Z–A menu.
-    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public bool EnableIdSort { get; set; }
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool EnableCategoryIdSort { get; set; }
     public event EventHandler? SelectionChanged;
+
+    public void SetSort(int index)
+    {
+        if (index < 0 || index >= SortOptions.Length) return;
+        SortIndex = index;
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ClearFilters()
+    {
+        StatusIndex = 0;
+        ExtraIndex = 0;
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ClearStatus() { StatusIndex = 0; SelectionChanged?.Invoke(this, EventArgs.Empty); }
+    public void ClearExtra() { ExtraIndex = 0; SelectionChanged?.Invoke(this, EventArgs.Empty); }
+    public string[] SortOptions => EnableIdSort
+        ? new[] { "Name A–Z", "Name Z–A", "Author ID ↑", "Author ID ↓" }
+        : EnableCategoryIdSort
+            ? new[] { "Name A–Z", "Name Z–A", "Category ID ↑", "Category ID ↓" }
+            : new[] { "Name A–Z", "Name Z–A" };
+
 
     public ThemedCatalogFilterSort(string extraTitle, params string[] extraOptions)
     {
@@ -31,6 +56,10 @@ public sealed class ThemedCatalogFilterSort : Button
         FlatStyle = FlatStyle.Flat;
         Cursor = Cursors.Hand;
         TextAlign = ContentAlignment.MiddleCenter;
+        IconChar = IconChar.SlidersH;
+        IconSize = 18;
+        TextImageRelation = TextImageRelation.Overlay;
+        ImageAlign = ContentAlignment.MiddleCenter;
         Click += (_, _) => OpenMenu();
         Theme.Changed += HandleThemeChanged;
         ApplyTheme();
@@ -53,8 +82,9 @@ public sealed class ThemedCatalogFilterSort : Button
         FlatAppearance.BorderColor = c.Border;
         FlatAppearance.MouseOverBackColor = c.SurfaceAlt;
         FlatAppearance.MouseDownBackColor = c.AccentSoft;
-        Text = "Filter && Sort  ▾";
-        AccessibleName = "Filter and sort catalog";
+        Text = "";
+        IconColor = c.Accent;
+        AccessibleName = "Filter catalog";
         Invalidate();
     }
 
@@ -229,7 +259,7 @@ public sealed class ThemedCatalogFilterSort : Button
             sub.Activate();
         }
 
-        Heading("STATUS");
+        Heading("RECORD STATUS");
         string[] statuses = { "All", "Active", "Inactive" };
         string[] statusIcons = { "all", "active", "inactive" };
         for (int i = 0; i < statuses.Length; i++)
@@ -274,27 +304,10 @@ public sealed class ThemedCatalogFilterSort : Button
                 });
         }
 
-        Heading("SORT BY");
-        string[] sortLabels = EnableIdSort
-            ? new[] { "Name A–Z", "Name Z–A", "Author ID ↑", "Author ID ↓" }
-            : new[] { "A–Z", "Z–A" };
-        Option("Sort By: " + sortLabels[SortIndex], "submenu", SortIndex != 0, () => { },
-            child: true, openChild: anchor =>
-            {
-                var choices = new List<(string, string, bool, Action)>();
-                for (int i = 0; i < sortLabels.Length; i++)
-                {
-                    int index = i;
-                    choices.Add((sortLabels[i], i == 0 ? "az" : "za",
-                        SortIndex == index, () => SortIndex = index));
-                }
-                OpenSubmenu(anchor, "SORT BY", choices);
-            });
-
         Heading("OPTIONS");
         Option("Reset Filters", "reset", false, () =>
         {
-            StatusIndex = ExtraIndex = SortIndex = 0;
+            StatusIndex = ExtraIndex = 0;
         });
 
         menu.Height = menu.Controls.Cast<Control>().Sum(x => x.Height);

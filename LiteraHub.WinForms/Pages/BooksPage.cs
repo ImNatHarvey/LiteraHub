@@ -76,6 +76,9 @@ public sealed class BooksPage : ThemedUserControl
         Margin = new Padding(0, 4, 0, 4)
     };
 
+    private readonly CatalogSortButton _sortControl = new();
+    private readonly CatalogFilterChips _activeChips = new();
+
     private readonly Label _status = new()
     {
         Dock = DockStyle.Fill,
@@ -303,6 +306,7 @@ public sealed class BooksPage : ThemedUserControl
         _status.Text = "Waiting to load books...";
 
         Resize += (_, _) => UpdateResponsiveLayout();
+        InitializeUnifiedFilters();
         UpdateResponsiveLayout();
     }
 
@@ -420,12 +424,22 @@ public sealed class BooksPage : ThemedUserControl
                 "Active", "Status",
                 nameof(Book.IsActive), 8, 75);
 
+            // Keep the Status icon immediately to the left of the fixed
+            // 55px View Details chevron in all catalog modules.
+            var statusColumn = _grid.Columns["Active"]!;
+            statusColumn.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+            statusColumn.MinimumWidth = 90;
+            statusColumn.Width = 90;
+
             _grid.Columns.Add(
                 new DataGridViewTextBoxColumn
                 {
                     Name = "Actions",
                     HeaderText = "",
-                    FillWeight = 7,
+                    // Keep View Details in a fixed-width rightmost column
+                    // so its center does not move across modules.
+                    AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
+                    Width = 55,
                     MinimumWidth = 55,
                     SortMode =
                         DataGridViewColumnSortMode.NotSortable
@@ -795,9 +809,7 @@ public sealed class BooksPage : ThemedUserControl
 
             _allBooks = books.ToList();
             _filter.SetCategories(_allBooks
-                .SelectMany(b => b.CategoryNames.Count > 0
-                    ? b.CategoryNames.AsEnumerable()
-                    : new[] { b.CategoryName })
+                .SelectMany(b => b.CategoryNames.Count > 0 ? b.CategoryNames.AsEnumerable() : new[] { b.CategoryName })
                 .Where(n => !string.IsNullOrWhiteSpace(n))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(n => n, StringComparer.OrdinalIgnoreCase));
@@ -861,13 +873,10 @@ public sealed class BooksPage : ThemedUserControl
             filtered = filtered.Where(b =>
                 string.Equals(b.StatusName, "Damaged", StringComparison.OrdinalIgnoreCase)).ToList();
 
-        if (_filter.CategoryIndex > 0)
+        if (_filter.SelectedCategories.Count > 0)
             filtered = filtered.Where(b =>
-                (b.CategoryNames.Count > 0
-                    ? b.CategoryNames.AsEnumerable()
-                    : new[] { b.CategoryName }).Any(name =>
-                    string.Equals(name, _filter.SelectedCategory,
-                        StringComparison.OrdinalIgnoreCase))).ToList();
+                (b.CategoryNames.Count > 0 ? b.CategoryNames.AsEnumerable() : new[] { b.CategoryName })
+                .Any(name => _filter.SelectedCategories.Contains(name, StringComparer.OrdinalIgnoreCase))).ToList();
 
         filtered = _filter.AvailabilityIndex switch
         {
@@ -886,6 +895,7 @@ public sealed class BooksPage : ThemedUserControl
             _ => filtered.OrderBy(b => b.Title, StringComparer.OrdinalIgnoreCase).ToList()
         };
 
+        RefreshActiveFilterChips();
         _filteredCount = filtered.Count;
         _page = Math.Clamp(_page, 1, TotalPages);
 
@@ -991,7 +1001,7 @@ public sealed class BooksPage : ThemedUserControl
 
                 if (CanManage)
                 {
-                    _grid.Columns["Active"]!.Width = 75;
+                    _grid.Columns["Active"]!.Width = 90;
                     _grid.Columns["Actions"]!.Width = 55;
                 }
             }
@@ -1015,6 +1025,41 @@ public sealed class BooksPage : ThemedUserControl
             _pagination.ResumeLayout(true);
             _toolbar.ResumeLayout(true);
         }
+        ApplyUnifiedToolbar();
+    }
+
+    private void InitializeUnifiedFilters()
+    {
+        _sortControl.Configure(_filter.SortOptions,
+            () => _filter.SortIndex, i => _filter.SetSort(i));
+        ApplyUnifiedToolbar();
+        _filter.SelectionChanged += (_, _) => RefreshActiveFilterChips();
+        RefreshActiveFilterChips();
+    }
+
+    private void ApplyUnifiedToolbar()
+    {
+        bool compactToolbar = ClientSize.Width < 590;
+        CatalogToolbarChrome.Install(_layout, _toolbar, _status,
+            _search, _filter, _addButton, _sortControl, _activeChips,
+            compactToolbar, CanManage);
+    }
+
+    private void RefreshActiveFilterChips()
+    {
+        var chips = new List<(string Text, Action Remove)>();
+        if (_filter.StatusIndex != 0)
+            chips.Add((_filter.StatusIndex == 1 ? "Record: Active" : "Record: Archived", _filter.ClearStatus));
+        if (_filter.ConditionIndex != 0)
+            chips.Add((_filter.ConditionIndex == 1 ? "Condition: Good" : "Condition: Damaged", _filter.ClearCondition));
+        if (_filter.AvailabilityIndex != 0)
+            chips.Add((_filter.AvailabilityIndex == 1 ? "Available" : "Unavailable", _filter.ClearAvailability));
+        foreach (var name in _filter.SelectedCategories.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+        {
+            string selected = name;
+            chips.Add((selected, () => _filter.RemoveCategory(selected)));
+        }
+        CatalogToolbarChrome.ShowChips(_layout, _activeChips, chips, _filter.ClearFilters);
     }
 
     protected override void ApplyTheme()
@@ -1067,6 +1112,7 @@ public sealed class BooksPage : ThemedUserControl
             : Theme.BodyStrong;
 
         _filter.ApplyTheme();
+        _sortControl.ApplyTheme();
         _pageSizeFilter.ApplyTheme();
         _grid.ApplyTheme();
 

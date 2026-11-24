@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 
 using System;
 using System.Drawing;
@@ -68,6 +69,9 @@ public sealed class AuthorsPage : ThemedUserControl
         Cursor = Cursors.Hand,
         Margin = new Padding(0, 4, 0, 4)
     };
+
+    private readonly CatalogSortButton _sortControl = new();
+    private readonly CatalogFilterChips _activeChips = new();
 
     private readonly Label _status = new()
     {
@@ -429,6 +433,7 @@ public sealed class AuthorsPage : ThemedUserControl
 
 
         Resize += (_, _) => UpdateResponsiveLayout();
+        InitializeUnifiedFilters();
 
         ApplyTheme();
         UpdateResponsiveLayout();
@@ -543,8 +548,9 @@ public sealed class AuthorsPage : ThemedUserControl
         {
             Name = "Status",
             HeaderText = "Status",
-            FillWeight = 11,
-            MinimumWidth = 75,
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
+            Width = 90,
+            MinimumWidth = 90,
             SortMode = DataGridViewColumnSortMode.NotSortable
         });
 
@@ -552,7 +558,9 @@ public sealed class AuthorsPage : ThemedUserControl
         {
             Name = "Actions",
             HeaderText = "",
-            FillWeight = 7,
+            // Same fixed-width rightmost View Details column across modules.
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
+            Width = 55,
             MinimumWidth = 55,
             Visible = true,
             SortMode = DataGridViewColumnSortMode.NotSortable
@@ -828,6 +836,7 @@ public sealed class AuthorsPage : ThemedUserControl
             _ => filtered.OrderBy(a => a.FullName, StringComparer.OrdinalIgnoreCase).ToArray()
         };
 
+        RefreshActiveFilterChips();
         _filteredCount = filtered.Length;
         _page = Math.Clamp(_page, 1, TotalPages);
 
@@ -967,7 +976,7 @@ public sealed class AuthorsPage : ThemedUserControl
                 _grid.Columns["Name"]!.Width = 180;
                 _grid.Columns["Gender"]!.Width = 100;
                 _grid.Columns["BirthDate"]!.Width = 135;
-                _grid.Columns["Status"]!.Width = 85;
+                _grid.Columns["Status"]!.Width = 90;
                 _grid.Columns["Actions"]!.Width =
                     55;
             }
@@ -1003,8 +1012,36 @@ public sealed class AuthorsPage : ThemedUserControl
             _pagination.ResumeLayout(true);
             _toolbar.ResumeLayout(true);
         }
+        ApplyUnifiedToolbar();
     }
 
+
+    private void InitializeUnifiedFilters()
+    {
+        _sortControl.Configure(_filter.SortOptions,
+            () => _filter.SortIndex, i => _filter.SetSort(i));
+        ApplyUnifiedToolbar();
+        _filter.SelectionChanged += (_, _) => RefreshActiveFilterChips();
+        RefreshActiveFilterChips();
+    }
+
+    private void ApplyUnifiedToolbar()
+    {
+        bool compactToolbar = ClientSize.Width < 590;
+        CatalogToolbarChrome.Install(_layout, _toolbar, _status,
+            _search, _filter, _add, _sortControl, _activeChips,
+            compactToolbar, CanManage);
+    }
+
+    private void RefreshActiveFilterChips()
+    {
+        var chips = new List<(string Text, Action Remove)>();
+        if (_filter.StatusIndex != 0)
+            chips.Add((_filter.StatusIndex == 1 ? "Record: Active" : "Record: Archived", _filter.ClearStatus));
+        if (_filter.ExtraIndex != 0)
+            chips.Add(("Gender: " + new[] { "", "Male", "Female", "Other" }[_filter.ExtraIndex], _filter.ClearExtra));
+        CatalogToolbarChrome.ShowChips(_layout, _activeChips, chips, _filter.ClearFilters);
+    }
 
     protected override void ApplyTheme()
     {
@@ -1044,6 +1081,7 @@ public sealed class AuthorsPage : ThemedUserControl
         }
 
         _filter.ApplyTheme();
+        _sortControl.ApplyTheme();
         _pageSize.ApplyTheme();
 
         _add.BackColor = c.Accent;

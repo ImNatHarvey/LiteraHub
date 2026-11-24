@@ -4,12 +4,13 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
+using FontAwesome.Sharp;
 using LiteraHub.WinForms.Theming;
 
 namespace LiteraHub.WinForms.Controls;
 
 /// <summary>Combined themed Books filter/sort popup. Filters are applied together.</summary>
-public sealed class ThemedBooksFilterSort : Button
+public sealed class ThemedBooksFilterSort : IconButton
 {
     private Form? _popup;
     private readonly List<string> _categories = new();
@@ -22,11 +23,43 @@ public sealed class ThemedBooksFilterSort : Button
         ? _categories[CategoryIndex - 1] : null;
     public event EventHandler? SelectionChanged;
 
+    public void SetSort(int index)
+    {
+        if (index < 0 || index >= SortOptions.Length) return;
+        SortIndex = index;
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ClearFilters()
+    {
+        StatusIndex = 0;
+        ConditionIndex = AvailabilityIndex = CategoryIndex = 0;
+        _selectedCategories.Clear();
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ClearStatus() { StatusIndex = 0; SelectionChanged?.Invoke(this, EventArgs.Empty); }
+    public void ClearCondition() { ConditionIndex = 0; SelectionChanged?.Invoke(this, EventArgs.Empty); }
+    public void ClearAvailability() { AvailabilityIndex = 0; SelectionChanged?.Invoke(this, EventArgs.Empty); }
+    public void RemoveCategory(string name)
+    {
+        _selectedCategories.Remove(name);
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+    public IReadOnlyCollection<string> SelectedCategories => _selectedCategories;
+    private readonly HashSet<string> _selectedCategories = new(StringComparer.OrdinalIgnoreCase);
+    public string[] SortOptions => new[] { "Title A–Z", "Title Z–A", "Newest", "Oldest", "Most Copies", "Fewest Copies" };
+
+
     public ThemedBooksFilterSort()
     {
         FlatStyle = FlatStyle.Flat;
         Cursor = Cursors.Hand;
         TextAlign = ContentAlignment.MiddleCenter;
+        IconChar = IconChar.SlidersH;
+        IconSize = 18;
+        TextImageRelation = TextImageRelation.Overlay;
+        ImageAlign = ContentAlignment.MiddleCenter;
         Click += (_, _) => OpenMenu();
         Theme.Changed += HandleThemeChanged;
         ApplyTheme();
@@ -37,8 +70,11 @@ public sealed class ThemedBooksFilterSort : Button
         string? selected = SelectedCategory;
         _categories.Clear();
         _categories.AddRange(categories);
-        CategoryIndex = selected is null ? 0 : Math.Max(0,
-            _categories.FindIndex(x => string.Equals(x, selected, StringComparison.OrdinalIgnoreCase)) + 1);
+        _selectedCategories.RemoveWhere(name => !_categories.Contains(name, StringComparer.OrdinalIgnoreCase));
+        if (_selectedCategories.Count == 0 && selected is not null &&
+            _categories.Contains(selected, StringComparer.OrdinalIgnoreCase))
+            _selectedCategories.Add(selected);
+        CategoryIndex = 0;
     }
 
     private void HandleThemeChanged(object? sender, EventArgs e)
@@ -58,8 +94,9 @@ public sealed class ThemedBooksFilterSort : Button
         FlatAppearance.BorderColor = c.Border;
         FlatAppearance.MouseOverBackColor = c.SurfaceAlt;
         FlatAppearance.MouseDownBackColor = c.AccentSoft;
-        Text = "Filter && Sort  ▾";
-        AccessibleName = "Filter and sort books";
+        Text = "";
+        IconColor = c.Accent;
+        AccessibleName = "Filter books";
         Invalidate();
     }
 
@@ -134,7 +171,8 @@ public sealed class ThemedBooksFilterSort : Button
             menu.Controls.Add(option);
         }
         void OpenSubmenu(Control anchor, string title,
-            IEnumerable<(string Label, string Icon, bool Selected, Action Select)> entries)
+            IEnumerable<(string Label, string Icon, bool Selected, Action Select)> entries,
+            bool keepOpen = false)
         {
             // Switching between submenu anchors must not dismiss the parent.
             _switchingSubmenu = true;
@@ -180,6 +218,7 @@ public sealed class ThemedBooksFilterSort : Button
                 Font = Theme.Caption,
                 Margin = Padding.Empty
             });
+            var itemControls = new List<(string Label, MenuOption Item)>();
             foreach (var entry in items)
             {
                 var item = new MenuOption(entry.Label, entry.Icon, entry.Selected)
@@ -193,9 +232,19 @@ public sealed class ThemedBooksFilterSort : Button
                 item.Click += (_, _) =>
                 {
                     entry.Select();
+                    if (keepOpen)
+                    {
+                        foreach (var (label, option) in itemControls)
+                            option.Selected = label == "All Categories"
+                                ? _selectedCategories.Count == 0
+                                : _selectedCategories.Contains(label);
+                        SelectionChanged?.Invoke(this, EventArgs.Empty);
+                        return;
+                    }
                     CloseMenus();
                     SelectionChanged?.Invoke(this, EventArgs.Empty);
                 };
+                itemControls.Add((entry.Label, item));
                 content.Controls.Add(item);
             }
             subHost.SetContent(content);
@@ -234,7 +283,7 @@ public sealed class ThemedBooksFilterSort : Button
             sub.Activate();
         }
 
-        Heading("STATUS");
+        Heading("RECORD STATUS");
         string[] statuses = { "All", "Active", "Inactive" };
         string[] statusIcons = { "all", "active", "inactive" };
         for (int i = 0; i < statuses.Length; i++)
@@ -243,22 +292,27 @@ public sealed class ThemedBooksFilterSort : Button
             Option(statuses[i], statusIcons[i], StatusIndex == i, () => StatusIndex = index);
         }
 
-        Heading("CATEGORY");
-        Option(CategoryIndex == 0 ? "Select Category" : "Category: " + SelectedCategory,
-            "submenu", CategoryIndex > 0, () => { },
+        Heading("CATEGORY — MATCH ANY");
+        Option(_selectedCategories.Count == 0 ? "All Categories" :
+            $"Categories ({_selectedCategories.Count})", "submenu",
+            _selectedCategories.Count > 0, () => { },
             child: true, openChild: anchor =>
             {
                 var choices = new List<(string, string, bool, Action)>
                 {
-                    ("All Categories", "all", CategoryIndex == 0, () => CategoryIndex = 0)
+                    ("All Categories", "all", _selectedCategories.Count == 0,
+                        () => _selectedCategories.Clear())
                 };
-                for (int i = 0; i < _categories.Count; i++)
+                foreach (string category in _categories)
                 {
-                    int index = i + 1;
-                    choices.Add((_categories[i], "category", CategoryIndex == index,
-                        () => CategoryIndex = index));
+                    string name = category;
+                    choices.Add((name, "category", _selectedCategories.Contains(name), () =>
+                    {
+                        if (!_selectedCategories.Add(name)) _selectedCategories.Remove(name);
+                    }
+                    ));
                 }
-                OpenSubmenu(anchor, "SELECT CATEGORY", choices);
+                OpenSubmenu(anchor, "MATCH ANY CATEGORY", choices, keepOpen: true);
             });
 
         Heading("CONDITION");
@@ -295,27 +349,11 @@ public sealed class ThemedBooksFilterSort : Button
                 OpenSubmenu(anchor, "AVAILABILITY", choices);
             });
 
-        Heading("SORT BY");
-        string[] sortLabels = { "A–Z", "Z–A", "Newest", "Oldest", "Most Copies", "Fewest Copies" };
-        Option("Sort By: " + sortLabels[SortIndex], "submenu", SortIndex != 0, () => { },
-            child: true, openChild: anchor =>
-            {
-                var choices = new List<(string, string, bool, Action)>();
-                for (int i = 0; i < sortLabels.Length; i++)
-                {
-                    int index = i;
-                    string icon = i == 0 ? "az" : i == 1 ? "za" :
-                        i < 4 ? "date" : "copies";
-                    choices.Add((sortLabels[i], icon, SortIndex == index,
-                        () => SortIndex = index));
-                }
-                OpenSubmenu(anchor, "SORT BY", choices);
-            });
-
         Heading("OPTIONS");
         Option("Reset Filters", "reset", false, () =>
         {
-            StatusIndex = CategoryIndex = ConditionIndex = AvailabilityIndex = SortIndex = 0;
+            StatusIndex = CategoryIndex = ConditionIndex = AvailabilityIndex = 0;
+            _selectedCategories.Clear();
         });
 
         menu.Height = menu.Controls.Cast<Control>().Sum(x => x.Height);
@@ -373,7 +411,9 @@ public sealed class ThemedBooksFilterSort : Button
     {
         private readonly string _caption;
         private readonly string _icon;
-        private readonly bool _selected;
+        private bool _selected;
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public bool Selected { get => _selected; set { _selected = value; Invalidate(); } }
         private bool _hover;
         public MenuOption(string caption, string icon, bool selected)
         {
@@ -416,7 +456,7 @@ public sealed class ThemedBooksFilterSort : Button
                 new Rectangle(14, 0, Width - 67, Height), c.Text,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             if (_selected)
-                TextRenderer.DrawText(g, "•", Font,
+                TextRenderer.DrawText(g, _icon == "category" ? "✓" : "•", Font,
                     new Rectangle(Width - 53, 0, 14, Height), c.Text,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             int x = Width - 24, y = Height / 2;

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Drawing.Drawing2D;
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
@@ -19,6 +20,9 @@ public sealed class StudentsPage : ThemedUserControl
     private readonly ThemedSearchBox _search = new() { Dock = DockStyle.Fill, Margin = new Padding(0, 4, 8, 4), Placeholder = "Search student ID, name, email or address..." };
     private readonly ThemedStudentsFilterSort _filter = new() { Dock = DockStyle.Fill, Margin = new Padding(0, 4, 8, 4) };
     private readonly Button _add = new() { Text = "+ Add Student", Dock = DockStyle.Fill, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Margin = new Padding(0, 4, 0, 4) };
+    private readonly CatalogSortButton _sortControl = new();
+    private readonly CatalogFilterChips _activeChips = new();
+
     private readonly Label _status = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
     private readonly ThemedDataGridView _grid = new() { Dock = DockStyle.Fill, Margin = Padding.Empty, ReadOnlyDisplayMode = true };
     private readonly TableLayoutPanel _pagination = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty, Padding = new Padding(0, 12, 0, 0) };
@@ -75,7 +79,16 @@ public sealed class StudentsPage : ThemedUserControl
         AddColumn("MobileNo", "Mobile", nameof(Student.MobileNo), 14, 120);
         AddColumn("Email", "Email", nameof(Student.Email), 20, 160);
         AddColumn("Status", "Status", null, 10, 90);
+        // Keep the Status icon centered 90px left of the 55px View Details
+        // column, exactly as in Books, Authors, and Categories.
+        _grid.Columns["Status"]!.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+        _grid.Columns["Status"]!.MinimumWidth = 90;
+        _grid.Columns["Status"]!.Width = 90;
         AddColumn("Actions", "", null, 6, 55);
+        // Fix the rightmost View Details column width across all four grids.
+        // All other columns continue to absorb available width in Fill mode.
+        _grid.Columns["Actions"]!.AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+        _grid.Columns["Actions"]!.Width = 55;
         // Shared grid styling is owned by ThemedDataGridView.
         // Native cell borders are disabled because the horizontal divider
         // is painted once per Student cell by PaintStudentCell.
@@ -138,6 +151,7 @@ public sealed class StudentsPage : ThemedUserControl
         _add.Click += async (_, _) => await OpenDetailsAsync(null);
         Resize += (_, _) => UpdateResponsive();
         UpdateResponsive();
+        InitializeUnifiedFilters();
         ApplyTheme();
     }
 
@@ -184,6 +198,11 @@ public sealed class StudentsPage : ThemedUserControl
         string query = _search.Text.Trim();
         IEnumerable<Student> items = _all.Where(s =>
             (_filter.StatusIndex == 0 || (_filter.StatusIndex == 1 ? s.IsActive : !s.IsActive)) &&
+            (_filter.GenderIndex == 0 ||
+             (_filter.GenderIndex == 1 && string.Equals(s.Gender, "Male", StringComparison.OrdinalIgnoreCase)) ||
+             (_filter.GenderIndex == 2 && string.Equals(s.Gender, "Female", StringComparison.OrdinalIgnoreCase)) ||
+             (_filter.GenderIndex == 3 && !string.Equals(s.Gender, "Male", StringComparison.OrdinalIgnoreCase) &&
+              !string.Equals(s.Gender, "Female", StringComparison.OrdinalIgnoreCase))) &&
             (query.Length == 0 || s.StudentNo.Contains(query, StringComparison.OrdinalIgnoreCase) ||
              FullName(s).Contains(query, StringComparison.OrdinalIgnoreCase) ||
              s.Email.Contains(query, StringComparison.OrdinalIgnoreCase) ||
@@ -196,6 +215,7 @@ public sealed class StudentsPage : ThemedUserControl
             4 => items.OrderByDescending(s => s.CreatedAt),
             _ => items.OrderBy(FullName, StringComparer.OrdinalIgnoreCase)
         };
+        RefreshActiveFilterChips();
         _filtered = items.ToList();
         _page = 1;
         Render();
@@ -329,6 +349,34 @@ public sealed class StudentsPage : ThemedUserControl
         _grid.AutoSizeColumnsMode = compact ? DataGridViewAutoSizeColumnsMode.None : DataGridViewAutoSizeColumnsMode.Fill;
         if (compact)
             foreach (DataGridViewColumn column in _grid.Columns) column.Width = column.MinimumWidth;
+        ApplyUnifiedToolbar();
+    }
+
+    private void InitializeUnifiedFilters()
+    {
+        _sortControl.Configure(_filter.SortOptions,
+            () => _filter.SortIndex, i => _filter.SetSort(i));
+        ApplyUnifiedToolbar();
+        _filter.SelectionChanged += (_, _) => RefreshActiveFilterChips();
+        RefreshActiveFilterChips();
+    }
+
+    private void ApplyUnifiedToolbar()
+    {
+        bool compactToolbar = ClientSize.Width < 590;
+        CatalogToolbarChrome.Install(_layout, _toolbar, _status,
+            _search, _filter, _add, _sortControl, _activeChips,
+            compactToolbar, _permissions.Can(Permission.ManageStudents));
+    }
+
+    private void RefreshActiveFilterChips()
+    {
+        var chips = new List<(string Text, Action Remove)>();
+        if (_filter.StatusIndex != 0)
+            chips.Add((_filter.StatusIndex == 1 ? "Record: Active" : "Record: Archived", _filter.ClearStatus));
+        if (_filter.GenderIndex != 0)
+            chips.Add(("Gender: " + new[] { "", "Male", "Female", "Other / Unspecified" }[_filter.GenderIndex], _filter.ClearGender));
+        CatalogToolbarChrome.ShowChips(_layout, _activeChips, chips, _filter.ClearFilters);
     }
 
     protected override void ApplyTheme()
@@ -365,6 +413,7 @@ public sealed class StudentsPage : ThemedUserControl
         _add.FlatAppearance.MouseOverBackColor = ControlPaint.Light(c.Accent, 0.08f);
         _add.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(c.Accent, 0.08f);
         _filter.ApplyTheme();
+        _sortControl.ApplyTheme();
         _pageSize.ApplyTheme();
         _grid.ApplyTheme();
         _grid.CellBorderStyle = DataGridViewCellBorderStyle.None;

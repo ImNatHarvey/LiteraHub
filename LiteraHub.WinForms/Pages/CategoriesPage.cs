@@ -56,7 +56,7 @@ public sealed class CategoriesPage : ThemedUserControl
     };
 
     private readonly ThemedCatalogFilterSort _filterSort =
-        new("Status", "All", "Active", "Inactive")
+        new("STATUS")
         {
             Dock = DockStyle.Fill,
             Margin = new Padding(0, 4, 8, 4)
@@ -70,6 +70,9 @@ public sealed class CategoriesPage : ThemedUserControl
         Cursor = Cursors.Hand,
         Margin = new Padding(0, 4, 0, 4)
     };
+
+    private readonly CatalogSortButton _sortControl = new();
+    private readonly CatalogFilterChips _activeChips = new();
 
     private readonly Label _status = new()
     {
@@ -151,12 +154,6 @@ public sealed class CategoriesPage : ThemedUserControl
         {
             Size = new Size(68, 32)
         };
-
-    private readonly ToolTip _statusTooltip = new()
-    {
-        ShowAlways = true,
-        AutoPopDelay = 2500
-    };
 
     private readonly ToolTip _actionTooltip = new()
     {
@@ -281,19 +278,24 @@ public sealed class CategoriesPage : ThemedUserControl
         _addButton.Click += (_, _) => OpenCategoryDetails(null);
 
         _grid.CellPainting += PaintSpecialCells;
-        _grid.CellMouseEnter += (_, e) =>
+        // Native DataGridView tooltips are used for BOTH icon columns.
+        // Do not overlay a ToolTip.Show() popup on a grid-managed tooltip:
+        // it can linger over the chevron and display the wrong status.
+        _grid.ShowCellToolTips = true;
+        _grid.CellToolTipTextNeeded += (_, e) =>
         {
             if (e.RowIndex < 0 || e.ColumnIndex < 0 ||
-                _grid.Columns[e.ColumnIndex].Name != "IsActive" ||
-                _grid.Rows[e.RowIndex].DataBoundItem is not Category category) return;
-            Rectangle rect = _grid.GetCellDisplayRectangle(e.ColumnIndex, e.RowIndex, false);
-            _statusTooltip.Show(category.IsActive ? "Active" : "Inactive", _grid,
-                rect.Left + rect.Width / 2, rect.Bottom + 3, 2500);
-        };
-        _grid.CellMouseLeave += (_, e) =>
-        {
-            if (e.ColumnIndex >= 0 && _grid.Columns[e.ColumnIndex].Name == "IsActive")
-                _statusTooltip.Hide(_grid);
+                e.RowIndex >= _grid.Rows.Count ||
+                e.ColumnIndex >= _grid.Columns.Count ||
+                _grid.Rows[e.RowIndex].DataBoundItem is not Category category)
+                return;
+
+            e.ToolTipText = _grid.Columns[e.ColumnIndex].Name switch
+            {
+                "IsActive" => category.IsActive ? "Active" : "Inactive",
+                "Actions" => "View Details",
+                _ => string.Empty
+            };
         };
         _grid.CellMouseUp += HandleViewClick;
 
@@ -305,16 +307,14 @@ public sealed class CategoriesPage : ThemedUserControl
                 hit.ColumnIndex >= 0 && _grid.Columns[hit.ColumnIndex].Name == "Actions"
                 ? Cursors.Hand : Cursors.Default;
         };
-        _grid.MouseLeave += (_, _) => { ClearActionHover(); _statusTooltip.Hide(_grid); };
-        _grid.Scroll += (_, _) => { ClearActionHover(); _statusTooltip.Hide(_grid); };
+        _grid.MouseLeave += (_, _) => ClearActionHover();
+        _grid.Scroll += (_, _) => ClearActionHover();
 
-        _grid.ShowCellToolTips = true;
-
-        // The detail chevron uses the grid native cell tooltip.
 
         _status.Text = "Waiting to load categories...";
 
         Resize += (_, _) => UpdateResponsiveLayout();
+        InitializeUnifiedFilters();
 
         UpdateResponsiveLayout();
     }
@@ -425,8 +425,9 @@ public sealed class CategoriesPage : ThemedUserControl
             Name = "IsActive",
             HeaderText = "Status",
             DataPropertyName = nameof(Category.IsActive),
-            FillWeight = 11,
-            MinimumWidth = 75,
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
+            Width = 90,
+            MinimumWidth = 90,
             SortMode = DataGridViewColumnSortMode.NotSortable
         });
 
@@ -434,7 +435,9 @@ public sealed class CategoriesPage : ThemedUserControl
         {
             Name = "Actions",
             HeaderText = "",
-            FillWeight = 7,
+            // Same fixed-width rightmost View Details column across modules.
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
+            Width = 55,
             MinimumWidth = 55,
             Visible = true,
             SortMode = DataGridViewColumnSortMode.NotSortable
@@ -483,12 +486,15 @@ public sealed class CategoriesPage : ThemedUserControl
                  ?? false)))
             .ToList();
 
-        filtered = (_filterSort.SortIndex == 1
-            ? filtered.OrderByDescending(c => c.Name,
-                StringComparer.OrdinalIgnoreCase)
-            : filtered.OrderBy(c => c.Name,
-                StringComparer.OrdinalIgnoreCase)).ToList();
+        filtered = _filterSort.SortIndex switch
+        {
+            1 => filtered.OrderByDescending(c => c.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+            2 => filtered.OrderBy(c => c.CategoryId).ToList(),
+            3 => filtered.OrderByDescending(c => c.CategoryId).ToList(),
+            _ => filtered.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase).ToList()
+        };
 
+        RefreshActiveFilterChips();
         _filteredCount = filtered.Count;
 
         _page = Math.Clamp(
@@ -505,9 +511,6 @@ public sealed class CategoriesPage : ThemedUserControl
 
         _grid.DataSource = pageRows;
         _grid.ClearRowSelection();
-        foreach (DataGridViewRow row in _grid.Rows)
-            if (row.Cells["Actions"] is DataGridViewCell cell)
-                cell.ToolTipText = "View Details";
 
         _status.Text = _filteredCount == 0
             ? "No matching categories."
@@ -756,7 +759,7 @@ public sealed class CategoriesPage : ThemedUserControl
                 _grid.Columns["CategoryId"]!.Width = 138;
                 _grid.Columns["Name"]!.Width = 140;
                 _grid.Columns["Description"]!.Width = 210;
-                _grid.Columns["IsActive"]!.Width = 80;
+                _grid.Columns["IsActive"]!.Width = 90;
                 _grid.Columns["Actions"]!.Width = 55;
             }
 
@@ -781,6 +784,7 @@ public sealed class CategoriesPage : ThemedUserControl
             _pagination.ResumeLayout(true);
             _toolbar.ResumeLayout(true);
         }
+        ApplyUnifiedToolbar();
     }
 
     protected override async void OnLoad(EventArgs e)
@@ -857,6 +861,32 @@ public sealed class CategoriesPage : ThemedUserControl
         }
     }
 
+    private void InitializeUnifiedFilters()
+    {
+        _filterSort.EnableCategoryIdSort = true;
+        _sortControl.Configure(_filterSort.SortOptions,
+            () => _filterSort.SortIndex, i => _filterSort.SetSort(i));
+        ApplyUnifiedToolbar();
+        _filterSort.SelectionChanged += (_, _) => RefreshActiveFilterChips();
+        RefreshActiveFilterChips();
+    }
+
+    private void ApplyUnifiedToolbar()
+    {
+        bool compactToolbar = ClientSize.Width < 590;
+        CatalogToolbarChrome.Install(_layout, _toolbar, _status,
+            _search, _filterSort, _addButton, _sortControl, _activeChips,
+            compactToolbar, CanManage);
+    }
+
+    private void RefreshActiveFilterChips()
+    {
+        var chips = new List<(string Text, Action Remove)>();
+        if (_filterSort.StatusIndex != 0)
+            chips.Add((_filterSort.StatusIndex == 1 ? "Record: Active" : "Record: Archived", _filterSort.ClearStatus));
+        CatalogToolbarChrome.ShowChips(_layout, _activeChips, chips, _filterSort.ClearFilters);
+    }
+
     protected override void ApplyTheme()
     {
         base.ApplyTheme();
@@ -899,6 +929,7 @@ public sealed class CategoriesPage : ThemedUserControl
         }
 
         _filterSort.ApplyTheme();
+        _sortControl.ApplyTheme();
         _pageSizeFilter.ApplyTheme();
 
         _addButton.BackColor = c.Accent;
@@ -936,7 +967,6 @@ public sealed class CategoriesPage : ThemedUserControl
             _hoverTimer.Stop();
             _hoverTimer.Dispose();
             _actionTooltip.Dispose();
-            _statusTooltip.Dispose();
         }
 
         base.Dispose(disposing);
