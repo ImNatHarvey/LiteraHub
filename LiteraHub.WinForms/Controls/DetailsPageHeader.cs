@@ -56,6 +56,24 @@ public sealed class DetailsPageHeader : TableLayoutPanel
         set => _back.Enabled = value;
     }
 
+    private bool _compactMode;
+
+    // Book Editor uses a compact Back column and title on narrow screens.
+    // The default remains unchanged for Author, Category and Student Details.
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool CompactMode
+    {
+        get => _compactMode;
+        set
+        {
+            if (_compactMode == value) return;
+            _compactMode = value;
+            ColumnStyles[1].Width = value ? 88 : 100;
+            _heading.Font = value ? Theme.BodyStrong : Theme.Title;
+            PerformLayout();
+        }
+    }
+
     public DetailsPageHeader()
     {
         Dock = DockStyle.Fill;
@@ -83,7 +101,7 @@ public sealed class DetailsPageHeader : TableLayoutPanel
         BackColor = c.Background;
         _heading.BackColor = c.Background;
         _heading.ForeColor = c.Text;
-        _heading.Font = Theme.Title;
+        _heading.Font = _compactMode ? Theme.BodyStrong : Theme.Title;
         _subtitle.BackColor = c.Background;
         _subtitle.ForeColor = c.TextMuted;
         _subtitle.Font = Theme.Body;

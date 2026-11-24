@@ -29,32 +29,8 @@ public sealed class BookEditorPage : ThemedUserControl
         Margin = Padding.Empty
     };
 
-    private readonly TableLayoutPanel _header = new()
-    {
-        Dock = DockStyle.Fill,
-        ColumnCount = 2,
-        RowCount = 1,
-        Margin = Padding.Empty
-    };
-
-    private readonly Label _heading = new()
-    {
-        Dock = DockStyle.Fill,
-        TextAlign = ContentAlignment.MiddleLeft,
-        Margin = Padding.Empty
-    };
-
-    private readonly BackButton _back = new()
-    {
-        Dock = DockStyle.Fill,
-        Margin = new Padding(8, 4, 2, 4)
-    };
-
-    private readonly Label _description = new()
-    {
-        Dock = DockStyle.Fill,
-        TextAlign = ContentAlignment.MiddleLeft
-    };
+    // Shared header owns title, live subtitle/status messages and the Back button.
+    private readonly DetailsPageHeader _detailsHeader = new();
 
     private readonly Panel _viewport = new()
     {
@@ -188,7 +164,6 @@ public sealed class BookEditorPage : ThemedUserControl
 
     // Category IDs are loaded from dbo.Categories. Zero means no selection.
     public int SelectedCategoryId => _category.SelectedCategoryId;
-    public IReadOnlyList<int> SelectedCategoryIds => _category.SelectedCategoryIds;
 
     public void ConfigureServices(
         ICategoryService categories,
@@ -260,7 +235,7 @@ public sealed class BookEditorPage : ThemedUserControl
             _statusIds = options.Select(x => x.Id).ToArray();
             if (options.Length == 0)
             {
-                _description.Text = "No active book statuses are available.";
+                _detailsHeader.SubtitleText = "No active book statuses are available.";
                 return;
             }
             var previous = _condition;
@@ -297,7 +272,7 @@ public sealed class BookEditorPage : ThemedUserControl
         catch (Exception ex)
         {
             if (!IsDisposed && !Disposing)
-                _description.Text = "Unable to load book statuses: " + ex.Message;
+                _detailsHeader.SubtitleText = "Unable to load book statuses: " + ex.Message;
         }
     }
 
@@ -337,7 +312,7 @@ public sealed class BookEditorPage : ThemedUserControl
             else
             {
                 await LoadAuthorsAsync();
-                _description.Text = "Author saved but its ID was not returned. Reopen author selection.";
+                _detailsHeader.SubtitleText = "Author saved but its ID was not returned. Reopen author selection.";
             }
         }
         finally
@@ -388,7 +363,7 @@ public sealed class BookEditorPage : ThemedUserControl
                     if (unmatched.Count > 0)
                         await CreateMissingMetadataAuthorsAsync(unmatched);
                     else
-                        _description.Text = _authors.SelectedAuthorIds.Count > 0
+                        _detailsHeader.SubtitleText = _authors.SelectedAuthorIds.Count > 0
                             ? "ISBN authors matched to existing records."
                             : "Metadata found, but no author was matched or created. Select an author manually.";
                 }
@@ -396,7 +371,7 @@ public sealed class BookEditorPage : ThemedUserControl
 
             if (selectAuthorId.HasValue)
             {
-                _description.Text =
+                _detailsHeader.SubtitleText =
                     _authors.SelectedAuthorIds.Contains(selectAuthorId.Value)
                     ? "Author created and selected. Continue editing the book."
                     : "Author saved but could not be selected. Verify that it is active.";
@@ -405,7 +380,7 @@ public sealed class BookEditorPage : ThemedUserControl
         catch (Exception ex)
         {
             if (!IsDisposed && !Disposing)
-                _description.Text = "Unable to load authors: " + ex.Message;
+                _detailsHeader.SubtitleText = "Unable to load authors: " + ex.Message;
         }
         finally
         {
@@ -447,7 +422,7 @@ public sealed class BookEditorPage : ThemedUserControl
             // Reload persisted IDs and select the new category by its saved name.
             await LoadCategoriesAsync(selectName: dialog.SavedCategoryName);
             if (!IsDisposed && !Disposing)
-                _description.Text = SelectedCategoryIds.Count > 0
+                _detailsHeader.SubtitleText = SelectedCategoryId > 0
                     ? "Category created and selected."
                     : "Category saved. Choose it from the category selector.";
         }
@@ -474,27 +449,20 @@ public sealed class BookEditorPage : ThemedUserControl
                 .OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase)
                 .ToArray();
 
-            // On first load, restore every stored category, not just the
-            // legacy primary. On refresh, retain all current checkboxes.
-            var selected = _category.SelectedCategoryIds.ToList();
-            if (selected.Count == 0 && _existing is not null &&
-                string.IsNullOrWhiteSpace(selectName))
-            {
-                selected = (_existing.CategoryIds.Count > 0
-                    ? _existing.CategoryIds
-                    : new List<int> { _existing.CategoryId }).ToList();
-            }
+            int requested = _category.SelectedCategoryId;
             if (!string.IsNullOrWhiteSpace(selectName))
             {
-                var matches = active.Where(c =>
+                var newlyCreated = active.Where(c =>
                     string.Equals(c.Name.Trim(), selectName.Trim(),
                         StringComparison.OrdinalIgnoreCase)).ToArray();
-                if (matches.Length == 1 &&
-                    !selected.Contains(matches[0].CategoryId))
-                    selected.Add(matches[0].CategoryId);
+                // Do not guess if duplicate data has somehow been introduced.
+                requested = newlyCreated.Length == 1
+                    ? newlyCreated[0].CategoryId : 0;
             }
+            else if (requested == 0 && _existing is not null)
+                requested = _existing.CategoryId;
 
-            _category.SetCategories(active, selected);
+            _category.SetCategories(active, requested);
             _category.ApplyTheme();
             _category.Enabled = _editing;
             _save.Enabled = !_editing || (_authorsLoaded &&
@@ -504,7 +472,7 @@ public sealed class BookEditorPage : ThemedUserControl
         catch (Exception ex)
         {
             if (!IsDisposed && !Disposing)
-                _description.Text = "Unable to load categories: " + ex.Message;
+                _detailsHeader.SubtitleText = "Unable to load categories: " + ex.Message;
         }
         finally
         {
@@ -517,7 +485,7 @@ public sealed class BookEditorPage : ThemedUserControl
     {
         if (missingNames.Count == 0)
         {
-            _description.Text = _authors.SelectedAuthorIds.Count > 0
+            _detailsHeader.SubtitleText = _authors.SelectedAuthorIds.Count > 0
                 ? "Metadata found. Existing authors matched and selected."
                 : "Metadata found, but no author was matched. Select an author manually.";
             return Task.CompletedTask;
@@ -525,7 +493,7 @@ public sealed class BookEditorPage : ThemedUserControl
 
         if (!_authors.AllowCreateAuthor)
         {
-            _description.Text = "Author creation is unavailable. Select manually: " +
+            _detailsHeader.SubtitleText = "Author creation is unavailable. Select manually: " +
                 string.Join(", ", missingNames);
             return Task.CompletedTask;
         }
@@ -545,7 +513,7 @@ public sealed class BookEditorPage : ThemedUserControl
             _authors.StageAuthor(name);
         }
 
-        _description.Text = unresolved.Count > 0
+        _detailsHeader.SubtitleText = unresolved.Count > 0
             ? "Author(s) require manual selection: " + string.Join(", ", unresolved)
             : "Metadata found. New authors are pending and will only be created when you save the book.";
         return Task.CompletedTask;
@@ -559,7 +527,7 @@ public sealed class BookEditorPage : ThemedUserControl
         if (_authors.SelectedAuthorIds.Count > 0 ||
             _authors.SelectedPendingAuthorNames.Count > 0)
         {
-            _description.Text = "No author metadata provided. Your selection was kept.";
+            _detailsHeader.SubtitleText = "No author metadata provided. Your selection was kept.";
             return;
         }
 
@@ -570,20 +538,20 @@ public sealed class BookEditorPage : ThemedUserControl
         if (matches.Length == 1)
         {
             _authors.SelectAuthor(matches[0].Id);
-            _description.Text = "No author metadata provided. Unknown Author was selected.";
+            _detailsHeader.SubtitleText = "No author metadata provided. Unknown Author was selected.";
         }
         else if (matches.Length > 1)
         {
-            _description.Text = "Multiple Unknown Author records exist. Select the correct one manually.";
+            _detailsHeader.SubtitleText = "Multiple Unknown Author records exist. Select the correct one manually.";
         }
         else if (_authors.AllowCreateAuthor)
         {
             _authors.StageAuthor(UnknownAuthorName);
-            _description.Text = "No author metadata provided. Unknown Author is selected and will be created only when you save.";
+            _detailsHeader.SubtitleText = "No author metadata provided. Unknown Author is selected and will be created only when you save.";
         }
         else
         {
-            _description.Text = "No author metadata provided and author creation is restricted. Select an existing author.";
+            _detailsHeader.SubtitleText = "No author metadata provided and author creation is restricted. Select an existing author.";
         }
     }
 
@@ -594,14 +562,14 @@ public sealed class BookEditorPage : ThemedUserControl
         string isbn = _isbn.Text.Trim();
         if (isbn.Length == 0)
         {
-            _description.Text = "Enter an ISBN before searching.";
+            _detailsHeader.SubtitleText = "Enter an ISBN before searching.";
             return;
         }
 
         _lookupBusy = true;
         _lookup.IsBusy = true;
         _lookup.Enabled = false;
-        _description.Text = "Looking up ISBN...";
+        _detailsHeader.SubtitleText = "Looking up ISBN...";
         try
         {
             var result = await _metadataService.LookupByIsbnAsync(isbn);
@@ -609,7 +577,7 @@ public sealed class BookEditorPage : ThemedUserControl
                 return;
             if (!result.Success || result.Metadata is null)
             {
-                _description.Text = result.Error ?? "ISBN not found.";
+                _detailsHeader.SubtitleText = result.Error ?? "ISBN not found.";
                 return;
             }
             var book = result.Metadata;
@@ -625,10 +593,10 @@ public sealed class BookEditorPage : ThemedUserControl
                          _authors.SelectedPendingAuthorNames.Count == 0)
                 {
                     _pendingMetadataAuthors = new[] { UnknownAuthorName };
-                    _description.Text = "No author metadata provided. Unknown Author will be selected after authors load.";
+                    _detailsHeader.SubtitleText = "No author metadata provided. Unknown Author will be selected after authors load.";
                 }
                 else
-                    _description.Text = "No author metadata provided. Your selection was kept.";
+                    _detailsHeader.SubtitleText = "No author metadata provided. Your selection was kept.";
             }
             else if (_authorsLoaded)
             {
@@ -638,13 +606,13 @@ public sealed class BookEditorPage : ThemedUserControl
             else
             {
                 _pendingMetadataAuthors = book.Authors.ToArray();
-                _description.Text = "Metadata found. Author matching will run after loading.";
+                _detailsHeader.SubtitleText = "Metadata found. Author matching will run after loading.";
             }
         }
         catch (Exception ex)
         {
             if (!IsDisposed && !Disposing)
-                _description.Text = "ISBN lookup failed: " + ex.Message;
+                _detailsHeader.SubtitleText = "ISBN lookup failed: " + ex.Message;
         }
         finally
         {
@@ -712,9 +680,9 @@ public sealed class BookEditorPage : ThemedUserControl
         Dock = DockStyle.Fill;
         Padding = new Padding(Space.L);
 
-        _heading.Text = existing is null ? "Add Book" : "View Book";
+        _detailsHeader.HeadingText = existing is null ? "Add Book" : "View Book";
 
-        _description.Text = existing is null
+        _detailsHeader.SubtitleText = existing is null
             ? "Create a new book record."
             : $"Viewing: {existing.Title}";
 
@@ -728,7 +696,7 @@ public sealed class BookEditorPage : ThemedUserControl
         _titleLabel = MakeLabel("Book Title");
         _descriptionLabel = MakeLabel("Description");
         _authorsLabel = MakeLabel("Authors");
-        _categoryLabel = MakeLabel("Categories");
+        _categoryLabel = MakeLabel("Category");
         _conditionLabel = MakeLabel("Condition");
         _totalLabel = MakeLabel("Total Copies");
         _availableLabel = MakeLabel("Available Copies");
@@ -772,17 +740,6 @@ public sealed class BookEditorPage : ThemedUserControl
         _layout.RowStyles.Add(
             new RowStyle(SizeType.Absolute, 60));
 
-        _header.ColumnStyles.Add(
-            new ColumnStyle(SizeType.Percent, 100));
-
-        _header.ColumnStyles.Add(
-            new ColumnStyle(SizeType.Absolute, 100));
-
-        _header.RowStyles.Add(
-            new RowStyle(SizeType.Percent, 100));
-
-        _header.Controls.Add(_heading, 0, 0);
-        _header.Controls.Add(_back, 1, 0);
 
         _content.Controls.AddRange(new Control[]
         {
@@ -817,8 +774,8 @@ public sealed class BookEditorPage : ThemedUserControl
         _viewport.Controls.Add(_content);
         _viewport.Controls.Add(_scrollbar);
 
-        _layout.Controls.Add(_header, 0, 0);
-        _layout.Controls.Add(_description, 0, 1);
+        _layout.Controls.Add(_detailsHeader, 0, 0);
+        _layout.SetRowSpan(_detailsHeader, 2);
         _layout.Controls.Add(_viewport, 0, 2);
         _layout.Controls.Add(_actionFooter, 0, 3);
 
@@ -828,7 +785,7 @@ public sealed class BookEditorPage : ThemedUserControl
 
     private void WireEvents()
     {
-        _back.Click += (_, _) =>
+        _detailsHeader.BackRequested += (_, _) =>
         {
             if (_saving) return;
             // Match Student Details: Back returns directly to the list.
@@ -856,9 +813,7 @@ public sealed class BookEditorPage : ThemedUserControl
             _editing = false;
             _pendingMetadataAuthors = Array.Empty<string>();
             PopulateExistingBook();
-            _category.SelectCategories(_existing.CategoryIds.Count > 0
-                ? _existing.CategoryIds.AsEnumerable()
-                : new[] { _existing.CategoryId });
+            _category.SelectCategory(_existing.CategoryId);
             if (_statusIds.Length > 0)
             {
                 int condition = Array.IndexOf(_statusIds, _existing.StatusId);
@@ -990,12 +945,7 @@ public sealed class BookEditorPage : ThemedUserControl
             if (Math.Abs(_layout.RowStyles[3].Height - footerHeight) > 0.5f)
                 _layout.RowStyles[3].Height = footerHeight;
 
-            _header.ColumnStyles[1].Width =
-                portrait ? 88 : 100;
-
-            _heading.Font = portrait
-                ? Theme.BodyStrong
-                : Theme.Title;
+            _detailsHeader.CompactMode = portrait;
 
             int width = _viewport.ClientSize.Width;
 
@@ -1374,7 +1324,6 @@ public sealed class BookEditorPage : ThemedUserControl
         _viewValues["Authors"].Text = string.IsNullOrWhiteSpace(_existing.Authors)
             ? "No authors listed" : _existing.Authors;
         _viewValues["Category"].Text = _existing.CategoryName;
-        _viewValues["Category"].AutoEllipsis = true;
         _viewValues["Condition"].Text = _existing.StatusName;
         _viewValues["Total"].Text = _existing.TotalCopies.ToString();
         _viewValues["Available"].Text = _existing.AvailableCopies.ToString();
@@ -1416,8 +1365,8 @@ public sealed class BookEditorPage : ThemedUserControl
 
     private void RefreshEditorMode()
     {
-        _heading.Text = _existing is null ? "Add Book" : _editing ? "Edit Book" : "View Book";
-        _description.Text = _existing is null ? "Create a new book record." :
+        _detailsHeader.HeadingText = _existing is null ? "Add Book" : _editing ? "Edit Book" : "View Book";
+        _detailsHeader.SubtitleText = _existing is null ? "Create a new book record." :
             (_editing ? "Editing: " : "Viewing: ") + _existing.Title;
         _save.AccessibleName = _editing ? "Save Book" : "Edit Book";
         // The view action is always available. Saving requires loaded lookups.
@@ -1443,20 +1392,20 @@ public sealed class BookEditorPage : ThemedUserControl
         int statusIndex = _condition.SelectedIndex;
         if (statusIndex < 0 || statusIndex >= _statusIds.Length)
         {
-            _description.Text = "Select a valid book condition.";
+            _detailsHeader.SubtitleText = "Select a valid book condition.";
             return;
         }
 
-        if (SelectedCategoryIds.Count == 0)
+        if (SelectedCategoryId <= 0)
         {
-            _description.Text = "Select at least one category before saving this book.";
+            _detailsHeader.SubtitleText = "Select a category before saving this book.";
             return;
         }
 
         if (_authors.SelectedAuthorIds.Count == 0 &&
             _authors.SelectedPendingAuthorNames.Count == 0)
         {
-            _description.Text = "Select an author, or select an existing " +
+            _detailsHeader.SubtitleText = "Select an author, or select an existing " +
                 "'Unknown Author' record if the author is genuinely unknown.";
             return;
         }
@@ -1471,14 +1420,13 @@ public sealed class BookEditorPage : ThemedUserControl
             _available.Value,
             _coverPath,
             _authors.SelectedAuthorIds,
-            _authors.SelectedPendingAuthorNames,
-            SelectedCategoryIds);
+            _authors.SelectedPendingAuthorNames);
 
         _saving = true;
         _save.Enabled = false;
         _archive.Enabled = false;
         _delete.Enabled = false;
-        _description.Text = "Saving book...";
+        _detailsHeader.SubtitleText = "Saving book...";
         try
         {
             var result = _existing is null
@@ -1487,9 +1435,9 @@ public sealed class BookEditorPage : ThemedUserControl
             if (IsDisposed || Disposing) return;
             if (!result.Success)
             {
-                _description.Text = result.Error ?? "Unable to save book.";
+                _detailsHeader.SubtitleText = result.Error ?? "Unable to save book.";
                 ThemedMessageDialog.ShowAlert(FindForm(),
-                    "Book Validation", _description.Text);
+                    "Book Validation", _detailsHeader.SubtitleText);
                 return;
             }
             Saved?.Invoke(this, EventArgs.Empty);
@@ -1651,15 +1599,7 @@ public sealed class BookEditorPage : ThemedUserControl
         ForeColor = c.Text;
 
         _layout.BackColor = c.Background;
-        _header.BackColor = c.Background;
-
-        _heading.BackColor = c.Background;
-        _heading.ForeColor = c.Text;
-        _heading.Font = Theme.Title;
-
-        _description.BackColor = c.Background;
-        _description.ForeColor = c.TextMuted;
-        _description.Font = Theme.Body;
+        _detailsHeader.ApplyTheme();
 
         _viewport.BackColor = c.Surface;
         _content.BackColor = c.Surface;
@@ -1727,7 +1667,6 @@ public sealed class BookEditorPage : ThemedUserControl
         _lookup.RefreshTheme();
         _total.RefreshTheme();
         _available.RefreshTheme();
-        _back.RefreshTheme();
         _scrollbar.RefreshTheme();
 
         ArrangeForm();
@@ -2315,126 +2254,4 @@ public sealed class BookEditorPage : ThemedUserControl
         }
     }
 
-    private sealed class BackButton : Control
-    {
-        private bool _hovered;
-
-        public BackButton()
-        {
-            SetStyle(
-                ControlStyles.UserPaint |
-                ControlStyles.AllPaintingInWmPaint |
-                ControlStyles.OptimizedDoubleBuffer |
-                ControlStyles.ResizeRedraw |
-                ControlStyles.Selectable,
-                true);
-
-            Cursor = Cursors.Hand;
-            TabStop = true;
-            AccessibleName = "Back to Books";
-        }
-
-        public void RefreshTheme()
-        {
-            BackColor = Theme.Colors.Surface;
-            ForeColor = Theme.Colors.Text;
-            Font = Theme.Body;
-            Invalidate();
-        }
-
-        protected override void OnMouseEnter(EventArgs e)
-        {
-            base.OnMouseEnter(e);
-            _hovered = true;
-            Invalidate();
-        }
-
-        protected override void OnMouseLeave(EventArgs e)
-        {
-            base.OnMouseLeave(e);
-            _hovered = false;
-            Invalidate();
-        }
-
-        protected override void OnKeyDown(KeyEventArgs e)
-        {
-            base.OnKeyDown(e);
-
-            if (e.KeyCode is Keys.Enter or Keys.Space)
-            {
-                OnClick(EventArgs.Empty);
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-            }
-        }
-
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            base.OnPaint(e);
-
-            var c = Theme.Colors;
-            var g = e.Graphics;
-
-            g.SmoothingMode =
-                SmoothingMode.AntiAlias;
-
-            using var background = new SolidBrush(
-                _hovered ? c.SurfaceAlt : c.Surface);
-
-            g.FillRectangle(
-                background, ClientRectangle);
-
-            using var border = new Pen(c.Border);
-
-            g.DrawRectangle(
-                border,
-                0, 0,
-                Math.Max(0, Width - 1),
-                Math.Max(0, Height - 1));
-
-            int iconX = 18;
-            int iconY = Height / 2;
-
-            using var pen = new Pen(
-                c.Accent, 2.2f)
-            {
-                StartCap = LineCap.Round,
-                EndCap = LineCap.Round,
-                LineJoin = LineJoin.Round
-            };
-
-            g.DrawLines(
-                pen,
-                new[]
-                {
-                    new Point(iconX + 4, iconY - 6),
-                    new Point(iconX - 2, iconY),
-                    new Point(iconX + 4, iconY + 6)
-                });
-
-            TextRenderer.DrawText(
-                g,
-                "Back",
-                Font,
-                new Rectangle(
-                    31,
-                    0,
-                    Math.Max(0, Width - 34),
-                    Height),
-                c.Text,
-                TextFormatFlags.Left |
-                TextFormatFlags.VerticalCenter);
-
-            if (Focused && ShowFocusCues)
-            {
-                ControlPaint.DrawFocusRectangle(
-                    g,
-                    new Rectangle(
-                        3,
-                        3,
-                        Math.Max(0, Width - 6),
-                        Math.Max(0, Height - 6)));
-            }
-        }
-    }
 }
