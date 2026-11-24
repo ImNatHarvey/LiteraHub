@@ -170,21 +170,28 @@ public sealed class CatalogFilterChips : FlowLayoutPanel
     private void ThemeChanged(object? sender, EventArgs e)
     {
         if (IsDisposed) return;
-        BackColor = Theme.Colors.Background;
+        var c = Theme.Colors;
+        BackColor = c.Background;
+        if (Tag is CatalogStatusHost holder && !holder.IsDisposed)
+            holder.ApplyPalette();
+
         foreach (Control child in Controls)
         {
-            if (child is Button b)
+            if (child is Button button)
             {
-                b.BackColor = Theme.Colors.AccentSoft;
-                b.ForeColor = Theme.Colors.Text;
+                button.BackColor = c.AccentSoft;
+                button.ForeColor = c.Text;
+                button.FlatAppearance.MouseOverBackColor = c.AccentSoft;
             }
             else if (child is LinkLabel link)
             {
-                link.LinkColor = Theme.Colors.Accent;
-                link.ActiveLinkColor = Theme.Colors.Text;
+                link.LinkColor = c.Accent;
+                link.ActiveLinkColor = c.Text;
             }
-            else child.ForeColor = Theme.Colors.TextMuted;
+            else
+                child.ForeColor = c.TextMuted;
         }
+        Invalidate(true);
     }
 
     protected override void Dispose(bool disposing)
@@ -248,6 +255,56 @@ public sealed class CatalogFilterChips : FlowLayoutPanel
     }
 }
 
+/// <summary>
+/// The results line and optional filter chips share one theme-aware surface.
+/// Unlike a plain TableLayoutPanel, this surface repaints when the palette changes.
+/// </summary>
+public sealed class CatalogStatusHost : TableLayoutPanel
+{
+    private readonly Label _status;
+
+    public CatalogStatusHost(Label status)
+    {
+        _status = status;
+        Dock = DockStyle.Fill;
+        ColumnCount = 1;
+        RowCount = 2;
+        Margin = Padding.Empty;
+        Padding = Padding.Empty;
+        ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
+        RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        Theme.Changed += HandleThemeChanged;
+        ApplyPalette();
+    }
+
+    public void ApplyPalette()
+    {
+        if (IsDisposed) return;
+        var background = Theme.Colors.Background;
+        BackColor = background;
+        _status.BackColor = background;
+        _status.ForeColor = Theme.Colors.TextMuted;
+        Invalidate(true);
+    }
+
+    private void HandleThemeChanged(object? sender, EventArgs e) => ApplyPalette();
+
+    // Painting directly from the current palette prevents stale strips when
+    // WinForms invalidates only the exposed portion during a theme switch.
+    protected override void OnPaintBackground(PaintEventArgs e)
+    {
+        using var brush = new SolidBrush(Theme.Colors.Background);
+        e.Graphics.FillRectangle(brush, ClientRectangle);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) Theme.Changed -= HandleThemeChanged;
+        base.Dispose(disposing);
+    }
+}
+
 /// <summary>One layout contract shared by Books, Authors, Categories and Students.</summary>
 public static class CatalogToolbarChrome
 {
@@ -282,27 +339,17 @@ public static class CatalogToolbarChrome
             if (status.Parent == root)
             {
                 root.Controls.Remove(status);
-                var holder = new TableLayoutPanel
-                {
-                    Dock = DockStyle.Fill,
-                    ColumnCount = 1,
-                    RowCount = 2,
-                    Margin = Padding.Empty,
-                    Padding = Padding.Empty,
-                    BackColor = Theme.Colors.Background
-                };
-                holder.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-                holder.RowStyles.Add(new RowStyle(SizeType.Absolute, 23));
-                holder.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+                var holder = new CatalogStatusHost(status);
                 status.Dock = DockStyle.Fill;
                 status.Margin = Padding.Empty;
                 holder.Controls.Add(status, 0, 0);
                 holder.Controls.Add(chips, 0, 1);
                 root.Controls.Add(holder, 0, 2);
                 chips.Tag = holder;
+                holder.ApplyPalette();
             }
-            else if (chips.Tag is TableLayoutPanel holder)
-                holder.BackColor = Theme.Colors.Background;
+            else if (chips.Tag is CatalogStatusHost holder)
+                holder.ApplyPalette();
         }
         finally
         {
