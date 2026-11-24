@@ -27,7 +27,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
     private readonly DetailsPageHeader _detailsHeader = new() { Dock = DockStyle.Fill };
     private readonly ScrollHost _scroll = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
     private readonly Panel _surface = new() { Margin = Padding.Empty };
-    private readonly Panel _actionFooter = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
+    private readonly DetailsActionFooter _actionFooter = new() { Dock = DockStyle.Fill, Margin = Padding.Empty, UseStudentSizing = true };
     private readonly Button _save = new() { FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Text = "" };
     private readonly Button _archive = new() { FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Text = "" };
     private readonly Button _delete = new() { FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Text = "" };
@@ -105,6 +105,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
 
         _surface.Controls.AddRange(new Control[] { _studentHeading, _addressHeading, _contactHeading, _avatar, _photoButton, _viewBirthDate, _viewGender });
         _actionFooter.Controls.AddRange(new Control[] { _delete, _archive, _save, _cancel });
+        _actionFooter.Configure(_delete, _archive, _save, _cancel, () => false);
         _scroll.SetContent(_surface);
         Controls.Add(_layout);
         _toolTip.SetToolTip(_delete, _canHardDelete ? "Permanently delete this unreferenced student" : "Only administrators with HardDelete permission can delete students.");
@@ -299,21 +300,8 @@ public sealed class StudentDetailsPage : ThemedUserControl
 
     private void PositionFooterButtons()
     {
-        if (_actionFooter.ClientSize.Width < 1) return;
-        bool portrait = _actionFooter.ClientSize.Width < 690;
-        const int gap = 8;
-        const int height = 40;
-        int y = 8;
-        int right = _actionFooter.ClientSize.Width;
-        int width = portrait
-            ? Math.Max(70, (right - 2 * gap) / 3)
-            : Math.Min(210, Math.Max(110, (right * 2 / 3 - 2 * gap) / 3));
-        int left = Math.Max(0, right - 3 * width - 2 * gap);
-        _delete.SetBounds(left, y, width, height);
-        _archive.SetBounds(left + width + gap, y, width, height);
-        _save.SetBounds(left + 2 * (width + gap), y, width, height);
-        // Keep Cancel accessible while editing without shifting the actions.
-        _cancel.SetBounds(0, y, Math.Min(115, Math.Max(80, left - gap)), height);
+        _actionFooter.ArrangeActions();
+        // Preserve existing Student edit-mode visibility semantics.
         _cancel.Visible = _original is not null && _editing;
     }
 

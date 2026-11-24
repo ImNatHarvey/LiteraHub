@@ -48,7 +48,7 @@ public sealed class CategoryDetailsPage : ThemedUserControl
         MaximumCardWidth = 183,
         MaximumCardHeight = 241
     };
-    private readonly Panel _actions = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
+    private readonly DetailsActionFooter _actions = new();
     private readonly Button _primary = new() { FlatStyle = FlatStyle.Flat, Width = 210, Height = 40, Cursor = Cursors.Hand };
     private readonly Button _cancel = new() { Text = "Cancel", FlatStyle = FlatStyle.Flat, Width = 115, Height = 40, Cursor = Cursors.Hand };
     private readonly Button _archive = new() { FlatStyle = FlatStyle.Flat, Width = 210, Height = 40, Cursor = Cursors.Hand };
@@ -88,7 +88,7 @@ public sealed class CategoryDetailsPage : ThemedUserControl
             BookRequested?.Invoke(this, bookId);
         _layout.Controls.Add(_associatedBooks, 0, 3);
         _actions.Controls.AddRange(new Control[] { _delete, _archive, _primary, _cancel });
-        _actions.Resize += (_, _) => PositionFooterActions();
+        _actions.Configure(_delete, _archive, _primary, _cancel, () => _category is null);
         _primary.Paint += (_, e) => PaintActionIcon(e, _primary, 0);
         _archive.Paint += (_, e) => PaintActionIcon(e, _archive, 1);
         _delete.Paint += (_, e) => PaintActionIcon(e, _delete, 2);
@@ -366,24 +366,8 @@ public sealed class CategoryDetailsPage : ThemedUserControl
     }
 
 
-    // Same right-aligned three-button geometry as BookEditorPage;
-    // Cancel stays to the far left while editing.
-    private void PositionFooterActions()
-    {
-        int width = _actions.ClientSize.Width;
-        if (width < 1) return;
-        const int gap = 8;
-        const int height = 40;
-        int actionWidth = Math.Min(210, Math.Max(110, (width * 2 / 3 - 2 * gap) / 3));
-        int right = Math.Max(0, width - (actionWidth * 3 + gap * 2));
-        _delete.SetBounds(right, 8, actionWidth, height);
-        _archive.SetBounds(right + actionWidth + gap, 8, actionWidth, height);
-        _primary.SetBounds(right + (actionWidth + gap) * 2, 8, actionWidth, height);
-        // If hard deletion is restricted, keep the other two actions in their slots.
-        _cancel.SetBounds(0, 8, Math.Min(115, Math.Max(80, right - gap)), height);
-        if (_category is null)
-            _primary.SetBounds(Math.Max(0, width - 160), 8, Math.Min(160, width), height);
-    }
+    // Shared footer owns geometry; page retains all behavior and styling.
+    private void PositionFooterActions() => _actions.ArrangeActions();
 
     // The same icon strokes, placement, foreground selection, and labels
     // as BookEditorPage.PaintActionIcon (Category wording substituted).

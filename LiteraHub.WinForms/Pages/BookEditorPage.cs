@@ -39,11 +39,12 @@ public sealed class BookEditorPage : ThemedUserControl
         Margin = Padding.Empty
     };
 
-    private readonly Panel _actionFooter = new()
+    private readonly DetailsActionFooter _actionFooter = new()
     {
         Dock = DockStyle.Fill,
         Margin = Padding.Empty,
-        Padding = Padding.Empty
+        Padding = Padding.Empty,
+        UseBookSizing = true
     };
 
     private readonly Panel _content = new()
@@ -770,6 +771,9 @@ public sealed class BookEditorPage : ThemedUserControl
         {
             _delete, _archive, _save, _cancelEdit
         });
+        _actionFooter.Configure(_delete, _archive, _save, _cancelEdit,
+            () => _existing is null,
+            () => _existing is not null && _editing);
 
         _viewport.Controls.Add(_content);
         _viewport.Controls.Add(_scrollbar);
@@ -1189,37 +1193,7 @@ public sealed class BookEditorPage : ThemedUserControl
 
     private void PositionFooterActions()
     {
-        if (_actionFooter.ClientSize.Width < 1) return;
-        const int gap = 8;
-        const int height = 40;
-        int fullWidth = _actionFooter.ClientSize.Width;
-        bool portrait = fullWidth < 700;
-        bool showCancel = _existing is not null && _editing;
-        int actionY = portrait && showCancel ? 54 : 8;
-
-        if (_existing is null)
-        {
-            _cancelEdit.Visible = false;
-            _save.SetBounds(Math.Max(0, fullWidth - (portrait ? fullWidth : 160)),
-                actionY, portrait ? fullWidth : 160, height);
-            return;
-        }
-
-        int actionWidth = portrait
-            ? Math.Max(70, (fullWidth - 2 * gap) / 3)
-            : Math.Min(210, Math.Max(110, (fullWidth * 2 / 3 - 2 * gap) / 3));
-        int left = Math.Max(0, fullWidth - actionWidth * 3 - 2 * gap);
-        _delete.SetBounds(left, actionY, actionWidth, height);
-        _archive.SetBounds(left + actionWidth + gap, actionY, actionWidth, height);
-        _save.SetBounds(left + (actionWidth + gap) * 2, actionY, actionWidth, height);
-
-        // Exactly the Student Details Cancel behavior/layout on desktop.
-        // In portrait, Cancel gets a dedicated row so all four stay accessible.
-        int cancelWidth = portrait
-            ? Math.Min(115, fullWidth)
-            : Math.Min(115, Math.Max(80, left - gap));
-        _cancelEdit.SetBounds(0, portrait ? 4 : 8, cancelWidth, height);
-        _cancelEdit.Visible = showCancel;
+        _actionFooter.ArrangeActions();
     }
 
     private void PaintActionIcon(PaintEventArgs e, Button button, int kind)
