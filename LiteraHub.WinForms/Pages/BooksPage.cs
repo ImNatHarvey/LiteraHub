@@ -86,7 +86,8 @@ public sealed class BooksPage : ThemedUserControl
     private readonly ThemedDataGridView _grid = new()
     {
         Dock = DockStyle.Fill,
-        Margin = Padding.Empty
+        Margin = Padding.Empty,
+        ScrollBars = ScrollBars.Vertical
     };
 
     private readonly LoadingHost _loading = new()

@@ -96,6 +96,9 @@ public sealed class ScrollHost : ThemedUserControl
         UpdateMetrics();
     }
 
+    // Lets child card controls forward wheel input to the same themed scrollbar.
+    public void ScrollByPixels(int delta) => _bar.ScrollBy(delta);
+
     // Call after the content height changes.
     public void RefreshMetrics()
     {

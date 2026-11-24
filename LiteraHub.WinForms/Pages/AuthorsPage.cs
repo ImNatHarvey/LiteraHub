@@ -20,6 +20,10 @@ public sealed class AuthorsPage : ThemedUserControl
     private readonly IAuthorCreationService _creation;
     private readonly IPermissionService _permissions;
 
+    private readonly Panel _host = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
+    private AuthorDetailsPage? _details;
+    public event EventHandler<int>? BookRequested;
+
     private readonly TableLayoutPanel _layout = new()
     {
         Dock = DockStyle.Fill,
@@ -153,10 +157,7 @@ public sealed class AuthorsPage : ThemedUserControl
     private bool CanManage =>
         _permissions.Can(Permission.ManageLookups);
 
-    private bool CanDelete =>
-        CanManage && _permissions.Can(Permission.HardDelete);
-
-    private int ActionCount => CanDelete ? 3 : 2;
+    private int ActionCount => 1;
 
     private int TotalPages =>
         Math.Max(1, (_filteredCount + _rows - 1) / _rows);
@@ -228,8 +229,7 @@ public sealed class AuthorsPage : ThemedUserControl
             }
         };
 
-        _add.Click += async (_, _) =>
-            await OpenAddDialogAsync();
+        _add.Click += (_, _) => OpenAuthorDetails(null);
 
 
         _grid.CellMouseUp += HandleActionMouseUp;
@@ -313,7 +313,7 @@ public sealed class AuthorsPage : ThemedUserControl
 
         _grid.MouseMove += (_, e) =>
         {
-            if (_working || _loadingData || !CanManage)
+            if (_working || _loadingData)
             {
                 ClearHover();
                 return;
@@ -399,13 +399,7 @@ public sealed class AuthorsPage : ThemedUserControl
                 "Active",
                 StringComparison.OrdinalIgnoreCase);
 
-            string tooltipText = hoverSlot switch
-            {
-                0 => "Edit",
-                1 => active ? "Archive" : "Restore",
-                2 when CanDelete => "Delete",
-                _ => ""
-            };
+            string tooltipText = "View Details";
 
             if (tooltipText.Length == 0)
                 return;
@@ -501,7 +495,8 @@ public sealed class AuthorsPage : ThemedUserControl
         _layout.Controls.Add(_loading, 0, 3);
         _layout.Controls.Add(_pagination, 0, 4);
 
-        Controls.Add(_layout);
+        _host.Controls.Add(_layout);
+        Controls.Add(_host);
     }
 
 
@@ -556,10 +551,10 @@ public sealed class AuthorsPage : ThemedUserControl
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = "Actions",
-            HeaderText = "Actions",
-            FillWeight = 17,
-            MinimumWidth = CanDelete ? 132 : 105,
-            Visible = CanManage,
+            HeaderText = "",
+            FillWeight = 7,
+            MinimumWidth = 55,
+            Visible = true,
             SortMode = DataGridViewColumnSortMode.NotSortable
         });
 
@@ -652,168 +647,19 @@ public sealed class AuthorsPage : ThemedUserControl
         }
         else
         {
-            for (int slot = 0; slot < ActionCount; slot++)
+            int cx = e.CellBounds.Left + e.CellBounds.Width / 2;
+            using var pen = new Pen(c.Accent, 2.2f)
             {
-                int cx = e.CellBounds.Left +
-                    (int)((slot + 0.5) *
-                    e.CellBounds.Width / ActionCount);
-
-                using var pen = new Pen(
-                    slot == 2
-                        ? c.Danger
-                        : slot == 0 || !active
-                            ? c.PillGoodText
-                            : c.TextMuted,
-                    2f);
-
-                if (slot == 0)
-                {
-                    // Edit icon
-                    g.DrawLine(
-                        pen,
-                        cx - 8,
-                        cy - 7,
-                        cx + 1,
-                        cy - 7);
-
-                    g.DrawLine(
-                        pen,
-                        cx - 8,
-                        cy - 7,
-                        cx - 8,
-                        cy + 8);
-
-                    g.DrawLine(
-                        pen,
-                        cx - 8,
-                        cy + 8,
-                        cx + 7,
-                        cy + 8);
-
-                    g.DrawLine(
-                        pen,
-                        cx + 7,
-                        cy + 8,
-                        cx + 7,
-                        cy + 1);
-
-                    g.DrawLine(
-                        pen,
-                        cx - 2,
-                        cy + 3,
-                        cx + 8,
-                        cy - 7);
-
-                    g.DrawLine(
-                        pen,
-                        cx - 3,
-                        cy + 5,
-                        cx - 2,
-                        cy + 3);
-                }
-                else if (slot == 1)
-                {
-                    // Archive / Restore icon
-                    g.DrawRectangle(
-                        pen,
-                        cx - 8,
-                        cy - 4,
-                        16,
-                        12);
-
-                    g.DrawLine(
-                        pen,
-                        cx - 10,
-                        cy - 8,
-                        cx + 10,
-                        cy - 8);
-
-                    if (active)
-                    {
-                        g.DrawLine(
-                            pen,
-                            cx,
-                            cy - 2,
-                            cx,
-                            cy + 4);
-
-                        g.DrawLine(
-                            pen,
-                            cx - 4,
-                            cy + 1,
-                            cx,
-                            cy + 5);
-
-                        g.DrawLine(
-                            pen,
-                            cx,
-                            cy + 5,
-                            cx + 4,
-                            cy + 1);
-                    }
-                    else
-                    {
-                        g.DrawLine(
-                            pen,
-                            cx,
-                            cy + 5,
-                            cx,
-                            cy - 2);
-
-                        g.DrawLine(
-                            pen,
-                            cx - 4,
-                            cy + 1,
-                            cx,
-                            cy - 3);
-
-                        g.DrawLine(
-                            pen,
-                            cx,
-                            cy - 3,
-                            cx + 4,
-                            cy + 1);
-                    }
-                }
-                else
-                {
-                    // Delete icon
-                    g.DrawLine(
-                        pen,
-                        cx - 9,
-                        cy - 6,
-                        cx + 9,
-                        cy - 6);
-
-                    g.DrawLine(
-                        pen,
-                        cx - 4,
-                        cy - 9,
-                        cx + 4,
-                        cy - 9);
-
-                    g.DrawRectangle(
-                        pen,
-                        cx - 7,
-                        cy - 3,
-                        14,
-                        12);
-
-                    g.DrawLine(
-                        pen,
-                        cx - 3,
-                        cy,
-                        cx - 3,
-                        cy + 6);
-
-                    g.DrawLine(
-                        pen,
-                        cx + 3,
-                        cy,
-                        cx + 3,
-                        cy + 6);
-                }
-            }
+                StartCap = LineCap.Round,
+                EndCap = LineCap.Round,
+                LineJoin = LineJoin.Round
+            };
+            g.DrawLines(pen, new[]
+            {
+                new Point(cx - 4, cy - 7),
+                new Point(cx + 3, cy),
+                new Point(cx - 4, cy + 7)
+            });
         }
 
         g.SmoothingMode = old;
@@ -822,242 +668,61 @@ public sealed class AuthorsPage : ThemedUserControl
 
 
     private async void HandleActionMouseUp(
-        object? sender,
-        DataGridViewCellMouseEventArgs e)
+        object? sender, DataGridViewCellMouseEventArgs e)
     {
-        if (e.Button != MouseButtons.Left ||
-            e.RowIndex < 0 ||
-            e.ColumnIndex < 0 ||
-            !CanManage ||
-            _working ||
-            _loadingData ||
-            _grid.Columns[e.ColumnIndex].Name != "Actions")
-            return;
-
-        int columnWidth =
-            _grid.Columns[e.ColumnIndex].Width;
-
-        if (e.X < 0 || e.X >= columnWidth)
-            return;
-
-        int slot = Math.Clamp(
-            e.X * ActionCount / Math.Max(1, columnWidth),
-            0,
-            ActionCount - 1);
-
-        if (slot == 2 && !CanDelete)
-            return;
-
-        if (!int.TryParse(
-            Convert.ToString(
-                _grid.Rows[e.RowIndex].Cells["Id"].Value),
-            out int authorId))
-            return;
-
-        string name = Convert.ToString(
-            _grid.Rows[e.RowIndex].Cells["Name"].Value) ?? "";
-
-        bool active = string.Equals(
-            Convert.ToString(
-                _grid.Rows[e.RowIndex].Cells["Status"].Value),
-            "Active",
-            StringComparison.OrdinalIgnoreCase);
-
-        try
-        {
-            switch (slot)
-            {
-                case 0:
-                    await EditAuthorAsync(authorId);
-                    break;
-
-                case 1:
-                    await ChangeAuthorStatusAsync(
-                        authorId, name, active);
-                    break;
-
-                case 2:
-                    await DeleteAuthorAsync(authorId, name);
-                    break;
-            }
-        }
-        catch (Exception ex)
-        {
-            if (!IsDisposed && !Disposing)
-            {
-                ThemedMessageDialog.ShowAlert(
-                    FindForm(),
-                    "Author Management",
-                    ex.Message,
-                    danger: true);
-            }
-        }
-    }
-
-    private async Task EditAuthorAsync(int authorId)
-    {
-        if (_working || _loadingData || !CanManage)
-            return;
-
+        if (e.Button != MouseButtons.Left || e.RowIndex < 0 ||
+            e.ColumnIndex < 0 || _working || _loadingData ||
+            _grid.Columns[e.ColumnIndex].Name != "Actions") return;
+        if (!int.TryParse(Convert.ToString(_grid.Rows[e.RowIndex].Cells["Id"].Value),
+                out int authorId)) return;
         _working = true;
-        _grid.Enabled = false;
-
         try
         {
             var author = await _creation.GetByIdAsync(authorId);
-
-            if (IsDisposed || Disposing)
-                return;
-
+            if (IsDisposed || Disposing) return;
             if (author is null)
             {
-                ThemedMessageDialog.ShowAlert(
-                    FindForm(),
-                    "Edit Author",
-                    "The selected author could not be found.",
-                    danger: true);
+                ThemedMessageDialog.ShowAlert(FindForm(), "View Author",
+                    "Author no longer exists.", danger: true);
                 return;
             }
-
-            using var dialog =
-                new AddAuthorDialog(_creation, author);
-
-            if (dialog.ShowDialog(FindForm()) ==
-                DialogResult.OK)
-            {
-                await LoadAuthorsAsync();
-            }
-        }
-        finally
-        {
-            _working = false;
-
-            if (!IsDisposed && !Disposing)
-            {
-                _grid.Enabled = true;
-                UpdatePagination();
-            }
-        }
-    }
-
-    private async Task ChangeAuthorStatusAsync(
-        int authorId,
-        string name,
-        bool currentlyActive)
-    {
-        if (_working || _loadingData || !CanManage)
-            return;
-
-        bool activate = !currentlyActive;
-
-        string title = activate
-            ? "Restore Author"
-            : "Archive Author";
-
-        bool confirmed = ThemedMessageDialog.Confirm(
-            FindForm(),
-            title,
-            activate
-                ? $"Restore '{name}'?\n\n" +
-                  "This author will become active again."
-                : $"Archive '{name}'?\n\n" +
-                  "The author will be marked inactive. " +
-                  "Existing book relationships will be preserved.",
-            danger: !activate,
-            confirmText: activate ? "Restore" : "Archive");
-
-        if (!confirmed)
-            return;
-
-        await ExecuteAuthorMutationAsync(
-            () => _creation.SetActiveAsync(authorId, activate),
-            title);
-    }
-
-    private async Task DeleteAuthorAsync(
-        int authorId,
-        string name)
-    {
-        if (_working || _loadingData || !CanDelete)
-            return;
-
-        bool confirmed = ThemedMessageDialog.Confirm(
-            FindForm(),
-            "Permanently Delete Author",
-            $"Permanently delete '{name}'?\n\n" +
-            "This action cannot be undone. Authors referenced " +
-            "by books cannot be deleted.",
-            danger: true,
-            confirmText: "Delete");
-
-        if (!confirmed)
-            return;
-
-        await ExecuteAuthorMutationAsync(
-            () => _creation.DeleteAsync(authorId),
-            "Delete Author");
-    }
-
-    private async Task ExecuteAuthorMutationAsync(
-        Func<Task<ServiceResult>> action,
-        string title)
-    {
-        if (_working || _loadingData)
-            return;
-
-        _working = true;
-        _grid.Enabled = false;
-        _add.Enabled = false;
-        _status.Text = "Saving changes...";
-
-        UpdatePagination();
-
-        try
-        {
-            ServiceResult result = await action();
-
-            if (IsDisposed || Disposing)
-                return;
-
-            if (result.Success)
-            {
-                await LoadAuthorsAsync();
-            }
-            else
-            {
-                ThemedMessageDialog.ShowAlert(
-                    FindForm(),
-                    title,
-                    result.Error ?? "Operation failed.",
-                    danger: true);
-            }
+            OpenAuthorDetails(author);
         }
         catch (Exception ex)
         {
             if (!IsDisposed && !Disposing)
-            {
-                ThemedMessageDialog.ShowAlert(
-                    FindForm(),
-                    title,
-                    ex.Message,
-                    danger: true);
-            }
+                ThemedMessageDialog.ShowAlert(FindForm(), "View Author", ex.Message, danger: true);
         }
-        finally
-        {
-            _working = false;
-
-            if (!IsDisposed && !Disposing)
-            {
-                _grid.Enabled = true;
-                _add.Enabled =
-                    _permissions.Can(Permission.CreateLookups);
-
-                UpdatePagination();
-            }
-        }
+        finally { _working = false; }
     }
 
+    private void OpenAuthorDetails(AuthorRecord? author)
+    {
+        if (_details is not null || IsDisposed || Disposing) return;
+        var details = new AuthorDetailsPage(_creation, _books, _permissions, author);
+        _details = details;
+        details.BackRequested += (_, _) => CloseAuthorDetails();
+        details.Saved += async (_, _) =>
+        {
+            if (!IsDisposed && !Disposing) await LoadAuthorsAsync();
+        };
+        details.BookRequested += (_, bookId) => BookRequested?.Invoke(this, bookId);
+        _layout.Visible = false;
+        _host.Controls.Add(details);
+        details.BringToFront();
+    }
+
+    public Task RefreshAuthorDetailsAsync() => _details?.RefreshBooksAsync() ?? Task.CompletedTask;
+
+    private void CloseAuthorDetails()
+    {
+        if (_details is null) return;
+        _host.Controls.Remove(_details);
+        _details.Dispose();
+        _details = null;
+        _layout.Visible = true;
+        _layout.BringToFront();
+    }
 
     protected override async void OnLoad(EventArgs e)
     {
@@ -1261,40 +926,6 @@ public sealed class AuthorsPage : ThemedUserControl
         _pageSize.Enabled = !_loadingData;
     }
 
-    private async Task OpenAddDialogAsync()
-    {
-        if (_working ||
-            _loadingData ||
-            !_permissions.Can(Permission.CreateLookups))
-            return;
-
-        _working = true;
-        _add.Enabled = false;
-
-        try
-        {
-            using var dialog =
-                new AddAuthorDialog(_creation);
-
-            if (dialog.ShowDialog(FindForm()) ==
-                DialogResult.OK)
-            {
-                await LoadAuthorsAsync();
-            }
-        }
-        finally
-        {
-            _working = false;
-
-            if (!IsDisposed && !Disposing)
-            {
-                _add.Enabled =
-                    _permissions.Can(Permission.CreateLookups);
-            }
-        }
-    }
-
-
     private void UpdateResponsiveLayout()
     {
         if (IsDisposed || Disposing)
@@ -1338,7 +969,7 @@ public sealed class AuthorsPage : ThemedUserControl
                 _grid.Columns["BirthDate"]!.Width = 135;
                 _grid.Columns["Status"]!.Width = 85;
                 _grid.Columns["Actions"]!.Width =
-                    CanDelete ? 144 : 110;
+                    55;
             }
 
             _pagination.ColumnStyles[1].Width =
@@ -1382,6 +1013,7 @@ public sealed class AuthorsPage : ThemedUserControl
         var c = Theme.Colors;
 
         BackColor = c.Background;
+        _host.BackColor = c.Background;
         _layout.BackColor = c.Background;
         _toolbar.BackColor = c.Background;
         _pagination.BackColor = c.Background;

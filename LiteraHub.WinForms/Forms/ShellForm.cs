@@ -1,6 +1,7 @@
 
 using FontAwesome.Sharp;
 using LiteraHub.Core.Interfaces;
+using LiteraHub.Core.Models;
 using LiteraHub.Core.Security;
 using LiteraHub.WinForms.Controls;
 using LiteraHub.WinForms.Pages;
@@ -100,6 +101,8 @@ public sealed class ShellForm : Form
     };
 
     private Control? _currentPage;
+    private BookEditorPage? _authorBookOverlay;
+    private AuthorsPage? _bookOrigin;
 
     private int _presetWidth = 1280;
     private int _presetHeight = 720;
@@ -442,10 +445,10 @@ public sealed class ShellForm : Form
         }
         else if (key == "authors")
         {
-            next = new AuthorsPage(
-                _books,
-                _authors,
-                _permissions);
+            var authorsPage = new AuthorsPage(_books, _authors, _permissions);
+            authorsPage.BookRequested += async (_, bookId) =>
+                await ShowAuthorBookAsync(authorsPage, bookId);
+            next = authorsPage;
         }
 
         else
@@ -461,9 +464,54 @@ public sealed class ShellForm : Form
         _nav.SelectItem(page.Key);
     }
 
+    private async Task ShowAuthorBookAsync(AuthorsPage origin, int bookId)
+    {
+        if (_authorBookOverlay is not null || origin.IsDisposed) return;
+        // BookEditorPage exposes Edit controls; do not bypass ManageBooks authorization.
+        if (!_permissions.Can(Permission.ManageBooks))
+        {
+            ThemedMessageDialog.ShowAlert(this, "View Book",
+                "Book details navigation is unavailable for this role.");
+            return;
+        }
+        Book? book;
+        try { book = await _books.GetByIdAsync(bookId); }
+        catch (Exception ex)
+        {
+            ThemedMessageDialog.ShowAlert(this, "View Book", ex.Message, danger: true);
+            return;
+        }
+        if (book is null || origin.IsDisposed || _currentPage != origin) return;
+        var editor = new BookEditorPage(book) { Dock = DockStyle.Fill };
+        editor.ConfigureServices(_categories, _metadata, _books,
+            _permissions.Can(Permission.HardDelete), _authors,
+            _permissions.Can(Permission.CreateLookups));
+        editor.BackRequested += (_, _) => CloseAuthorBookOverlay();
+        editor.Saved += async (_, _) =>
+        {
+            CloseAuthorBookOverlay();
+            if (!origin.IsDisposed) await origin.RefreshAuthorDetailsAsync();
+        };
+        _bookOrigin = origin;
+        _authorBookOverlay = editor;
+        _host.Controls.Add(editor);
+        editor.BringToFront();
+    }
+
+    private void CloseAuthorBookOverlay()
+    {
+        if (_authorBookOverlay is null) return;
+        _host.Controls.Remove(_authorBookOverlay);
+        _authorBookOverlay.Dispose();
+        _authorBookOverlay = null;
+        _bookOrigin?.BringToFront();
+        _bookOrigin = null;
+    }
+
     private void SwapPage(Control next)
     {
         _host.SuspendLayout();
+        CloseAuthorBookOverlay();
 
         if (_currentPage is not null)
         {
