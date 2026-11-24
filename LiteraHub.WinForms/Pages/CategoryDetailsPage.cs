@@ -3,9 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
-using System.IO;
 using System.Linq;
-using System.Net.Http;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using LiteraHub.Core.Interfaces;
@@ -20,12 +18,6 @@ namespace LiteraHub.WinForms.Pages;
 /// <summary>In-shell Category Add/View/Edit, with a fixed information panel and scrollable books.</summary>
 public sealed class CategoryDetailsPage : ThemedUserControl
 {
-
-    private Task LoadCoverAsync(PictureBox target, string? path)
-    {
-        return CatalogCoverCache.LoadIntoAsync(target, path);
-    }
-
     private readonly ICategoryService _categories;
     private readonly IBookService _books;
     private readonly IPermissionService _permissions;
@@ -55,23 +47,19 @@ public sealed class CategoryDetailsPage : ThemedUserControl
     private readonly ThemedTextField _name = new() { MaxLength = 100 };
     private readonly ThemedTextField _description = new() { MaxLength = 500, Multiline = true };
     private readonly Label _id = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
-    private readonly Label _galleryHeading = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
-    private readonly FlowLayoutPanel _gallery = new()
+    // Shared gallery. Preserve the accepted Category card dimensions when
+    // its one-row information panel leaves more vertical gallery space.
+    private readonly AssociatedBooksGallery _associatedBooks = new()
     {
-        AutoScroll = false,
-        WrapContents = true,
-        FlowDirection = FlowDirection.LeftToRight,
-        Margin = Padding.Empty,
-        Padding = Padding.Empty
+        Dock = DockStyle.Fill,
+        MaximumCardWidth = 183,
+        MaximumCardHeight = 241
     };
-    private readonly ScrollHost _galleryScroll = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
-    private bool _galleryArranging;
     private readonly Panel _actions = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
     private readonly Button _primary = new() { FlatStyle = FlatStyle.Flat, Width = 210, Height = 40, Cursor = Cursors.Hand };
     private readonly Button _cancel = new() { Text = "Cancel", FlatStyle = FlatStyle.Flat, Width = 115, Height = 40, Cursor = Cursors.Hand };
     private readonly Button _archive = new() { FlatStyle = FlatStyle.Flat, Width = 210, Height = 40, Cursor = Cursors.Hand };
     private readonly Button _delete = new() { FlatStyle = FlatStyle.Flat, Width = 210, Height = 40, Cursor = Cursors.Hand };
-    private readonly ToolTip _tips = new();
 
     public event EventHandler? BackRequested;
     public event EventHandler<int>? BookRequested;
@@ -107,16 +95,9 @@ public sealed class CategoryDetailsPage : ThemedUserControl
         AddField("Name", "Category Name", _name, 1, 0);
         AddField("Description", "Description", _description, 2, 0);
 
-        var galleryContainer = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 1, Margin = Padding.Empty };
-        galleryContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        galleryContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-        galleryContainer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        galleryContainer.Controls.Add(_galleryHeading, 0, 0);
-        _galleryScroll.SetContent(_gallery);
-        galleryContainer.Controls.Add(_galleryScroll, 0, 1);
-        _galleryScroll.Resize += (_, _) => ArrangeGallery();
-        _gallery.MouseWheel += (_, e) => _galleryScroll.ScrollByPixels(e.Delta > 0 ? -72 : 72);
-        _layout.Controls.Add(galleryContainer, 0, 3);
+        _associatedBooks.BookRequested += (_, bookId) =>
+            BookRequested?.Invoke(this, bookId);
+        _layout.Controls.Add(_associatedBooks, 0, 3);
         _actions.Controls.AddRange(new Control[] { _delete, _archive, _primary, _cancel });
         _actions.Resize += (_, _) => PositionFooterActions();
         _primary.Paint += (_, e) => PaintActionIcon(e, _primary, 0);
@@ -205,7 +186,7 @@ public sealed class CategoryDetailsPage : ThemedUserControl
         _delete.AccessibleName = "Delete Category";
         _primary.Text = "";
         _primary.AccessibleName = _editing ? "Save Category" : "Edit Category";
-        _galleryHeading.Text = existing ? "Associated Books" : "Associated Books (available after saving)";
+        if (!existing) _associatedBooks.ShowBeforeSave();
         foreach (var (key, pair) in _fields)
         {
             string text = key switch
@@ -326,154 +307,14 @@ public sealed class CategoryDetailsPage : ThemedUserControl
             if (IsDisposed || Disposing || _category?.CategoryId != categoryId) return;
             var related = all.Where(b => b.CategoryIds.Contains(categoryId) || b.CategoryId == categoryId)
                 .OrderBy(b => b.Title, StringComparer.OrdinalIgnoreCase).ToArray();
-            _gallery.SuspendLayout();
-            foreach (Control control in _gallery.Controls.Cast<Control>().ToArray())
-            {
-                foreach (var picture in control.Controls.OfType<Panel>().SelectMany(p => p.Controls.OfType<PictureBox>()))
-                {
-                    picture.Image?.Dispose();
-                    picture.Image = null;
-                }
-                control.Dispose();
-            }
-            _gallery.Controls.Clear();
-            _galleryHeading.Text = $"Associated Books  ({related.Length})";
-            if (related.Length == 0)
-            {
-                _gallery.Controls.Add(new Label
-                {
-                    Text = "No books assigned to this category.",
-                    AutoSize = true,
-                    ForeColor = Theme.Colors.TextMuted,
-                    Font = Theme.Body
-                });
-            }
-            foreach (var book in related)
-            {
-                var card = MakeBookCard(book, out PictureBox cover);
-                _gallery.Controls.Add(card);
-                _ = LoadCoverAsync(cover, book.CoverPath);
-            }
-            _gallery.ResumeLayout(true);
-            ArrangeGallery();
+            _associatedBooks.SetBooks(related, "No books assigned to this category.");
         }
-        catch (Exception ex) { if (!IsDisposed && !Disposing) _galleryHeading.Text = "Unable to load associated books: " + ex.Message; }
+        catch (Exception)
+        {
+            if (!IsDisposed && !Disposing)
+                _associatedBooks.ShowError("Unable to load associated books. Try reopening this category.");
+        }
         finally { _loadingCovers = false; }
-    }
-
-    // Show complete rows in the visible gallery viewport. At 1280x720 this
-    // means one full row, with subsequent rows accessible by themed scrolling;
-    // at taller desktop sizes, two or more full rows can fit naturally.
-    private void ArrangeGallery()
-    {
-        if (_galleryArranging || IsDisposed || Disposing) return;
-        _galleryArranging = true;
-        try
-        {
-            const int gap = 12;
-            const int preferredRowHeight = 244;
-            int viewportWidth = Math.Max(150, _galleryScroll.ClientSize.Width - 18);
-            int viewportHeight = Math.Max(1, _galleryScroll.ClientSize.Height);
-            int count = Math.Max(1, _gallery.Controls.Count);
-            int columns = Math.Max(1, (viewportWidth + gap) / (170 + gap));
-            // Match the accepted Author Details gallery cover width at 1280px,
-            // even when a category contains only one book. Do not stretch cards
-            // to fill the viewport; unused room belongs to the gallery surface.
-            int cardWidth = Math.Min(183,
-                Math.Max(125, (viewportWidth - columns * gap) / columns));
-            int rows = (count + columns - 1) / columns;
-
-            // No partial second row: each visible row occupies an exact share
-            // of the viewport. The extra 1px keeps the next row fully hidden.
-            int visibleRows = Math.Max(1, viewportHeight / preferredRowHeight);
-            int rowHeight = Math.Max(preferredRowHeight, viewportHeight / visibleRows + 1);
-            // Keep Category book cards the same visual height as Author cards
-            // at the approved 1280x720 desktop size, even though this page has
-            // a shorter information panel and therefore a taller gallery.
-            // Retain rowHeight for vertical scrolling so the following row
-            // does not peek into the visible viewport.
-            int cardHeight = Math.Min(241, rowHeight - gap);
-            int titleHeight = 42;
-            int frameHeight = cardHeight - titleHeight;
-
-            _gallery.SuspendLayout();
-            _gallery.Width = viewportWidth;
-            foreach (var card in _gallery.Controls.OfType<Panel>())
-            {
-                card.Size = new Size(cardWidth, cardHeight);
-                var frame = card.Controls.OfType<Panel>()
-                    .FirstOrDefault(p => Equals(p.Tag, "cover-frame"));
-                if (frame is not null)
-                {
-                    frame.Bounds = new Rectangle(0, 0, cardWidth, frameHeight);
-                    var cover = frame.Controls.OfType<PictureBox>().FirstOrDefault();
-                    if (cover is not null)
-                        cover.Bounds = new Rectangle(7, 0, Math.Max(1, cardWidth - 7), frameHeight);
-                }
-                foreach (var label in card.Controls.OfType<Label>())
-                    if (Equals(label.Tag, "title"))
-                        label.Bounds = new Rectangle(0, frameHeight, cardWidth, titleHeight);
-            }
-            _gallery.Height = rows * rowHeight + 1;
-            _gallery.ResumeLayout(true);
-            _galleryScroll.RefreshMetrics();
-        }
-        finally { _galleryArranging = false; }
-    }
-
-    private Control MakeBookCard(Book book, out PictureBox cover)
-    {
-        var c = Theme.Colors;
-        var card = new Panel
-        {
-            Size = new Size(150, 232),
-            Margin = new Padding(0, 0, 12, 12),
-            Cursor = Cursors.Hand,
-            BackColor = c.SurfaceAlt
-        };
-        // Separate frame = reliable accent spine, independent of loaded images.
-        var frame = new Panel
-        {
-            Tag = "cover-frame",
-            Bounds = new Rectangle(0, 0, 150, 190),
-            BackColor = c.AccentSoft,
-            Cursor = Cursors.Hand
-        };
-        frame.Paint += (_, e) =>
-        {
-            using var spine = new SolidBrush(Theme.Colors.Accent);
-            e.Graphics.FillRectangle(spine, 0, 0, Math.Min(7, frame.Width), frame.Height);
-        };
-        cover = new PictureBox
-        {
-            Bounds = new Rectangle(7, 0, 143, 190),
-            BackColor = c.AccentSoft,
-            SizeMode = PictureBoxSizeMode.Zoom,
-            Cursor = Cursors.Hand
-        };
-        frame.Controls.Add(cover);
-        var title = new Label
-        {
-            Tag = "title",
-            Bounds = new Rectangle(0, 190, 150, 42),
-            Text = book.Title,
-            AutoEllipsis = true,
-            AutoSize = false,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Font = Theme.Caption,
-            BackColor = c.SurfaceAlt,
-            ForeColor = c.Text,
-            Cursor = Cursors.Hand,
-            Padding = new Padding(3, 1, 3, 1)
-        };
-        card.Controls.AddRange(new Control[] { frame, title });
-        foreach (var item in new Control[] { card, frame, cover, title })
-        {
-            item.Click += (_, _) => BookRequested?.Invoke(this, book.BookId);
-            item.MouseWheel += (_, e) => _galleryScroll.ScrollByPixels(e.Delta > 0 ? -244 : 244);
-            _tips.SetToolTip(item, "View Book: " + book.Title);
-        }
-        return card;
     }
 
     protected override void ApplyTheme()
@@ -484,27 +325,8 @@ public sealed class CategoryDetailsPage : ThemedUserControl
         _header.BackColor = c.Background;
         _heading.ForeColor = c.Text; _heading.Font = Theme.Title;
         _subtitle.ForeColor = c.TextMuted; _subtitle.Font = Theme.Body;
-        _galleryHeading.ForeColor = c.Text; _galleryHeading.Font = Theme.BodyStrong;
         _infoPanel.BackColor = c.Surface; _info.BackColor = c.Surface;
-        _gallery.BackColor = c.Background; _actions.BackColor = c.Background;
-        _galleryScroll.BackColor = c.Background;
-        foreach (var card in _gallery.Controls.OfType<Panel>())
-        {
-            card.BackColor = c.SurfaceAlt;
-            foreach (var frame in card.Controls.OfType<Panel>().Where(p => Equals(p.Tag, "cover-frame")))
-            {
-                frame.BackColor = c.AccentSoft;
-                frame.Invalidate();
-                foreach (var picture in frame.Controls.OfType<PictureBox>())
-                    picture.BackColor = c.AccentSoft;
-            }
-            foreach (var label in card.Controls.OfType<Label>())
-            {
-                label.BackColor = c.SurfaceAlt;
-                label.ForeColor = c.Text;
-                label.Font = Theme.Caption;
-            }
-        }
+        _actions.BackColor = c.Background;
         foreach (var (_, pair) in _fields)
         {
             pair.Caption.ForeColor = c.Text; pair.Caption.BackColor = c.Surface; pair.Caption.Font = Theme.Body;
@@ -697,15 +519,6 @@ public sealed class CategoryDetailsPage : ThemedUserControl
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing)
-        {
-            _tips.Dispose();
-            foreach (PictureBox image in _gallery.Controls.OfType<Panel>().SelectMany(card => card.Controls.OfType<Panel>()).SelectMany(frame => frame.Controls.OfType<PictureBox>()))
-            {
-                image.Image?.Dispose();
-                image.Image = null;
-            }
-        }
         base.Dispose(disposing);
     }
 }

@@ -52,6 +52,19 @@ public sealed class AssociatedBooksGallery : ThemedUserControl
     private bool _arranging;
     private int _bookCount;
 
+    /// <summary>Optional limits for details pages with larger gallery viewports.
+    /// Zero means no cap and preserves the accepted Author layout.</summary>
+
+    [System.ComponentModel.DesignerSerializationVisibility(
+        System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public int MaximumCardHeight { get; set; }
+
+    [System.ComponentModel.DesignerSerializationVisibility(
+        System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public int MaximumCardWidth { get; set; }
+
+
+
     public event EventHandler<int>? BookRequested;
 
     public AssociatedBooksGallery()
@@ -158,10 +171,14 @@ public sealed class AssociatedBooksGallery : ThemedUserControl
             int viewportHeight = Math.Max(1, _scroll.ClientSize.Height);
             int columns = Math.Max(1, (viewportWidth + Gap) / (170 + Gap));
             int cardWidth = Math.Max(125, (viewportWidth - columns * Gap) / columns);
+            if (MaximumCardWidth > 0)
+                cardWidth = Math.Min(MaximumCardWidth, cardWidth);
             int rows = (Math.Max(1, _bookCount) + columns - 1) / columns;
             int visibleRows = Math.Max(1, viewportHeight / PreferredRowHeight);
             int rowHeight = Math.Max(PreferredRowHeight, viewportHeight / visibleRows + 1);
             int cardHeight = rowHeight - Gap;
+            if (MaximumCardHeight > 0)
+                cardHeight = Math.Min(MaximumCardHeight, cardHeight);
             int frameHeight = cardHeight - TitleHeight;
 
             _gallery.SuspendLayout();

@@ -802,9 +802,11 @@ public sealed class AuthorsPage : ThemedUserControl
 
         string query = _search.Text.Trim();
 
-        int status = _filter.Visible
+
+        int status = CanManage
             ? _filter.StatusIndex
             : 1;
+
 
         var filtered = _authors
             .Where(a =>
