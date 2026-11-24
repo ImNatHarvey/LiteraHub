@@ -20,7 +20,12 @@ namespace LiteraHub.WinForms.Pages;
 /// <summary>In-shell Category Add/View/Edit, with a fixed information panel and scrollable books.</summary>
 public sealed class CategoryDetailsPage : ThemedUserControl
 {
-    private static readonly HttpClient Covers = new() { Timeout = TimeSpan.FromSeconds(8) };
+
+    private Task LoadCoverAsync(PictureBox target, string? path)
+    {
+        return CatalogCoverCache.LoadIntoAsync(target, path);
+    }
+
     private readonly ICategoryService _categories;
     private readonly IBookService _books;
     private readonly IPermissionService _permissions;
@@ -469,27 +474,6 @@ public sealed class CategoryDetailsPage : ThemedUserControl
             _tips.SetToolTip(item, "View Book: " + book.Title);
         }
         return card;
-    }
-
-    private async Task LoadCoverAsync(PictureBox target, string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path)) return;
-        try
-        {
-            byte[] bytes;
-            if (Uri.TryCreate(path, UriKind.Absolute, out var uri) &&
-                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
-                bytes = await Covers.GetByteArrayAsync(uri);
-            else if (File.Exists(path))
-                bytes = await File.ReadAllBytesAsync(path);
-            else return;
-            using var stream = new MemoryStream(bytes);
-            using var loaded = Image.FromStream(stream);
-            var clone = new Bitmap(loaded);
-            if (IsDisposed || target.IsDisposed) { clone.Dispose(); return; }
-            target.Image = clone;
-        }
-        catch { /* Cover is optional; keep the themed placeholder. */ }
     }
 
     protected override void ApplyTheme()
