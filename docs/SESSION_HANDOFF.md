@@ -1,143 +1,52 @@
 ---
 type: handoff
 project: LiteraHub
-updated: 2026-11-20
-status: step-6c7-and-ui-polish-user-accepted-unpushed
+updated: 2026-11-25
+status: f4-pushed-login-carousel-planning
 ---
 
 # LiteraHub — Session Handoff
 
-> **Current handoff (2026-11-20): Step 6C.7 and follow-up UI polish passed developer runtime tests. Older pending sections below are historical. Do not interpret them as the current status.**
+## Read first — authoritative current checkpoint
 
-## Read this first
+Repository: https://github.com/ImNatHarvey/LiteraHub  
+Verified latest pushed commit: `852b6a77d21a776a892abe294d4f4fdd4a52f249` (`feat: overhaul catalog validation and responsive feedback`).  
+User reports all F4.0–F4.4 acceptance tests passed (Visual Studio); assistant has not compiled the Windows app.
 
-We are **continuing an existing project**, not starting from scratch. The user is moving development into a ChatGPT Project called **LiteraHub**. The new conversation should review the academic case study, mockup, Claude history, original and previous master prompts, latest source ZIP and GitHub repository before coding.
+Four major catalog modules are developer-accepted: Books, Authors, Categories and Students. Shared gallery, details header/footer, loading/empty/error/retry feedback, themed CRUD success feedback, and hybrid validation all accepted. 1280×720 with expanded/collapsed sidebar and 1920×1080 are supported; nine themes are mandatory. 390×844 portrait support is retired from the acceptance plan.
 
-**Repository:** https://github.com/ImNatHarvey/LiteraHub  
-**Stack:** C# / .NET 10 / WinForms / SQL Server Express / Dapper  
-**Solution:** `LiteraHub.Core`, `LiteraHub.Data`, `LiteraHub.Services`, `LiteraHub.WinForms`.
+## What is NOT finished
 
-## Last developer-confirmed milestone
+- There is no common generic base class for the four catalog pages; intentional **component composition** replaces duplicated details/header/footer/gallery/feedback functionality. This refactor is substantially closed; no inheritance rewrite is needed before Login.
+- Existing `LoginForm.cs` remains a basic username/password dialog. **No repository-verified carousel or Forgot Password flow.**
+- Borrow & Return and Reports still need implementation/acceptance.
+- PSGC offline address selection is a new proposal, not yet implemented.
 
-**Step 5B.6 — Inventory Save Fix: all tests passed; user reported pushing.** Before that, Step 5B.5 filter/sort polish and gender icons also passed and were pushed. The last commit SHA was **not independently established in this handoff**; fetch it on restart. The repository's older docs may still describe author selection and book persistence as pending—those notes are stale.
+## New user decisions for the next implementation
 
-### Step 5B.6 root cause and fix
+1. User says monochrome images already exist under `LiteraHub.WinForms/Assets/Brand/Slide1`–`Slide3`, alongside logo. Inspect actual extensions, resource configuration, alpha channels and dimensions before code changes.
+2. Build Login as split panel with local three-slide carousel tinted according to the selected one of nine themes, using the approved theme engine. Do not modify source PNGs or fetch assets from the network. Preserve aspect ratio, antialiasing and accessibility. Handle resize, theme changes, slide animation timer disposal, inactive form and missing assets.
+3. No Google/email/SMS for account recovery. Recommend authenticated administrator-assisted reset (one-use temporary credential; hashed at rest; forced change; audit; secure last-admin recovery runbook), **subject to security/permission review**. Do not introduce a reset code that bypasses authentication.
+4. PSGC addresses: offline snapshot JSON from Philippine Statistics Authority 3Q 2026 PSGC source, cascading Region/Province (if applicable)/City-or-Municipality/Barangay; handle independent cities, older records, manual ZIP; schema mapping decision precedes code.
+5. User will delete `docs/AUTHOR_SELECTION_BATCH.md`; eight maintained docs are PROJECT_BRIEF, PROGRESS, DECISIONS, SESSION_HANDOFF, FILES, SCHEMA, OPEN_QUESTIONS, ENHANCEMENT_ROADMAP.
 
-`BookRepository.UpdateAsync` had calculated available copies from total minus an inferred outstanding count, causing a saved `Available=0` to appear as 1 when Total was raised to 1. The tested fix preserves `input.AvailableCopies` and counts actual active rows in `dbo.BorrowReturns` (`Status='Borrowed'`, `ReturnDate IS NULL`) for additional constraints. The Book Editor no longer assumes `Total-Available` is the active loan count. Confirm this implementation in the latest ZIP/GitHub before modifying it.
+## Next coding phases and acceptance gates
 
-## User-approved next sequence
+- **F5.0 asset/theme inspection:** inspect actual assets and existing `LoginForm`, Theme, `AuthService`, `IUserRepository`, ChangePassword, permissions. Decide slide tinting and reset administration scope.
+- **F5.1 login visuals:** programmatic WinForms two-panel desktop responsive Login; reusable carousel; keyboard/focus, validation states, show/hide password. Do not alter `AuthService` unless needed.
+- **F5.2 carousel rendering:** locally load Slide1–3; tint by theme, theme changes, transitions, disposal/cache, user navigation, DPI, 1280/1920 tests.
+- **F5.3 secure recovery:** define user-service permission, audit and temporary credential flow with single-use forced change; test roles, rate limits, disabled staff, last-admin scenario.
+- **F5.4 PSGC offline address UI:** separate milestone; source/versioned dataset/legacy mapping migration plan before altering Student records.
+- **Later:** atomic Borrow & Return and required Reports.
 
-1. **Step 6 — Students:** student records and case-study-compliant search, CRUD, archive/restore, safe deletion, themed responsive UI.
-2. **Step 7 — Authentication:** polish login UI and implement secure Forgot Password; review existing roles, account model and recovery constraints first.
-3. **Step 8 — Borrow & Return:** implement only after reliable student records, account access, and inventory are established.
-4. **Reports and final acceptance:** required four summary lists, case-study search and end-to-end testing.
+## Known invariants
 
-## Mandatory Student fields from case study
+- `AvailableCopies` stays explicitly editable; never compute active loans from Total-Available. Avoid negative inventory; actual loans impose constraints.
+- Student `HouseNo/Street/Municipality/CityProvince/ZipCode/Gender/MobileNo/Email` are required in service; MiddleName and Landline optional.
+- Auth separates staff roles from student records. Existing hashed passwords and `MustChangePassword` are not to be bypassed.
+- Deleting a student linked to a user or loan is blocked; photos remain local to the Windows account unless later redesigned.
+- Restore/search/filter/pagination/toolbar and Back-button focus must not regress.
 
-Student ID number; first, middle, last name; house number, street, municipality, city/province, ZIP; date of birth; gender; mobile, landline, email. The existing migration already creates `dbo.Students` with `StudentId` internal identity and `StudentNo` unique external ID; inspect its exact column constraints before designing forms.
+## Workflow
 
-## Architecture and UI rules
-
-- Business rules and permissions in Services; SQL and transactions in Data; contracts/models in Core; themed controls/pages in WinForms.
-- Preserve nine themes: Classic Light, Midnight Library, Sepia Paper, Forest Scholar, Slate & Teal, Lavender Dusk, Ocean Breeze, Rosewood, Graphite.
-- Respect tested layouts at 1280×720, 1920×1080, and 390×844.
-- Follow Categories/Authors/Books established patterns: toolbar, search, themed filter/sort submenus, active icons, action tooltips, pagination, confirmation dialogs, theme-safe scrollbars.
-- Student records and login accounts are distinct. The current `Users.StudentId` relationship is nullable; do not create student logins by default without explicit scope.
-- Preserve actual active-loan constraints and do not treat unavailable inventory as proof of an active loan.
-
-## User's coding workflow
-
-- Be concise; no repetitive acknowledgment or empty “next we will code” messages.
-- For feature/fix requests, inspect source and provide code in the same reply when possible.
-- Complete replacement `.cs` files with exact paths by default; tiny errors may use exact snippets.
-- For 1,000+ lines, supply downloadable full replacement file or ZIP.
-- Do not send PowerShell-based file modification scripts.
-- No fabricated compilation/test results. Wait for user to report “All passed” before suggesting commit.
-- Do not commit/push without explicit authorization.
-- Maintain `docs/*.md` as development evolves.
-
-## First instruction to new chat
-
-Inspect the latest uploaded source ZIP, GitHub and Case Study #5. Check `Migrations.cs` for Students, `Program.cs` for service wiring, `MainForm`/navigation for Student page placeholders, existing auth/permissions, and any student models/contracts. Step 6A foundation was added and user reported the build passed. Step 6B read-only Students List UI is now delivered for developer testing. Next: verify the 6B build and runtime behavior, then implement Step 6C Student Add/Edit. Do not begin Borrow & Return or redesign the whole application.
-
-## Latest batch update — Step 6B (2026-11-20)
-
-- 6A: user confirmed build passed; runtime tests not independently verified.
-- 6B delivered (uncompiled here): `LiteraHub.WinForms/Pages/StudentsPage.cs` added; `Program.cs` and `Forms/ShellForm.cs` updated for service wiring and navigation.
-- List features: student ID/name/email/address search, active/archived filter, sorting, page sizes 10/25/50/100, refresh, read-only grid.
-- No migration, account creation or permanent delete.
-- Next: developer build and UI regression tests; after acceptance Step 6C Student Add/Edit.
-- No commits or pushes performed.
-
-## Latest batch — Combined Step 6B.1 + 6C (2026-11-20)
-
-- User confirmed the original 6B Student List opens but requested Books-like themed controls, row chevrons, and a non-modal Student Details page.
-- Delivered full replacements: `LiteraHub.WinForms/Pages/StudentsPage.cs`; new `LiteraHub.WinForms/Pages/StudentDetailsPage.cs`.
-- Details opens read-only for existing students; Edit Student unlocks fields; Save Student calls the existing service; Cancel discards edits; Add Student starts editable; archive/restore requires confirmation.
-- Existing `Program.cs`, `ShellForm.cs`, Core/Data/Services and SQL schema remain unchanged from the previous 6A/6B installation.
-- Package is **not compiled or tested** in this environment; user must test with real student records and all theme presets/resolutions.
-- No new Markdown milestone file; only existing docs updated. Do not commit or push without user confirmation.
-- After acceptance, plan separate Books View/Edit mode and full authors display enhancement.
-
-
-### Current pending batch: Step 6C.1 Student UI correction
-Apply the provided replacements for `StudentsPage.cs`, `StudentDetailsPage.cs`, and new `ThemedStudentsFilterSort.cs`. Root cause: the previous Student toolbar allocated 135px to a nested 280px filter/sort container, causing clipped controls. Verify 1280×720, 1920×1080, portrait 390×844 and all nine themes; test student create, view, edit, archive/restore, search, status, sort and pagination. No DB or service changes. Do not mark accepted until user confirms.
-
-
-### Pending acceptance — Step 6C.2 (Student visual consistency)
-The user reported unthemed native Student filter popup and date picker, native scrollbar, oversized Add button, and poor Student Details layout. Latest replacement uses `ThemedStudentsFilterSort` based on `ThemedCatalogFilterSort` custom popup, uses `ScrollHost` and `ThemedBirthDateDialog`, and groups details into three sections. Replace only the three Student UI `.cs` files in the package. Previous 6C.1 was not accepted. No commit/push. Test builds, nine themes, 1280×720 / 1920×1080 / 390×844, create/view/edit/cancel/archive, dropdown and scrolling, then regression across Books/Categories/Authors. Books View/Edit enhancement remains next after acceptance.
-
-## Step 6C.3 handoff — pending developer tests
-- `StudentsPage.cs` list font/button/footer polish; `StudentDetailsPage.cs` three-column details, photo preview and local file cache, auto-generated student number, themed actions.
-- Do NOT claim hard deletion or shared photo storage: Delete is intentionally disabled, photos are per-user-local.
-- Test at 1280×720, 1920×1080, 390×844; nine themes; photo persists after closing/reopening on same Windows account; add/edit/view/archive/restore; catalog regressions.
-- Follow-up after acceptance: agree case-study-compliant student number policy and whether student photos require SQL-backed shared storage.
-
-### Latest delivered batch: Step 6C.4
-Separate fixed action footer below content surfaces for both Student Details and Book Editor; align Student Back chevron/initials and list footer. No student database migration, deletion service, or new Markdown file. Await developer build/UI regression tests; focus 1280×720, 1920×1080, portrait 390×844 and nine themes.
-
-### Step 6C.5 prepared (latest; pending developer tests)
-- User confirmed pushing Step 6C.4. Verified matching GitHub file blob SHAs for `StudentsPage.cs`, `StudentDetailsPage.cs`, and `BookEditorPage.cs` against the 6C.4 package.
-- Package changes Student pagination layout and data binding to match Books, copies the actual Book Editor Back control into Student Details, adjusts field label/input gaps, and adds proper upward/downward Archive/Restore icons. Book Editor's layout is preserved.
-- **Student hard delete newly implemented:** Core `IStudentService`/`IStudentRepository` add `DeleteAsync(int)`, `StudentService` enforces `ManageStudents` + `HardDelete`, `StudentRepository` executes parameterized guarded delete (not referenced by `BorrowReturns`/`Users`), and Shell passes existing `IPermissionService` to `StudentsPage`/`StudentDetailsPage` to control Delete permission. Existing FK constraints are preserved.
-- Test Admin vs Librarian permissions, delete an unreferenced test student, ensure a linked user/loan record cannot be deleted, and confirm Archive/Restore still works. Do not fabricate fixtures or delete actual school records.
-- Visual acceptance: compare list pagination and separators side by side with Books/Categories; compare Back button to Book Editor; test 1280×720, 1920×1080, 390×844 and nine themes.
-- No database migration or additional Markdown file. Source not compiled; user must build, test, and approve before any commit recommendation.
-- Next after acceptance: Books View → Edit → Save with full associated-author display.
-
-## Current handoff — Step 6C.6 + Books View Mode (2026-11-20)
-- Full replacements: `LiteraHub.WinForms/Controls/ThemedTextField.cs` and the six pages `BooksPage.cs`, `AuthorsPage.cs`, `CategoriesPage.cs`, `StudentsPage.cs`, `StudentDetailsPage.cs`, `BookEditorPage.cs`.
-- Existing book opens read-only with legible overlays and full author-name display; **Edit Book** unlocks existing controls; **Save Book** invokes the same persistence path. Cancel Edit and Back prompt to discard; Add Book remains editable. The archive/delete buttons are available when editing existing books.
-- Student detail fields stay enabled but use the new `ThemedTextField.ReadOnly` property for bold, legible display (excluding birthdate/gender, which have read-only labels).
-- Footer alignment normalized; Student row borders styled horizontal-only; Student form spacing/hover updated. All nine theme presets must be tested.
-- **Developer testing is pending**: 1280×720, 1920×1080, 390×844; Books view/edit/save and author display; inventory preservation; Student add/view/edit/delete/archive; other-module pagination regression.
-- No changes committed/pushed by assistant; latest working source reviewed against pushed GitHub source before patch.
-
-
-### Step 6C.6r — replacement verification and targeted visual repair (2026-11-20)
-- Re-issued complete Book View/Edit source and Student UI fixes. Student table now uses row-only dividers; footer typography and padding are standardized.
-- Includes a PowerShell verification script to distinguish misplaced replacement files or stale binaries from live layout defects.
-- Source changes not compiled or runtime-tested in assistant environment. Verify with clean solution rebuild and runtime screenshot before committing.
-
-## Step 6C.7 — source correction candidate (2026-11-20; NOT YET ACCEPTED)
-- Student grid: shared horizontal border configuration, no row dividers; pagination font set to Theme.Body without changing alignment.
-- Book View: Archive/Restore and Delete restored by prior partial package; Cancel Edit restores view without confirmation.
-- ThemedTextField: read-only values use a non-focusable themed display label; Student details uses this for text fields.
-- Book View labels and Student birthdate/gender display borders now draw with the active theme border color.
-- Student Restore action: uses normal themed foreground, including compact Restore caption.
-- Status: source-edited only. Compilation, all nine themes, breakpoints, CRUD, lookup, inventory, and runtime acceptance are pending developer tests.
-
-
-## Current checkpoint — accepted Step 6C.7 and UI polish (2026-11-20)
-
-The user confirmed **“everything passed”** after replacing complete individual C# files and resolving a CS8602 warning. Accepted behavior includes Student grid/font/status icons, Student Details View/Edit theme and button consistency, restored Book View actions, compact View Book, no-dialog Cancel, author reset, and left-aligned gender/category/condition values. This is **developer-reported acceptance**, not an assistant-run build.
-
-Accepted latest local replacements:
-- `LiteraHub.WinForms/Pages/StudentsPage.cs`
-- `LiteraHub.WinForms/Pages/StudentDetailsPage.cs`
-- `LiteraHub.WinForms/Pages/BookEditorPage.cs`
-- `LiteraHub.WinForms/Controls/ThemedAuthorPicker.cs`
-
-Do not overwrite these newer local files with earlier GitHub copies. GitHub `master` most recent observed commit: `172ea9d3c1` (2026-11-20 check); the newest accepted local files have **not been verified pushed**. Await user commit/push.
-
-Immediate next milestone: review `LoginForm.cs`, `AuthService.cs`, user repository/account permissions, and theme controls to implement Login UI polish and a secure Forgot Password workflow. After that, Borrow & Return, Reports, and final case-study testing. Follow source verification and preserve nine themes, resolutions, inventory, and case-study scope.
+Review current GitHub files before edits, send full replacements with exact paths, give focused test checklist, wait for explicit user acceptance before recommending commits. Never claim an independently successful .NET build. Update docs at each accepted checkpoint.

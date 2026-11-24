@@ -1,131 +1,66 @@
 # LiteraHub — File Map and Responsibilities
 
-**Updated:** 2026-11-20  
+**Updated:** 2026-11-25  
 **Repository:** https://github.com/ImNatHarvey/LiteraHub
 
+## Four-project solution
+
 ```text
-LiteraHub/
-├── LiteraHub.slnx
-├── LiteraHub.Core/         # models, interfaces, security contracts
-├── LiteraHub.Data/         # migrations, Dapper repositories
-├── LiteraHub.Services/     # business rules, authorization, metadata
-├── LiteraHub.WinForms/     # UI, pages, forms, custom controls, themes
-└── docs/                   # handoff, progress, architecture, scope
+LiteraHub.slnx
+LiteraHub.Core/           # contracts, models, permission definitions
+LiteraHub.Data/           # SQL bootstrap, migrations, Dapper repositories
+LiteraHub.Services/       # validation, authentication, book/student domain services
+LiteraHub.WinForms/       # WinForms program, pages, controls, themes, assets
+  Assets/Brand/           # logo and user-provided monochrome Slide1–Slide3 (verify names/extensions)
+  Forms/                  # LoginForm, ChangePasswordForm, ShellForm, ThemedMessageDialog
+  Pages/                  # four catalog pages and detail editors
+  Controls/               # themed and shared UI components
+  Theming/                # palettes, preferences
+ docs/                    # eight maintained Markdown documents
 ```
 
-## Verified/known implementation paths
+## Important exact source paths
 
-| Path | Purpose |
+| Path | Responsibility |
 |---|---|
-| `LiteraHub.Data/Bootstrap/Migrations.cs` | SQL tables, constraints and seed/migration logic |
-| `LiteraHub.Data/Repositories/BookRepository.cs` | Book persistence and Step 5B.6 inventory fix |
-| `LiteraHub.Services/Books/BookService.cs` | Book validation, permissions and orchestration |
-| `LiteraHub.Core/Models/BookModels.cs` | Book records and input models |
-| `LiteraHub.WinForms/Pages/BooksPage.cs` | Catalog grid, search/filter/sort, navigation |
-| `LiteraHub.WinForms/Pages/BookEditorPage.cs` | Dedicated Add/Edit Book page and inventory controls |
-| `LiteraHub.WinForms/Pages/CategoriesPage.cs` | Categories CRUD and filtering |
-| `LiteraHub.WinForms/Pages/AuthorsPage.cs` | Authors CRUD and filtering |
-| `LiteraHub.WinForms/Controls/ThemedBooksFilterSort.cs` | Books filter/sort menu |
-| `LiteraHub.WinForms/Controls/ThemeCategoryFilterSort.cs` | Shared Categories/Authors catalog filter/sort control (class name differs from file name) |
-| `LiteraHub.WinForms/Forms/LoginForm.cs` | Existing login form; UI polish pending |
-| `LiteraHub.Services/Security/AuthService.cs` | Existing authentication service |
-| `LiteraHub.WinForms/Program.cs` | Dependency composition and application bootstrap |
+| `LiteraHub.WinForms/Program.cs` | composition, DB bootstrap, login-to-shell flow |
+| `LiteraHub.WinForms/Forms/LoginForm.cs` | CURRENT basic login UI; planned split-panel carousel redesign |
+| `LiteraHub.WinForms/Forms/ChangePasswordForm.cs` | forced password change |
+| `LiteraHub.WinForms/Forms/ShellForm.cs` | dashboard, sidebar, themes/navigation |
+| `LiteraHub.WinForms/Forms/ThemedMessageDialog.cs` | theme-aware modal summaries; dynamic validation height |
+| `LiteraHub.WinForms/Pages/BooksPage.cs` | books list, search/filter/sort/paging, View navigation |
+| `LiteraHub.WinForms/Pages/BookEditorPage.cs` | book view/edit/add, ISBN, authors/category, inventory, F4 validation |
+| `LiteraHub.WinForms/Pages/AuthorsPage.cs` | authors list, filters and navigation |
+| `LiteraHub.WinForms/Pages/AuthorDetailsPage.cs` | author editor, gallery and F4 validation |
+| `LiteraHub.WinForms/Pages/CategoriesPage.cs` | categories list, filters and navigation |
+| `LiteraHub.WinForms/Pages/CategoryDetailsPage.cs` | category editor, gallery and F4 validation |
+| `LiteraHub.WinForms/Pages/StudentsPage.cs` | students directory and detail navigation |
+| `LiteraHub.WinForms/Pages/StudentDetailsPage.cs` | full student editor and local photo cache; required-field F4 validation |
+| `LiteraHub.WinForms/Controls/DetailsPageHeader.cs` | shared detail header / Back |
+| `LiteraHub.WinForms/Controls/DetailsActionFooter.cs` | shared detail action placement |
+| `LiteraHub.WinForms/Controls/AssociatedBooksGallery.cs` | author/category books and scrollbar behavior |
+| `LiteraHub.WinForms/Controls/LoadingHost.cs` | loading-skeleton host used in three catalog lists |
+| `LiteraHub.WinForms/Controls/CatalogEmptyState.cs` | reusable empty/error/retry card |
+| `LiteraHub.WinForms/Controls/CatalogActionFeedback.cs` | themed CRUD success toast |
+| `LiteraHub.WinForms/Controls/CatalogValidationController.cs` | shared hybrid validation |
+| `LiteraHub.WinForms/Controls/ThemedTextField.cs` | themed text input + danger border |
+| `LiteraHub.WinForms/Controls/ThemedAuthorPicker.cs` | searchable book author selection and aligned padding |
+| `LiteraHub.WinForms/Controls/ThemedCategoryPicker.cs` | searchable book category selection |
+| `LiteraHub.WinForms/Controls/ThemedFilterDropdown.cs` | selection control |
+| `LiteraHub.Services/Security/AuthService.cs` | staff sign-in and change password; no forgotten-password flow yet |
+| `LiteraHub.Services/Students/StudentService.cs` | authoritative required fields and domain validation |
+| `LiteraHub.Data/Bootstrap/Migrations.cs` | authoritative current database schema/versions |
+| `LiteraHub.Data/Repositories/BookRepository.cs` | book persistence and active-loan inventory rules |
+| `LiteraHub.Data/Repositories/StudentRepository.cs` | student SQL and guarded hard-delete |
 
-**Important:** Recheck all exact paths against the newest source ZIP/GitHub; this map is a handoff aid, not a claim that no files changed after it was prepared.
+## Planned additions — not yet present
 
-## Step 6 source inspection targets
+- `LiteraHub.WinForms/Controls/LoginCarousel.cs` — working name only; verify asset naming and theme-recolor implementation.
+- Offline PSGC asset e.g. `Assets/Data/psgc-2026-q3.json`, plus DTO/repository/selection UI. Choose final names after reviewing data format and Student fields.
+- Secure admin-driven password reset service and optional audit migration, subject to explicit permission and security design.
 
-- `Migrations.cs` student table and foreign keys.
-- Existing Student model, repository, service and interface (if any); do not assume they exist merely because the table exists.
-- Main shell/sidebar navigation and placeholder Student page.
-- Role/permission declarations and authorization service.
-- Existing themed table, form controls, filter/sort, pagination, confirmation dialogs.
+## Docs to maintain
 
-## Documentation index
+`PROJECT_BRIEF.md`, `PROGRESS.md`, `DECISIONS.md`, `SESSION_HANDOFF.md`, `FILES.md`, `SCHEMA.md`, `OPEN_QUESTIONS.md`, `ENHANCEMENT_ROADMAP.md`.
 
-- `PROJECT_BRIEF.md` — mandatory academic requirements.
-- `PROGRESS.md` — completed vs pending work.
-- `SESSION_HANDOFF.md` — next conversation context.
-- `DECISIONS.md` — architectural and product choices.
-- `SCHEMA.md` — migration-based schema summary.
-- `FILES.md` — project/file ownership.
-- `OPEN_QUESTIONS.md` — unresolved decisions.
-- `ENHANCEMENT_ROADMAP.md` — phased plan.
-- `AUTHOR_SELECTION_BATCH.md` — historical implementation batch record; may contain superseded “pending” notes.
-
-## Student Management — Step 6A/6B additions
-
-- `LiteraHub.Core/Models/StudentModels.cs` — Student and StudentInput models.
-- `LiteraHub.Core/Interfaces/IStudentRepository.cs`, `IStudentService.cs` — student contracts.
-- `LiteraHub.Data/Repositories/StudentRepository.cs` — Dapper student persistence.
-- `LiteraHub.Services/Students/StudentService.cs` — validation and permissions.
-- `LiteraHub.WinForms/Pages/StudentsPage.cs` — read-only Student List UI (Step 6B).
-- `LiteraHub.WinForms/Program.cs` — student service composition.
-- `LiteraHub.WinForms/Forms/ShellForm.cs` — Students navigation.
-
-## Combined Step 6B.1 + 6C
-
-- `LiteraHub.WinForms/Pages/StudentsPage.cs` — Books-style themed Student directory, search, status/sort, paging, chevron navigation, and in-shell details host.
-- `LiteraHub.WinForms/Pages/StudentDetailsPage.cs` — dedicated read-only Student Details and editable Add/Edit form; archive/restore actions.
-- Existing `Program.cs` and `ShellForm.cs` from 6B remain in use; no changes in this package.
-
-
-### Student UI Step 6C.1
-- `LiteraHub.WinForms/Controls/ThemedStudentsFilterSort.cs` — combined themed Student status/sort popup.
-- `LiteraHub.WinForms/Pages/StudentsPage.cs` — Books-aligned toolbar, table and pagination.
-- `LiteraHub.WinForms/Pages/StudentDetailsPage.cs` — responsive in-shell Student Details layout.
-
-
-### Step 6C.2 replacements
-- `LiteraHub.WinForms/Pages/StudentsPage.cs` — Student list themed typography and unchanged in-shell chevron navigation.
-- `LiteraHub.WinForms/Pages/StudentDetailsPage.cs` — grouped, responsive student form using existing `ScrollHost` and `ThemedBirthDateDialog`.
-- `LiteraHub.WinForms/Controls/ThemedStudentsFilterSort.cs` — custom painted menu consistent with Books/Categories instead of native `ContextMenuStrip`.
-- Existing `ScrollHost.cs`, `ThinScrollBar.cs`, `ThemedBirthDateDialog.cs`, `Theme.cs` are **dependencies**; do not overwrite them with this batch.
-
-### Step 6C.3 updated UI files
-- `LiteraHub.WinForms/Pages/StudentsPage.cs`: button/font/footer matching for student list.
-- `LiteraHub.WinForms/Pages/StudentDetailsPage.cs`: three-column details; themed controls and avatar; nested local-only `StudentPhotoStore`. No added `.cs` file or database migration.
-
-### Step 6C.4 affected files
-- `LiteraHub.WinForms/Pages/BookEditorPage.cs` — Book actions in a separate footer outside the book content surface.
-- `LiteraHub.WinForms/Pages/StudentDetailsPage.cs` — Student actions in a separate footer, custom Back chevron, centered and responsive avatar.
-- `LiteraHub.WinForms/Pages/StudentsPage.cs` — pagination alignment/typography and `Rows:` label.
-
-### Step 6C.5 modified source files (replacement paths)
-- `LiteraHub.WinForms/Pages/StudentsPage.cs`: Direct page-row binding, Books-style pagination and row action, passes delete permission.
-- `LiteraHub.WinForms/Pages/StudentDetailsPage.cs`: Matched Book Editor Back control, action styling, field spacing, guarded Delete handler.
-- `LiteraHub.WinForms/Forms/ShellForm.cs`: Pass existing `IPermissionService` into `StudentsPage`.
-- `LiteraHub.Core/Interfaces/IStudentService.cs`: `DeleteAsync(int studentId)` contract.
-- `LiteraHub.Core/Interfaces/IStudentRepository.cs`: `DeleteAsync(int studentId)` contract.
-- `LiteraHub.Services/Students/StudentService.cs`: Authorized delete with meaningful failure results.
-- `LiteraHub.Data/Repositories/StudentRepository.cs`: Parameterized SQL guarded by dependent user/loan records.
-- Existing docs updated: `docs/PROGRESS.md`, `docs/SESSION_HANDOFF.md`, `docs/FILES.md`.
-
-### Step 6C.6 updated files (pending developer acceptance)
-- `LiteraHub.WinForms/Controls/ThemedTextField.cs` — adds read-only property keeping theme colors and bold display text.
-- `LiteraHub.WinForms/Pages/{BooksPage,AuthorsPage,CategoriesPage,StudentsPage}.cs` — align footer text presentation; Students also applies horizontal-only cell separators.
-- `LiteraHub.WinForms/Pages/StudentDetailsPage.cs` — field spacing, readable view fields, birthdate/gender view overlays, Save and Archive visual parity.
-- `LiteraHub.WinForms/Pages/BookEditorPage.cs` — existing book starts read-only, displays all author names, Edit/Save mode toggle and discard navigation.
-- Existing docs updated: `PROGRESS.md`, `SESSION_HANDOFF.md`, `FILES.md`. No new docs.
-
-
-### Step 6C.6r — replacement verification and targeted visual repair (2026-11-20)
-- Re-issued complete Book View/Edit source and Student UI fixes. Student table now uses row-only dividers; footer typography and padding are standardized.
-- Includes a PowerShell verification script to distinguish misplaced replacement files or stale binaries from live layout defects.
-- Source changes not compiled or runtime-tested in assistant environment. Verify with clean solution rebuild and runtime screenshot before committing.
-
-Step 6C.7 candidate edits (unverified): `LiteraHub.WinForms/Pages/StudentsPage.cs`, `StudentDetailsPage.cs`, `BookEditorPage.cs`, and `LiteraHub.WinForms/Controls/ThemedTextField.cs`.
-
-
-## Latest accepted UI changes (2026-11-20)
-
-These are **existing files** updated in the developer-tested Step 6C.7 and follow-up polish; no additional source files were created.
-
-| Existing path | Current responsibility / recent change |
-|---|---|
-| `LiteraHub.WinForms/Pages/StudentsPage.cs` | Student directory, shared-theme table rendering and pagination; Active/Archived status icons and in-shell row navigation |
-| `LiteraHub.WinForms/Pages/StudentDetailsPage.cs` | Three-column student details, non-interactive themed View display, Edit/Cancel, archive/restore/delete permissions, left-aligned gender |
-| `LiteraHub.WinForms/Pages/BookEditorPage.cs` | Book View/Edit, compact view layout, Delete/Archive/Edit actions, no-dialog Cancel, left-aligned category/condition and author reset |
-| `LiteraHub.WinForms/Controls/ThemedAuthorPicker.cs` | Multi-author selection and reset of staged/unsaved changes when canceling Book edits |
-
-This current status supersedes older historical entries marked “pending.” The four locally accepted files have not yet been verified on GitHub.
+`AUTHOR_SELECTION_BATCH.md` is intentionally excluded and is to be deleted separately by the user. `LiteraHub.md` at repository root is a separate project note and **not** one of these eight files; its stale next-phase guidance should eventually be reconciled as well.

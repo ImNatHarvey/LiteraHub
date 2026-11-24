@@ -1,43 +1,51 @@
 # LiteraHub — Development Roadmap
 
-**Updated:** 2026-11-20  
-**Primary scope:** STI Balagtas Case Study #5
+**Updated:** 2026-11-25  
+**Primary scope:** STI Balagtas Case Study #5  
+**Verified GitHub checkpoint:** `852b6a77d21a776a892abe294d4f4fdd4a52f249`
 
-## Phase 1 — Foundation and completed catalog work
+## Complete: Catalog and shared foundation
 
-**Developer-tested/pushed (reported):** architecture and authentication foundation, themed shell, nine presets, responsive controls and scrollbars, Categories/Authors/Books CRUD, ISBN lookup, book cover preview, author selection, themed filter/sort menus, gender icons, and Step 5B.6 inventory consistency fix.
+- Existing .NET 10 / SQL Server / Dapper four-project architecture, login/auth baseline, nine-theme shell and desktop presets.
+- Categories, Authors, Books, Students CRUD, search/filter/sort/pagination, themed details, permissions and navigation.
+- F1 cover cache; F2 shared details header/footer/gallery; F3 loading/empty/error/retry/success-feedback; F4 theme-aware validation and compact-layout fixes.
+- Refactor conclusion: **shared composition is substantially complete**. No generic catalog inheritance rewrite necessary before Login.
 
-## Phase 2 — Student Management (NEXT)
+## F5: Login and identity (NEXT)
 
-- **6A:** inspect schema, permissions, sidebar, existing contracts; establish a testable foundation.
-- **6B:** Students listing: columns, search, filter/sort, pagination, action icons, theme/portrait behavior.
-- **6C:** Add/Edit Student: all case-study fields, unique StudentNo, validation, accessible controls.
-- **6D:** Archive/Restore/Delete with permissions, confirmation, and foreign-key/history safeguards.
-- **6E:** Test full-name/partial-name/StudentNo search, duplicate handling, database round trips, theme and responsive regressions.
+1. **F5.0 Source/asset verification:** inspect `LoginForm`, `AuthService`, password policy, account roles, theme preferences, and exact `Assets/Brand/Slide1`–`Slide3` artwork.
+2. **F5.1 Split-panel Login UI:** themed credentials form, show/hide password, focus and accessibility, 1280×720 / 1920×1080 adaptive sizing, nine themes.
+3. **F5.2 Carousel:** locally bundled slides tinted per theme, preserved alpha/contrast, simple indicators and navigation, optional gentle automatic transitions with lifecycle-safe timers and bitmap disposal.
+4. **F5.3 Login validation/security:** hybrid error presentation, no raw exception details, duplicate-request protection, existing `MustChangePassword` flow unchanged; verify auth behavior.
+5. **F5.4 Staff recovery:** authenticate an authorized administrator, issue a single-use random temporary credential with hashed storage and forced change, audit resets and rate-limit; explicit last-admin recovery runbook. No email and no universal/reset bypass code.
+6. **F5.5 Regression:** successful/invalid/disabled login, permissions, logout, forced change, all nine themes, both desktop sizes, asset fallback and no login-time internet dependency.
 
-The sequence may be adjusted after inspecting actual source, but do not skip mandatory student fields or required search.
+## F6: Offline PSGC address enhancement
 
-## Phase 3 — Authentication polish and recovery
+- Review official PSA Philippine Standard Geographic Code 3Q 2026 publication; convert to a **versioned local JSON snapshot** with provenance and validation.
+- Add cascading Region → Province (when applicable) → City/Municipality → Barangay choices with search and accessible keyboard interaction. Handle NCR and independent cities.
+- Preserve the current Student fields and older free-text addresses; plan an optional, separately approved migration if storing PSGC codes/barangay/region/province.
+- Do not infer ZIP from PSGC. Validate at 1280×720 expanded/collapsed sidebar, 1920×1080, all nine themes; no unwanted horizontal scrollbar.
 
-- Audit existing `LoginForm`, `AuthService`, users/roles, password hash and account provisioning.
-- Improve responsive login UI, themed focus/error states, show/hide password, keyboard access and feedback.
-- Choose and implement a secure Forgot Password flow appropriate to the desktop deployment (verified email delivery + expiring single-use tokens, or audited admin-assisted reset).
-- Add appropriate service/database protections and regression tests; do not introduce an insecure reset bypass.
+## F7: Borrow & Return (mandatory)
 
-## Phase 4 — Borrow & Return
+- Select student and borrowable book; search by student/name/ISBN, borrow/return dates.
+- Enforce policy, active-loan limits, permissions and inventory conditions. Use SQL transactions and concurrency-safe availability updates.
+- Record DueDate, ReturnDate, remarks, condition and staff identity; preserve history and negative-path tests.
 
-- Select existing student and available/borrowable book; validate permissions and loan policy.
-- Borrow and return in database transactions; prevent double borrowing and negative availability.
-- Record borrow/due/return dates, remarks, ISBN and return condition; preserve transaction history.
-- Search by dates, student name and ISBN; report overdue status.
-- Verify concurrent edits and inventory invariants.
+## F8: Reports and academic case-study acceptance (mandatory)
 
-## Phase 5 — Reports and case-study acceptance
+- Books per category, books per author, books per status, all books.
+- Verify mandatory search facilities in Books, Authors, Students and Borrow/Return.
+- Test migrations, database seed/upgrade, role controls, accessibility, offline behavior, theme stability and release/demo setup.
 
-- Books by category, author, status; all books.
-- Validate mandatory search facilities across Books, Authors, Students and Borrow/Return.
-- Run role, theme, portrait, database and packaging regression tests.
+## Deferred / optional cleanup
 
-## Future optional enhancements
+- Consolidate Student list loading architecture with `LoadingHost` if a concrete bug or maintenance need arises.
+- Extract painting/layout helpers from large forms as needed; do not destabilize accepted UI for arbitrary line-count reduction.
+- Add automated service/data tests prior to transactional circulation changes.
+- Future digital reader / notes / bookmarks / translation are non-MVP enhancements.
 
-Hybrid physical/digital catalog, licensed PDF/EPUB reader, highlights/notes/bookmarks, Parallel Read, translation/lookup, accessibility improvements and advanced analytics. These are **not** prerequisites for the academic MVP.
+## Collaboration protocol
+
+Full replacement `.cs` files with exact paths for larger changes; targeted snippets for one-line fixes. One tested batch at a time, user-controlled Git commits. `AUTHOR_SELECTION_BATCH.md` intentionally retired; eight updated docs form the maintained baseline.
