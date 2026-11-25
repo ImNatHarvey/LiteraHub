@@ -6,6 +6,7 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using LiteraHub.WinForms.Theming;
+using FontAwesome.Sharp;
 
 namespace LiteraHub.WinForms.Controls;
 
@@ -30,6 +31,30 @@ public sealed class ThemedTextField : ThemedUserControl
         Margin = Padding.Empty
     };
 
+    private readonly IconPictureBox _leadingIconControl = new()
+    {
+        IconChar = IconChar.UserAlt,
+        IconSize = 12,
+        SizeMode = PictureBoxSizeMode.CenterImage,
+        TabStop = false,
+        Visible = false
+    };
+    private IconChar? _leadingIcon;
+
+    /// <summary>Optional themed icon inside the leading edge of the field.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public IconChar? LeadingIcon
+    {
+        get => _leadingIcon;
+        set
+        {
+            _leadingIcon = value;
+            _leadingIconControl.Visible = value.HasValue;
+            if (value.HasValue) _leadingIconControl.IconChar = value.Value;
+            LayoutInput();
+        }
+    }
+
     private readonly ScrollTrack _scroll = new();
     // Non-focusable presentation of a read-only value, using the same themed frame.
     private readonly Label _display = new()
@@ -52,6 +77,7 @@ public sealed class ThemedTextField : ThemedUserControl
         {
             if (_hasValidationError == value) return;
             _hasValidationError = value;
+            _leadingIconControl.IconColor = value ? Theme.Colors.Danger : Theme.Colors.TextMuted;
             Invalidate();
         }
     }
@@ -131,6 +157,8 @@ public sealed class ThemedTextField : ThemedUserControl
         Cursor = Cursors.IBeam;
 
         Controls.Add(_input);
+        Controls.Add(_leadingIconControl);
+        _leadingIconControl.Click += (_, _) => { if (!_readOnly) _input.Focus(); };
         Controls.Add(_display);
         Controls.Add(_scroll);
 
@@ -342,7 +370,9 @@ public sealed class ThemedTextField : ThemedUserControl
 
     private void LayoutInputCore()
     {
-        const int left = 12;
+        int left = _leadingIcon.HasValue ? 43 : 12;
+        _leadingIconControl.SetBounds(9, 6, 27, Math.Max(1, ClientSize.Height - 10));
+        _leadingIconControl.BringToFront();
         const int right = 12;
         const int barWidth = 12;
 
@@ -409,6 +439,8 @@ public sealed class ThemedTextField : ThemedUserControl
         _input.BackColor = c.Surface;
         _input.ForeColor = c.Text;
         _input.Font = _readOnly ? Theme.BodyStrong : Theme.Body;
+        _leadingIconControl.BackColor = c.Surface;
+        _leadingIconControl.IconColor = _hasValidationError ? c.Danger : c.TextMuted;
         _display.BackColor = c.Surface;
         _display.ForeColor = c.Text;
         _display.Font = Theme.BodyStrong;

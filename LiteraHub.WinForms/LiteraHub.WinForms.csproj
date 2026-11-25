@@ -24,14 +24,11 @@
 		<None Update="appsettings.json">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
-		<!-- Fail the build if the intended logo file is missing. Embed for reliable
-         theme tinting regardless of deployment/output paths. -->
-		<EmbeddedResource Include="Assets\Brand\LiteraHub-Logo.png"
-						  LogicalName="LiteraHub.Brand.Logo" />
+		<EmbeddedResource Include="Assets\Brand\LiteraHub-Logo.png" LogicalName="LiteraHub.Brand.Logo" />
 		<Content Include="Assets\Brand\LiteraHub-Logo.png">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
-		<Content Include="Assets\Login\Slide*.png">
+		<Content Include="Assets\Brand\Slide*.png">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
 	</ItemGroup>
