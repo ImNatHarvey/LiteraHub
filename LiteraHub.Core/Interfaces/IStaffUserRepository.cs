@@ -10,4 +10,5 @@ public interface IStaffUserRepository
     Task<int> CreateAsync(StaffUserInput input, string passwordHash);
     Task<bool> UpdateAsync(int userId, StaffUserInput input);
     Task<bool> SetActiveAsync(int userId, bool isActive);
+    Task<bool> DeleteAsync(int userId);
 }

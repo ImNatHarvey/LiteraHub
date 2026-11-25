@@ -1502,8 +1502,7 @@ public sealed class BookEditorPage : ThemedUserControl
         catch (Exception ex)
         {
             if (!IsDisposed && !Disposing)
-                MessageBox.Show(FindForm(), ex.Message,
-                    "Unable to save book", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ThemedMessageDialog.ShowAlert(FindForm(), "Unable to save book", ex.Message, true);
         }
         finally
         {
@@ -1571,8 +1570,7 @@ public sealed class BookEditorPage : ThemedUserControl
         catch (Exception ex)
         {
             if (!IsDisposed && !Disposing)
-                MessageBox.Show(FindForm(), ex.Message,
-                    "LiteraHub", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ThemedMessageDialog.ShowAlert(FindForm(), "LiteraHub", ex.Message, true);
         }
         finally
         {

@@ -92,6 +92,15 @@ public sealed class StaffUserService : IStaffUserService
         catch (DbException) { return ServiceResult.Fail("Unable to change account status."); }
     }
 
+    public async Task<ServiceResult> DeleteAsync(int userId)
+    {
+        _permissions.Demand(Permission.ManageUsers);
+        _permissions.Demand(Permission.HardDelete);
+        if (userId == _session.Current?.UserId) return ServiceResult.Fail("You cannot delete your own account.");
+        try { return await _users.DeleteAsync(userId) ? ServiceResult.Ok() : ServiceResult.Fail("Account was not found or is still active. Archive it first."); }
+        catch (DbException) { return ServiceResult.Fail("Unable to delete this account. It may be referenced by library records; keep it archived."); }
+    }
+
     private static StaffUserInput Normalize(StaffUserInput input) =>
         new(input.Username.Trim(), input.RoleName.Trim());
 

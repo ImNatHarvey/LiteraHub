@@ -68,6 +68,17 @@ public sealed class StaffUserRepository : IStaffUserRepository
     public Task<bool> SetActiveAsync(int userId, bool isActive) =>
         ChangeAsync(userId, null, isActive);
 
+    public async Task<bool> DeleteAsync(int userId)
+    {
+        await using var db = _factory.CreateConnection();
+        await db.OpenAsync();
+        // Only archived staff accounts are eligible; foreign keys protect referenced records.
+        return await db.ExecuteAsync("""
+            DELETE u FROM dbo.Users u JOIN dbo.Roles r ON r.RoleId = u.RoleId
+            WHERE u.UserId = @UserId AND u.IsActive = 0 AND r.Name IN ('Admin', 'Librarian');
+            """, new { UserId = userId }) == 1;
+    }
+
     // Serializable transaction protects the last active Admin against simultaneous changes.
     private async Task<bool> ChangeAsync(int userId, StaffUserInput? input, bool? active)
     {

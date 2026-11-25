@@ -130,6 +130,7 @@ public sealed class CatalogValidationController : IDisposable
         {
             button.FlatAppearance.BorderSize = invalid ? 2 : 1;
             button.FlatAppearance.BorderColor = invalid ? Theme.Colors.Danger : Theme.Colors.Border;
+            button.ForeColor = invalid ? Theme.Colors.Danger : Theme.Colors.Text;
             button.Invalidate();
         }
 

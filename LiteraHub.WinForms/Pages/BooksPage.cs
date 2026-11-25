@@ -10,6 +10,7 @@ using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
 using LiteraHub.Core.Security;
 using LiteraHub.WinForms.Controls;
+using LiteraHub.WinForms.Forms;
 using LiteraHub.WinForms.Theming;
 
 namespace LiteraHub.WinForms.Pages;
@@ -732,12 +733,7 @@ public sealed class BooksPage : ThemedUserControl
 
                 if (existing is null)
                 {
-                    MessageBox.Show(
-                        FindForm(),
-                        "This book no longer exists.",
-                        "LiteraHub",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
+                    ThemedMessageDialog.ShowAlert(FindForm(), "LiteraHub", "This book no longer exists.");
 
                     await LoadBooksAsync();
                     return;
@@ -773,13 +769,8 @@ public sealed class BooksPage : ThemedUserControl
         {
             if (!IsDisposed && !Disposing)
             {
-                MessageBox.Show(
-                    FindForm(),
-                    "Unable to open book editor: " +
-                    ex.Message,
-                    "LiteraHub",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
+                ThemedMessageDialog.ShowAlert(FindForm(), "LiteraHub", "Unable to open book editor: " +
+                    ex.Message, true);
             }
         }
         finally

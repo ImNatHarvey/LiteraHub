@@ -4,6 +4,7 @@ using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
 using LiteraHub.Core.Security;
 using LiteraHub.WinForms.Controls;
+using LiteraHub.WinForms.Forms;
 using LiteraHub.WinForms.Theming;
 
 namespace LiteraHub.WinForms.Pages;
@@ -308,7 +309,7 @@ public sealed class StudentsPage : ThemedUserControl
         {
             Student? student = id.HasValue ? await _service.GetByIdAsync(id.Value) : null;
             if (IsDisposed || Disposing) return;
-            if (id.HasValue && student is null) { MessageBox.Show(FindForm(), "Student not found.", "Students"); await ReloadAsync(); return; }
+            if (id.HasValue && student is null) { ThemedMessageDialog.ShowAlert(FindForm(), "Students", "Student not found."); await ReloadAsync(); return; }
             var details = new StudentDetailsPage(_service, student, _permissions.Can(Permission.HardDelete)) { Dock = DockStyle.Fill };
             _details = details;
             details.BackRequested += async (_, _) => { CloseDetails(); await ReloadAsync(); };
@@ -316,7 +317,7 @@ public sealed class StudentsPage : ThemedUserControl
             _host.Controls.Add(details);
             details.BringToFront();
         }
-        catch (Exception ex) { MessageBox.Show(FindForm(), ex.Message, "Students", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        catch (Exception ex) { ThemedMessageDialog.ShowAlert(FindForm(), "Students", ex.Message, true); }
     }
 
     private void CloseDetails()

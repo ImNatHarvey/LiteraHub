@@ -51,22 +51,15 @@ internal static class Program
         }
         catch (DatabaseBootstrapException ex)
         {
-            MessageBox.Show(
-                ex.Message,
-                "LiteraHub: database error",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+            ThemedMessageDialog.ShowAlert(null, "LiteraHub: database error", ex.Message, true);
             return;
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
+            ThemedMessageDialog.ShowAlert(null, "LiteraHub: startup error",
                 ex.Message +
                 "\n\nIf this says appsettings.json was not found, " +
-                "set its 'Copy to Output Directory' to 'Copy if newer'.",
-                "LiteraHub: startup error",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+                "set its 'Copy to Output Directory' to 'Copy if newer'.", true);
             return;
         }
 
@@ -100,6 +93,9 @@ internal static class Program
         IStudentService students = new StudentService(
             new StudentRepository(connectionFactory), permissions);
 
+        IStaffUserService staffUsers = new StaffUserService(
+            new StaffUserRepository(connectionFactory), permissions, session, hasher);
+
         IBookMetadataService metadata =
             new OpenLibraryMetadataService();
 
@@ -111,7 +107,8 @@ internal static class Program
             books,
             authors,
             metadata,
-            students);
+            students,
+            staffUsers);
     }
 
     private static void RunSessions(
@@ -122,7 +119,8 @@ internal static class Program
         IBookService books,
         IAuthorCreationService authors,
         IBookMetadataService metadata,
-        IStudentService students)
+        IStudentService students,
+        IStaffUserService staffUsers)
     {
         while (true)
         {
@@ -161,7 +159,8 @@ internal static class Program
                 books,
                 authors,
                 metadata,
-                students);
+                students,
+                staffUsers);
 
             shell.ShowDialog();
             auth.Logout();

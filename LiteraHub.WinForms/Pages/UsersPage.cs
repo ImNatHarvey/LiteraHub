@@ -11,26 +11,29 @@ namespace LiteraHub.WinForms.Pages;
 public sealed class UsersPage : ThemedUserControl
 {
     private readonly IStaffUserService _service;
+    private readonly int? _currentUserId;
     private readonly Panel _host = new() { Dock = DockStyle.Fill };
-    private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(16) };
+    private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(Space.L), Margin = Padding.Empty };
     private readonly Label _title = new() { Text = "Users", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
-    private readonly TableLayoutPanel _toolbar = new() { Dock = DockStyle.Fill, ColumnCount = 5 };
+    private readonly TableLayoutPanel _toolbar = new() { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
     private readonly ThemedSearchBox _search = new() { Dock = DockStyle.Fill, Margin = new Padding(0, 4, 8, 4), Placeholder = "Search username or user ID..." };
-    private readonly ThemedFilterDropdown _role = new(new[] { "All roles", "Admin", "Librarian" }) { Dock = DockStyle.Fill, Margin = new Padding(0, 4, 8, 4) };
-    private readonly ThemedFilterDropdown _statusFilter = new(new[] { "All status", "Active", "Inactive" }) { Dock = DockStyle.Fill, Margin = new Padding(0, 4, 8, 4) };
-    private readonly ThemedFilterDropdown _sort = new(new[] { "Name A–Z", "Name Z–A", "Newest", "User ID" }) { Dock = DockStyle.Fill, Margin = new Padding(0, 4, 8, 4) };
+    private readonly ThemedUsersFilterSort _filter = new();
+    private readonly CatalogSortButton _sortControl = new();
+    private readonly CatalogFilterChips _activeChips = new();
+    private bool _compact;
+    private bool _responsiveInitialized;
     private readonly Button _add = new() { Text = "+ Add User", Dock = DockStyle.Fill, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Margin = new Padding(0, 4, 0, 4) };
     private readonly Label _summary = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
-    private readonly Panel _results = new() { Dock = DockStyle.Fill };
-    private readonly ThemedDataGridView _grid = new() { Dock = DockStyle.Fill, ReadOnlyDisplayMode = true };
+    private readonly Panel _results = new() { Dock = DockStyle.Fill, Margin = Padding.Empty, Padding = Padding.Empty };
+    private readonly ThemedDataGridView _grid = new() { Dock = DockStyle.Fill, Margin = Padding.Empty, ReadOnlyDisplayMode = true };
     private readonly CatalogEmptyState _empty = new();
-    private readonly TableLayoutPanel _pagination = new() { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(0, 12, 0, 0) };
-    private readonly Label _count = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
-    private readonly FlowLayoutPanel _pageButtons = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false };
+    private readonly TableLayoutPanel _pagination = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty, Padding = new Padding(0, 12, 0, 0) };
+    private readonly Label _count = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
+    private readonly FlowLayoutPanel _pageButtons = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Margin = Padding.Empty, Padding = Padding.Empty };
     private readonly Button _prev = new() { Text = "‹", Size = new Size(36, 32), FlatStyle = FlatStyle.Flat };
     private readonly Button _next = new() { Text = "›", Size = new Size(36, 32), FlatStyle = FlatStyle.Flat };
     private readonly Label _pageNumber = new() { Size = new Size(64, 32), TextAlign = ContentAlignment.MiddleCenter };
-    private readonly Label _rowsLabel = new() { Text = "Rows:", Size = new Size(42, 32), TextAlign = ContentAlignment.MiddleCenter };
+    private readonly Label _rowsLabel = new() { Text = "Rows:", AutoSize = false, Size = new Size(42, 32), TextAlign = ContentAlignment.MiddleCenter };
     private readonly ThemedFilterDropdown _rows = new(new[] { "10", "25", "50", "100" }) { Size = new Size(68, 32) };
     private readonly List<StaffUser> _all = new();
     private List<StaffUser> _filtered = new();
@@ -41,23 +44,14 @@ public sealed class UsersPage : ThemedUserControl
     private bool _loaded;
     private bool _failed;
 
-    public UsersPage(IStaffUserService service)
+    public UsersPage(IStaffUserService service, int? currentUserId = null)
     {
         _service = service;
+        _currentUserId = currentUserId;
         Dock = DockStyle.Fill;
         _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         foreach (int h in new[] { 50, 56, 36, 0, 60 })
             _layout.RowStyles.Add(h == 0 ? new RowStyle(SizeType.Percent, 100) : new RowStyle(SizeType.Absolute, h));
-        _toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        _toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 126));
-        _toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 128));
-        _toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 128));
-        _toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
-        _toolbar.Controls.Add(_search, 0, 0);
-        _toolbar.Controls.Add(_role, 1, 0);
-        _toolbar.Controls.Add(_statusFilter, 2, 0);
-        _toolbar.Controls.Add(_sort, 3, 0);
-        _toolbar.Controls.Add(_add, 4, 0);
         _layout.Controls.Add(_title, 0, 0);
         _layout.Controls.Add(_toolbar, 0, 1);
         _layout.Controls.Add(_summary, 0, 2);
@@ -66,6 +60,7 @@ public sealed class UsersPage : ThemedUserControl
         _layout.Controls.Add(_results, 0, 3);
         _pagination.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         _pagination.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300));
+        _pagination.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         _pageButtons.Controls.AddRange(new Control[] { _next, _pageNumber, _prev, _rows, _rowsLabel });
         foreach (Control c in _pageButtons.Controls) c.Margin = new Padding(4, 8, 0, 0);
         _pagination.Controls.Add(_count, 0, 0);
@@ -89,8 +84,15 @@ public sealed class UsersPage : ThemedUserControl
         {
             _grid.Columns[n]!.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
             _grid.Columns[n]!.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            _grid.Columns[n]!.HeaderCell.Style.Padding = Padding.Empty;
+            _grid.Columns[n]!.DefaultCellStyle.Padding = Padding.Empty;
         }
-        _grid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
+        _grid.CellBorderStyle = DataGridViewCellBorderStyle.None;
+        _grid.AutoGenerateColumns = false;
+        _grid.ReadOnly = true;
+        _grid.MultiSelect = false;
+        _grid.ShowCellToolTips = true;
+        _grid.DataBindingComplete += (_, _) => _grid.ClearRowSelection();
         _grid.DataSource = new List<StaffUser>();
         _grid.CellFormatting += (_, e) =>
         {
@@ -98,9 +100,9 @@ public sealed class UsersPage : ThemedUserControl
             if (_grid.Columns[e.ColumnIndex].Name == "Status") { e.Value = user.IsActive ? "Active" : "Inactive"; e.FormattingApplied = true; }
         };
         _grid.CellPainting += PaintIcons;
-        _grid.CellClick += async (_, e) =>
+        _grid.CellMouseUp += async (_, e) =>
         {
-            if (e.RowIndex < 0 || e.ColumnIndex < 0 || _grid.Columns[e.ColumnIndex].Name != "Actions") return;
+            if (e.Button != MouseButtons.Left || e.RowIndex < 0 || e.RowIndex >= _grid.Rows.Count || e.ColumnIndex < 0 || e.ColumnIndex >= _grid.Columns.Count || _grid.Columns[e.ColumnIndex].Name != "Actions") return;
             if (_grid.Rows[e.RowIndex].DataBoundItem is StaffUser user)
                 await OpenDetailsAsync(user.UserId);
         };
@@ -117,9 +119,7 @@ public sealed class UsersPage : ThemedUserControl
             };
         };
         _search.TextChanged += (_, _) => Filter();
-        _role.SelectedIndexChanged += (_, _) => Filter();
-        _statusFilter.SelectedIndexChanged += (_, _) => Filter();
-        _sort.SelectedIndexChanged += (_, _) => Filter();
+        _filter.SelectionChanged += (_, _) => { RefreshChips(); Filter(); };
         _rows.SelectedIndexChanged += (_, _) => { _size = new[] { 10, 25, 50, 100 }[_rows.SelectedIndex]; _page = 1; Render(); };
         _prev.Click += (_, _) => { _page--; Render(); };
         _next.Click += (_, _) => { _page++; Render(); };
@@ -129,9 +129,35 @@ public sealed class UsersPage : ThemedUserControl
             if (_failed) await LoadUsersAsync();
             else if (_all.Count == 0) await OpenDetailsAsync(null);
             else if (!string.IsNullOrWhiteSpace(_search.Text)) _search.Text = "";
-            else { _role.SelectedIndex = 0; _statusFilter.SelectedIndex = 0; Filter(); }
+            else _filter.ClearFilters();
         };
+        _sortControl.Configure(_filter.SortOptions, () => _filter.SortIndex, i => _filter.SetSort(i));
+        Resize += (_, _) => UpdateResponsive();
+        UpdateResponsive();
+        RefreshChips();
         ApplyTheme();
+    }
+
+    private void UpdateResponsive()
+    {
+        bool compact = ClientSize.Width < 590;
+        if (_responsiveInitialized && _compact == compact) return;
+        _responsiveInitialized = true;
+        _compact = compact;
+        CatalogToolbarChrome.Install(_layout, _toolbar, _summary, _search, _filter, _add, _sortControl, _activeChips, compact, true);
+        _add.Text = compact ? "+" : "+ Add User";
+        _add.Font = compact ? new Font("Segoe UI", 18f) : Theme.BodyStrong;
+        _pagination.ColumnStyles[1].Width = compact ? 245 : 300;
+        _title.Font = compact ? Theme.BodyStrong : Theme.Title;
+        _count.Font = compact ? Theme.Caption : Theme.Body;
+    }
+
+    private void RefreshChips()
+    {
+        var chips = new List<(string Text, Action Remove)>();
+        if (_filter.StatusIndex != 0) chips.Add((_filter.StatusIndex == 1 ? "Record: Active" : "Record: Archived", _filter.ClearStatus));
+        if (_filter.RoleIndex != 0) chips.Add(("Role: " + (_filter.RoleIndex == 1 ? "Admin" : "Librarian"), _filter.ClearRole));
+        CatalogToolbarChrome.ShowChips(_layout, _activeChips, chips, _filter.ClearFilters);
     }
 
     private void AddColumn(string key, string title, string? property, float weight, int min)
@@ -149,28 +175,64 @@ public sealed class UsersPage : ThemedUserControl
 
     private void PaintIcons(object? sender, DataGridViewCellPaintingEventArgs e)
     {
-        if (e.RowIndex < 0 || e.ColumnIndex < 0 ||
-            _grid.Rows[e.RowIndex].DataBoundItem is not StaffUser user) return;
-        string key = _grid.Columns[e.ColumnIndex].Name;
-        if (key is not ("Status" or "Actions")) return;
-        e.Paint(e.CellBounds, DataGridViewPaintParts.Background | DataGridViewPaintParts.Border);
-        var g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        int x = e.CellBounds.X + e.CellBounds.Width / 2;
-        int y = e.CellBounds.Y + e.CellBounds.Height / 2;
-        if (key == "Status")
+        if (e.RowIndex < 0 || e.ColumnIndex < 0) return;
+        if (e.Graphics is not Graphics graphics) return;
+
+        var c = Theme.Colors;
+        var rect = e.CellBounds;
+        using (var fill = new SolidBrush(e.RowIndex % 2 == 0 ? c.Surface : c.SurfaceAlt))
+            graphics.FillRectangle(fill, rect);
+
+        // Categories has a single subtle divider below each row, not cell boxes.
+        using (var divider = new Pen(c.Border))
+            graphics.DrawLine(divider, rect.Left, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
+
+        if (_grid.Columns[e.ColumnIndex].Name == "Status")
         {
-            var color = user.IsActive ? Theme.Colors.PillGoodText : Theme.Colors.Danger;
-            using var pen = new Pen(color, 2f);
-            g.DrawEllipse(pen, x - 9, y - 9, 18, 18);
-            if (user.IsActive)
-                g.DrawLines(pen, new[] { new Point(x - 5, y), new Point(x - 1, y + 4), new Point(x + 6, y - 4) });
-            else g.DrawLine(pen, x - 5, y, x + 5, y);
+            // The same check-in-circle / minus-in-circle status used by Authors.
+            bool active = e.RowIndex < _grid.Rows.Count &&
+                _grid.Rows[e.RowIndex].DataBoundItem is StaffUser user &&
+                user.IsActive;
+            int cx = rect.Left + rect.Width / 2;
+            int cy = rect.Top + rect.Height / 2;
+            var previous = graphics.SmoothingMode;
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using var pen = new Pen(active ? c.PillGoodText : c.Danger, 2f);
+            graphics.DrawEllipse(pen, cx - 9, cy - 9, 18, 18);
+            if (active)
+                graphics.DrawLines(pen, new[]
+                {
+                    new Point(cx - 5, cy),
+                    new Point(cx - 1, cy + 4),
+                    new Point(cx + 6, cy - 4)
+                });
+            else
+                graphics.DrawLine(pen, cx - 4, cy, cx + 4, cy);
+            graphics.SmoothingMode = previous;
+        }
+        else if (_grid.Columns[e.ColumnIndex].Name == "Actions")
+        {
+            var previous = graphics.SmoothingMode;
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using var pen = new Pen(c.Accent, 2.2f)
+            {
+                StartCap = LineCap.Round,
+                EndCap = LineCap.Round,
+                LineJoin = LineJoin.Round
+            };
+            int x = rect.Left + rect.Width / 2;
+            int y = rect.Top + rect.Height / 2;
+            graphics.DrawLines(pen, new[]
+            {
+                new Point(x - 4, y - 7), new Point(x + 3, y), new Point(x - 4, y + 7)
+            });
+            graphics.SmoothingMode = previous;
         }
         else
         {
-            using var pen = new Pen(Theme.Colors.TextMuted, 2f) { LineJoin = LineJoin.Round };
-            g.DrawLines(pen, new[] { new Point(x - 3, y - 6), new Point(x + 3, y), new Point(x - 3, y + 6) });
+            // Preserve DataGridView formatting for FullName, Status, alignment
+            // and the original Theme.Body font; do not paint native cell borders.
+            e.Paint(rect, DataGridViewPaintParts.ContentForeground);
         }
         e.Handled = true;
     }
@@ -216,11 +278,11 @@ public sealed class UsersPage : ThemedUserControl
         if (!_loaded || _failed || IsDisposed) return;
         string query = _search.Text.Trim();
         _filtered = _all.Where(u =>
-            (_role.SelectedIndex == 0 || string.Equals(u.RoleName, _role.SelectedIndex == 1 ? "Admin" : "Librarian", StringComparison.OrdinalIgnoreCase)) &&
-            (_statusFilter.SelectedIndex == 0 || u.IsActive == (_statusFilter.SelectedIndex == 1)) &&
+            (_filter.RoleIndex == 0 || string.Equals(u.RoleName, _filter.RoleIndex == 1 ? "Admin" : "Librarian", StringComparison.OrdinalIgnoreCase)) &&
+            (_filter.StatusIndex == 0 || u.IsActive == (_filter.StatusIndex == 1)) &&
             (query.Length == 0 || u.Username.Contains(query, StringComparison.OrdinalIgnoreCase) || u.UserId.ToString().Contains(query)))
             .ToList();
-        _filtered = (_sort.SelectedIndex switch
+        _filtered = (_filter.SortIndex switch
         {
             1 => _filtered.OrderByDescending(u => u.Username, StringComparer.OrdinalIgnoreCase),
             2 => _filtered.OrderByDescending(u => u.CreatedAt),
@@ -268,7 +330,7 @@ public sealed class UsersPage : ThemedUserControl
                 ThemedMessageDialog.ShowAlert(FindForm(), "Users", "Account no longer exists.");
                 return;
             }
-            _details = new UserDetailsPage(_service, user) { Dock = DockStyle.Fill };
+            _details = new UserDetailsPage(_service, user, _currentUserId) { Dock = DockStyle.Fill };
             _details.BackRequested += async (_, _) =>
             {
                 if (_details is null) return;
@@ -295,31 +357,41 @@ public sealed class UsersPage : ThemedUserControl
     {
         base.ApplyTheme();
         var c = Theme.Colors;
-        BackColor = c.Background;
-        _layout.BackColor = c.Background;
-        _host.BackColor = c.Background;
-        _results.BackColor = c.Background;
-        _title.Font = Theme.Title;
+        foreach (Control control in new Control[] { _host, _layout, _toolbar, _pagination, _pageButtons, _results }) control.BackColor = c.Background;
         _title.ForeColor = c.Text;
-        _summary.Font = Theme.Caption;
+        _title.Font = _compact ? Theme.BodyStrong : Theme.Title;
         _summary.ForeColor = c.TextMuted;
-        _count.Font = Theme.Body;
+        _summary.Font = Theme.Caption;
+        _count.BackColor = c.Background;
         _count.ForeColor = c.TextMuted;
+        _count.Font = _compact ? Theme.Caption : Theme.Body;
+        _count.Margin = Padding.Empty;
+        _count.Padding = Padding.Empty;
+        _count.TextAlign = ContentAlignment.MiddleLeft;
+        _pageNumber.BackColor = c.Background;
         _pageNumber.ForeColor = c.Text;
+        _rowsLabel.BackColor = c.Background;
         _rowsLabel.ForeColor = c.TextMuted;
-        foreach (var b in new[] { _prev, _next })
+        foreach (var button in new[] { _prev, _next })
         {
-            b.BackColor = c.Surface;
-            b.ForeColor = c.Text;
-            b.FlatAppearance.BorderSize = 1;
-            b.FlatAppearance.BorderColor = c.Border;
-            b.FlatAppearance.MouseOverBackColor = c.SurfaceAlt;
+            button.BackColor = c.Surface;
+            button.ForeColor = c.Text;
+            button.Font = Theme.BodyStrong;
+            button.FlatAppearance.BorderColor = c.Border;
+            button.FlatAppearance.BorderSize = 1;
         }
         _add.BackColor = c.Accent;
         _add.ForeColor = c.OnAccent;
-        _add.Font = Theme.BodyStrong;
         _add.FlatAppearance.BorderSize = 0;
-        _add.FlatAppearance.MouseOverBackColor = c.AccentSoft;
+        _add.Font = _compact ? new Font("Segoe UI", 18f) : Theme.BodyStrong;
+        _add.FlatAppearance.MouseOverBackColor = ControlPaint.Light(c.Accent, 0.08f);
+        _add.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(c.Accent, 0.08f);
+        _filter.ApplyTheme();
+        _sortControl.ApplyTheme();
+        _rows.ApplyTheme();
+        _grid.ApplyTheme();
+        _grid.CellBorderStyle = DataGridViewCellBorderStyle.None;
+        _grid.ClearRowSelection();
         _grid.Invalidate();
     }
 }

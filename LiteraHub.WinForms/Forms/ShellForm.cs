@@ -62,6 +62,7 @@ public sealed class ShellForm : Form
     private readonly IAuthorCreationService _authors;
     private readonly IBookMetadataService _metadata;
     private readonly IStudentService _students;
+    private readonly IStaffUserService _staffUsers;
 
     private readonly List<PageDef> _pages;
 
@@ -139,7 +140,8 @@ public sealed class ShellForm : Form
         IBookService books,
         IAuthorCreationService authors,
         IBookMetadataService metadata,
-        IStudentService students)
+        IStudentService students,
+        IStaffUserService staffUsers)
     {
         _session = session ??
             throw new ArgumentNullException(nameof(session));
@@ -164,6 +166,9 @@ public sealed class ShellForm : Form
 
         _students = students ??
             throw new ArgumentNullException(nameof(students));
+
+        _staffUsers = staffUsers ??
+            throw new ArgumentNullException(nameof(staffUsers));
 
         _pages = AllPages
             .Where(p => permissions.Can(p.Permission))
@@ -311,12 +316,8 @@ public sealed class ShellForm : Form
 
                 if (!ThemePreferences.TrySave(out var error))
                 {
-                    MessageBox.Show(
-                        "The theme was applied, but could not be saved." +
-                        Environment.NewLine + error,
-                        "LiteraHub: appearance settings",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning);
+                    ThemedMessageDialog.ShowAlert(this, "LiteraHub: appearance settings",
+                        "The theme was applied, but could not be saved." + Environment.NewLine + error);
                 }
             };
 
@@ -459,6 +460,11 @@ public sealed class ShellForm : Form
             next = authorsPage;
         }
 
+        else if (key == "users")
+        {
+            if (!_permissions.Can(Permission.ManageUsers)) return;
+            next = new UsersPage(_staffUsers, _session.Current?.UserId);
+        }
         else
         {
             next = new PlaceholderPage(
