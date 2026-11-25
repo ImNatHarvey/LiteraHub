@@ -28,6 +28,17 @@ public sealed class ThemedWindowControls : UserControl
     private Color _hover;
     private Color _danger;
     private Color? _surfaceOverride;
+    private bool? _maximizedOverride;
+
+    /// <summary>Raised when a host wants custom fullscreen behavior.</summary>
+    public event EventHandler? MaximizeRequested;
+
+    /// <summary>Update the glyph when host handles maximize outside WindowState.</summary>
+    public void SetMaximizedState(bool maximized)
+    {
+        _maximizedOverride = maximized;
+        SyncMaximizeIcon();
+    }
 
     [System.ComponentModel.DesignerSerializationVisibility(
         System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -120,6 +131,11 @@ public sealed class ThemedWindowControls : UserControl
     private void ToggleMaximize()
     {
         if (!_showMaximizeButton || FindTarget() is not { } form) return;
+        if (MaximizeRequested is not null)
+        {
+            MaximizeRequested.Invoke(this, EventArgs.Empty);
+            return;
+        }
         form.WindowState = form.WindowState == FormWindowState.Maximized
             ? FormWindowState.Normal : FormWindowState.Maximized;
         SyncMaximizeIcon();
@@ -130,7 +146,7 @@ public sealed class ThemedWindowControls : UserControl
     private void SyncMaximizeIcon()
     {
         if (_targetForm is null || _targetForm.IsDisposed) return;
-        bool maximized = _targetForm.WindowState == FormWindowState.Maximized;
+        bool maximized = _maximizedOverride ?? (_targetForm.WindowState == FormWindowState.Maximized);
         _maximize.IconChar = maximized ? IconChar.WindowRestore : IconChar.WindowMaximize;
         _maximize.AccessibleName = maximized ? "Restore window" : "Maximize window";
     }

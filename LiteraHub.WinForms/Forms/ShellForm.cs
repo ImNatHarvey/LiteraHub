@@ -1,5 +1,6 @@
 
 using FontAwesome.Sharp;
+using System.Runtime.InteropServices;
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
 using LiteraHub.Core.Security;
@@ -83,12 +84,20 @@ public sealed class ShellForm : Form
     private readonly TableLayoutPanel _topBar = new()
     {
         Dock = DockStyle.Fill,
-        ColumnCount = 2,
+        ColumnCount = 3,
         RowCount = 1
     };
 
     private readonly IconButton _demoButton = new();
     private readonly ContextMenuStrip _demoMenu = new();
+    private readonly ThemedWindowControls _windowControls = new()
+    {
+        ShowMinimizeButton = true,
+        ShowMaximizeButton = true,
+        Anchor = AnchorStyles.Right,
+        Margin = new Padding(0, 0, 4, 0)
+    };
+
 
     private readonly SidebarNav _nav = new()
     {
@@ -105,8 +114,19 @@ public sealed class ShellForm : Form
     private AuthorsPage? _bookOrigin;
     private CategoriesPage? _categoryBookOrigin;
 
-    private int _presetWidth = 1280;
-    private int _presetHeight = 720;
+    private bool _isFullscreen;
+    private bool _loadedWindow;
+    private const int NormalWidth = 1280;
+    private const int NormalHeight = 720;
+    private const int WmNcLButtonDown = 0x00A1;
+    private const int HtCaption = 2;
+
+    [DllImport("user32.dll")]
+    private static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
     private bool _userCollapsedSidebar;
 
     public bool LoggedOut { get; private set; }
@@ -154,13 +174,14 @@ public sealed class ShellForm : Form
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
 
-        Text = "LiteraHub";
-        FormBorderStyle = FormBorderStyle.FixedSingle;
-        // Keep the native Windows maximize caption button, but interpret it
-        // as a switch between the two supported desktop demo sizes.
-        MaximizeBox = true;
+        // No native caption or window title; all window buttons are themed.
+        Text = "LiteraHub"; // Accessible/taskbar title only, not drawn on the form.
+        FormBorderStyle = FormBorderStyle.None;
+        MaximizeBox = false;
+        MinimizeBox = true;
         StartPosition = FormStartPosition.CenterScreen;
         DoubleBuffered = true;
+        KeyPreview = true;
 
         _root.ColumnStyles.Add(
             new ColumnStyle(SizeType.Absolute, 220));
@@ -183,6 +204,9 @@ public sealed class ShellForm : Form
         // Flexible empty space on the left, Demo on the right.
         _topBar.ColumnStyles.Add(
             new ColumnStyle(SizeType.Percent, 100));
+
+        _topBar.ColumnStyles.Add(
+            new ColumnStyle(SizeType.AutoSize));
 
         _topBar.ColumnStyles.Add(
             new ColumnStyle(SizeType.AutoSize));
@@ -217,8 +241,15 @@ public sealed class ShellForm : Form
         _nav.ToggleRequested += (_, _) => ToggleNavigation();
         _nav.LogoutRequested += (_, _) => Logout();
 
-        // No page-title label in the upper header.
+        // No page title: right side has Demo and reusable themed caption buttons.
         _topBar.Controls.Add(_demoButton, 1, 0);
+        _topBar.Controls.Add(_windowControls, 2, 0);
+        _windowControls.Bind(this);
+        _windowControls.MaximizeRequested += (_, _) => ToggleFullscreen();
+
+        // Only unused header space drags; do not intercept Demo or caption buttons.
+        _topBar.MouseDown += DragShellFromHeader;
+        _topBar.DoubleClick += (_, _) => ToggleFullscreen();
 
         _main.Controls.Add(_topBar, 0, 0);
         _main.Controls.Add(_host, 0, 1);
@@ -243,7 +274,8 @@ public sealed class ShellForm : Form
         base.OnLoad(e);
 
         ApplyTheme();
-        ApplyWindowSize(_presetWidth, _presetHeight);
+        ApplyNormalWindowSize();
+        _loadedWindow = true;
 
         if (_pages.Count > 0)
             ShowPage(_pages[0].Key);
@@ -252,20 +284,16 @@ public sealed class ShellForm : Form
     private void BuildDemoMenu()
     {
         var sizeMenu = new ToolStripMenuItem("Window size");
-
-        foreach (var (label, w, h) in new[]
-                 {
-                     ("1920 x 1080", 1920, 1080),
-                     ("1280 x 720 (primary)", 1280, 720)
-                 })
+        var normal = new ToolStripMenuItem("1280 × 720 (Windowed)");
+        var full = new ToolStripMenuItem("Fullscreen (current monitor)");
+        normal.Click += (_, _) => SetFullscreen(false);
+        full.Click += (_, _) => SetFullscreen(true);
+        sizeMenu.DropDownItems.AddRange(new ToolStripItem[] { normal, full });
+        sizeMenu.DropDownOpening += (_, _) =>
         {
-            var item = new ToolStripMenuItem(label);
-
-            item.Click += (_, _) =>
-                ApplyWindowSize(w, h);
-
-            sizeMenu.DropDownItems.Add(item);
-        }
+            normal.Checked = !_isFullscreen;
+            full.Checked = _isFullscreen;
+        };
 
         var themeMenu = new ToolStripMenuItem("Appearance");
 
@@ -315,84 +343,62 @@ public sealed class ShellForm : Form
                 new Point(0, _demoButton.Height));
     }
 
-    // Windows sends SC_MAXIMIZE when the square title-bar button is pressed.
-    // We deliberately keep WindowState=Normal, sizing to one of LiteraHub's
-    // two desktop design presets instead of using OS full-screen maximize.
-    // Native title-bar double-click follows the same behavior.
-    private const int WmSysCommand = 0x0112;
-    private const long ScMaximize = 0xF030;
-    private const int WmNcLButtonDblClk = 0x00A3;
-    private const long HtCaption = 2;
+    // Fullscreen uses actual monitor bounds, including the taskbar area,
+    // rather than a hardcoded 1920x1080 size. A second click restores 1280x720.
+    private void ToggleFullscreen() => SetFullscreen(!_isFullscreen);
 
-    protected override void WndProc(ref Message m)
+    private void SetFullscreen(bool fullscreen)
     {
-        if (m.Msg == WmSysCommand &&
-            (m.WParam.ToInt64() & 0xFFF0) == ScMaximize)
-        {
-            ToggleDesktopWindowSize();
+        if (IsDisposed || Disposing || !_loadedWindow || _isFullscreen == fullscreen)
             return;
-        }
-        if (m.Msg == WmNcLButtonDblClk && m.WParam.ToInt64() == HtCaption)
+
+        _isFullscreen = fullscreen;
+        SuspendLayout();
+        try
         {
-            ToggleDesktopWindowSize();
-            return;
+            if (fullscreen)
+            {
+                // A borderless Normal-state form can occupy the entire display.
+                // Capture the display before changing this form's bounds.
+                var display = Screen.FromControl(this).Bounds;
+                WindowState = FormWindowState.Normal;
+                Bounds = display;
+            }
+            else
+            {
+                ApplyNormalWindowSize();
+            }
+
+            _nav.Compact = _userCollapsedSidebar;
+            _root.ColumnStyles[0].Width = Px(_userCollapsedSidebar ? 64 : 220);
+            _main.RowStyles[0].Height = Px(56);
+            _windowControls.SetMaximizedState(_isFullscreen);
         }
-        base.WndProc(ref m);
+        finally { ResumeLayout(performLayout: true); }
     }
 
-    private void ToggleDesktopWindowSize()
+    private void DragShellFromHeader(object? sender, MouseEventArgs e)
     {
-        if (!IsHandleCreated || Disposing || IsDisposed)
+        if (_isFullscreen || e.Button != MouseButtons.Left)
             return;
-
-        // A repeated click toggles 1280x720 <-> 1920x1080. The current
-        // record/page and collapsed state are not rebuilt or reset.
-        bool expand = _presetWidth == 1280;
-        ApplyWindowSize(expand ? 1920 : 1280, expand ? 1080 : 720);
+        ReleaseCapture();
+        SendMessage(Handle, WmNcLButtonDown, (IntPtr)HtCaption, IntPtr.Zero);
     }
 
     private int Px(int designPixels) =>
         (int)Math.Round(designPixels * DeviceDpi / 96f);
 
-    private void ApplyWindowSize(int width, int height)
+    private void ApplyNormalWindowSize()
     {
-        // Only the approved desktop presets are exposed. 390x844 is retired.
-        if (width != 1280 && width != 1920)
-            throw new ArgumentOutOfRangeException(nameof(width));
-        if (height != (width == 1280 ? 720 : 1080))
-            throw new ArgumentOutOfRangeException(nameof(height));
-
-        _presetWidth = width;
-        _presetHeight = height;
-
-        // Clamp to the working area, accounting for Windows frame/title bar.
-        // The preset remains 1920x1080 logically when the monitor is smaller.
-        var workingArea = Screen.FromControl(this).WorkingArea;
-        var frame = new Size(
-            Math.Max(0, Width - ClientSize.Width),
-            Math.Max(0, Height - ClientSize.Height));
-        var requested = new Size(Px(width), Px(height));
-        var available = new Size(
-            Math.Max(1, workingArea.Width - frame.Width),
-            Math.Max(1, workingArea.Height - frame.Height));
-        var actual = new Size(
-            Math.Min(requested.Width, available.Width),
-            Math.Min(requested.Height, available.Height));
-        bool fitted = actual != requested;
-
-        SuspendLayout();
-        try
-        {
-            ClientSize = actual;
-            _nav.Compact = _userCollapsedSidebar;
-            _root.ColumnStyles[0].Width = Px(_userCollapsedSidebar ? 64 : 220);
-            _main.RowStyles[0].Height = Px(56);
-        }
-        finally { ResumeLayout(performLayout: true); }
-
+        // Honor the 1280x720 design size, clamped on smaller displays.
+        var work = Screen.FromControl(this).WorkingArea;
+        ClientSize = new Size(
+            Math.Min(Px(NormalWidth), work.Width),
+            Math.Min(Px(NormalHeight), work.Height));
         CenterToScreen();
-        Text = $"LiteraHub - {width} x {height}" +
-               (fitted ? " (fit to screen)" : "");
+        _nav.Compact = _userCollapsedSidebar;
+        _root.ColumnStyles[0].Width = Px(_userCollapsedSidebar ? 64 : 220);
+        _main.RowStyles[0].Height = Px(56);
     }
 
     private void ToggleNavigation()
@@ -583,9 +589,10 @@ public sealed class ShellForm : Form
         _root.BackColor = c.Background;
         _main.BackColor = c.Background;
         _host.BackColor = c.Background;
-        _topBar.BackColor = c.Surface;
+        _topBar.BackColor = c.SurfaceAlt;
+        _windowControls.SetSurfaceColor(_topBar.BackColor);
 
-        _demoButton.BackColor = c.SurfaceAlt;
+        _demoButton.BackColor = c.Surface;
         _demoButton.ForeColor = c.Text;
         _demoButton.IconColor = c.Accent;
         _demoButton.Font = Theme.Body;
