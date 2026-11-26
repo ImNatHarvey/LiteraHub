@@ -1,8 +1,8 @@
 # LiteraHub — Development Progress
 
-**Updated:** 2026-11-25  
+**Updated:** 2026-11-26  
 **Repository:** `ImNatHarvey/LiteraHub`  
-**Latest verified push:** `852b6a77d21a776a892abe294d4f4fdd4a52f249` — `feat: overhaul catalog validation and responsive feedback`
+**Latest verified baseline:** `b2c2e4960bc572205e282c99321c8dc4197458cc` — overlap fix user module; F5.6.1 user-tested, final push pending verification.
 
 > Statuses refer to developer-reported Visual Studio/runtime tests plus observed GitHub commits. ChatGPT has not compiled the Windows solution independently. Older historical batch notes formerly in this file are superseded by this reconciled checkpoint; Git history preserves the implementation sequence.
 
@@ -31,20 +31,40 @@
 
 ## Refactor closure — decision
 
-- **Shared component extraction is substantially finished.** Pages still individually inherit from `ThemedUserControl`; no generalized `CatalogPageBase<T>` was implemented or is required before Login. Prefer composition over risky cross-module inheritance rewrites.
+- **Shared component extraction is substantially finished.** Pages still individually inherit from `ThemedUserControl`; no generalized `CatalogPageBase<T>` was implemented or is required before F6. Prefer composition over risky cross-module inheritance rewrites.
 - Deferred maintenance: `StudentsPage` loading does not use the same `LoadingHost` composition as other catalog lists; large page source files; automated testing for service and data invariants.
 
-## Immediate upcoming milestones
+## F5 accepted by user
 
-1. **F5 Login:** themed split-pane UI with local monochrome `Assets/Brand/Slide1`–`Slide3` artwork recolored per theme (file format/actual build resource names need verification); carousel; field-level validation; secure admin-assisted reset workflow; password-change regression.
-2. **PSGC offline addresses:** acquire authoritative dated Philippine Statistics Authority PSGC snapshot, convert/validate offline JSON, create Region → Province (where applicable) → City/Municipality → Barangay selectors, preserve existing Student input/service model until explicit migration approval.
-3. **Borrow & Return:** transactional loan/return logic, student/ISBN lookup, due dates, inventory integrity, permissions and history.
-4. **Reports:** all four required academic summary lists; exports only if prioritized.
-5. Final acceptance: roles, database, case-study search, offline operation, desktop themes, migrations and release packaging.
+- F5.0–F5.2: theme-adaptive split-screen login, three local carousel slides, validation, password visibility, and borderless themed window controls.
+- F5.3: staff CRUD, temporary passwords, personal names and Full Name search.
+- F5.3.5: granular RBAC, custom roles, permission-based navigation and transactional delegation checks.
+- F5.4: Profile & Settings, self-service name/username/password changes, recovery passkey management, nine-card theme picker, Go to Profile from own User Details.
+- F5.4.1: shared `ThemedDialogChrome`, 1px outline, flush-left accent stripe, draggable dialogs and themed notification feedback.
+- F5.5: offline recovery with hashed single-use 16-character alphanumeric passkeys, five failed attempts/15-minute lockout, issuance and regeneration audits, animated Forgot Password panel swap; mandatory password change stays in right login panel, confirmed sign-out returns to login.
+- F5.6: immutable protected System Owner identity for the bootstrap administrator; staff management cannot modify owner account; personal changes remain in Profile.
+- F5.6.1: equivalent-authority account changes require operation-specific owner authorization, existing RBAC permission and transactional checks; five failed attempts/15-minute persistent lockout, audit records, role escalation restrictions. Higher/incomparable permissions are blocked for non-owner actors. User-reported tests passed.
 
-## Next test gate
+Baseline GitHub commit: `b2c2e4960bc572205e282c99321c8dc4197458cc` (overlap fix user module). F5.6.1 replacement batch passed user-reported acceptance tests; its subsequent commit is not yet verified. No independent Windows build or SQL runtime test was performed for this documentation update.
 
-Login foundation: valid/invalid credentials, forced password change, logout, theme persistence and slide rendering on 9 themes, 1280×720 and 1920×1080, with no horizontal scrollbars or external network dependency. Reset and PSGC have separate acceptance gates.
+## F6 — PSGC offline address integration (NEXT)
+
+- Verify official PSA dataset release, provenance, format, attribution and redistribution terms; package versioned local snapshot. No live network required.
+- Searchable cascading Region → Province (where applicable) → City/Municipality → Barangay; reset dependent selections; handle NCR and independent cities, leading zeros and retired codes.
+- Preserve existing addresses and required fields, including editable house number, street and ZIP; never infer ZIP from PSGC. Decide persistence and legacy mapping before schema changes; use new migration only if needed.
+- Inspect Student models, repository, service, details page and themed selectors first. Test Add/Edit/View, legacy records, offline use, all nine themes, 1280×720 and maximized desktop with sidebar expanded/collapsed.
+
+## F7 — Borrow & Return
+
+- Implement student/book selection, due dates, loan limits, overdue detection, return condition/remarks and history. Atomic transactions, concurrency-safe inventory, no duplicate return; preserve explicitly entered zero availability. Search/filter/sort/pagination and RBAC.
+
+## F8 — Dashboard, Reports & Audit
+
+- Actual database counts, trends, mandatory books by category/author/status/all books reports, circulation and overdue reports, date filters, PDF export; activity log and notification center; integrate existing security audit events and enforce permissions.
+
+## F9 — Quality & Release
+
+- Automated service/integration tests, fresh-install and upgrade tests, permissions/security regression, all nine themes and compact/maximized desktop, warnings/obsolete code cleanup, documentation and academic demonstration.
 
 ## Documentation maintenance
 

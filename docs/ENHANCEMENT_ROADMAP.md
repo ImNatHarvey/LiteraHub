@@ -1,43 +1,45 @@
 # LiteraHub — Development Roadmap
 
-**Updated:** 2026-11-25  
+**Updated:** 2026-11-26  
 **Primary scope:** STI Balagtas Case Study #5  
-**Verified GitHub checkpoint:** `852b6a77d21a776a892abe294d4f4fdd4a52f249`
+**Verified GitHub baseline:** `b2c2e4960bc572205e282c99321c8dc4197458cc`; F5.6.1 user-tested, final push pending verification.
 
 ## Complete: Catalog and shared foundation
 
 - Existing .NET 10 / SQL Server / Dapper four-project architecture, login/auth baseline, nine-theme shell and desktop presets.
 - Categories, Authors, Books, Students CRUD, search/filter/sort/pagination, themed details, permissions and navigation.
 - F1 cover cache; F2 shared details header/footer/gallery; F3 loading/empty/error/retry/success-feedback; F4 theme-aware validation and compact-layout fixes.
-- Refactor conclusion: **shared composition is substantially complete**. No generic catalog inheritance rewrite necessary before Login.
+- Refactor conclusion: **shared composition is substantially complete**. No generic catalog inheritance rewrite necessary before F6.
 
-## F5: Login and identity (NEXT)
+## F5 — Completed (user-tested)
 
-1. **F5.0 Source/asset verification:** inspect `LoginForm`, `AuthService`, password policy, account roles, theme preferences, and exact `Assets/Brand/Slide1`–`Slide3` artwork.
-2. **F5.1 Split-panel Login UI:** themed credentials form, show/hide password, focus and accessibility, 1280×720 / 1920×1080 adaptive sizing, nine themes.
-3. **F5.2 Carousel:** locally bundled slides tinted per theme, preserved alpha/contrast, simple indicators and navigation, optional gentle automatic transitions with lifecycle-safe timers and bitmap disposal.
-4. **F5.3 Login validation/security:** hybrid error presentation, no raw exception details, duplicate-request protection, existing `MustChangePassword` flow unchanged; verify auth behavior.
-5. **F5.4 Staff recovery:** authenticate an authorized administrator, issue a single-use random temporary credential with hashed storage and forced change, audit resets and rate-limit; explicit last-admin recovery runbook. No email and no universal/reset bypass code.
-6. **F5.5 Regression:** successful/invalid/disabled login, permissions, logout, forced change, all nine themes, both desktop sizes, asset fallback and no login-time internet dependency.
+- F5.0–F5.2: theme-adaptive split-screen login, three local carousel slides, validation, password visibility, and borderless themed window controls.
+- F5.3: staff CRUD, temporary passwords, personal names and Full Name search.
+- F5.3.5: granular RBAC, custom roles, permission-based navigation and transactional delegation checks.
+- F5.4: Profile & Settings, self-service name/username/password changes, recovery passkey management, nine-card theme picker, Go to Profile from own User Details.
+- F5.4.1: shared `ThemedDialogChrome`, 1px outline, flush-left accent stripe, draggable dialogs and themed notification feedback.
+- F5.5: offline recovery with hashed single-use 16-character alphanumeric passkeys, five failed attempts/15-minute lockout, issuance and regeneration audits, animated Forgot Password panel swap; mandatory password change stays in right login panel, confirmed sign-out returns to login.
+- F5.6: immutable protected System Owner identity for the bootstrap administrator; staff management cannot modify owner account; personal changes remain in Profile.
+- F5.6.1: equivalent-authority account changes require operation-specific owner authorization, existing RBAC permission and transactional checks; five failed attempts/15-minute persistent lockout, audit records, role escalation restrictions. Higher/incomparable permissions are blocked for non-owner actors. User-reported tests passed.
 
-## F6: Offline PSGC address enhancement
+## F6 — PSGC offline address integration (NEXT)
 
-- Review official PSA Philippine Standard Geographic Code 3Q 2026 publication; convert to a **versioned local JSON snapshot** with provenance and validation.
-- Add cascading Region → Province (when applicable) → City/Municipality → Barangay choices with search and accessible keyboard interaction. Handle NCR and independent cities.
-- Preserve the current Student fields and older free-text addresses; plan an optional, separately approved migration if storing PSGC codes/barangay/region/province.
-- Do not infer ZIP from PSGC. Validate at 1280×720 expanded/collapsed sidebar, 1920×1080, all nine themes; no unwanted horizontal scrollbar.
+- Verify official PSA dataset release, provenance, format, attribution and redistribution terms; package versioned local snapshot. No live network required.
+- Searchable cascading Region → Province (where applicable) → City/Municipality → Barangay; reset dependent selections; handle NCR and independent cities, leading zeros and retired codes.
+- Preserve existing addresses and required fields, including editable house number, street and ZIP; never infer ZIP from PSGC. Decide persistence and legacy mapping before schema changes; use new migration only if needed.
+- Inspect Student models, repository, service, details page and themed selectors first. Test Add/Edit/View, legacy records, offline use, all nine themes, 1280×720 and maximized desktop with sidebar expanded/collapsed.
 
-## F7: Borrow & Return (mandatory)
+## F7 — Borrow & Return
 
-- Select student and borrowable book; search by student/name/ISBN, borrow/return dates.
-- Enforce policy, active-loan limits, permissions and inventory conditions. Use SQL transactions and concurrency-safe availability updates.
-- Record DueDate, ReturnDate, remarks, condition and staff identity; preserve history and negative-path tests.
+- Implement student/book selection, due dates, loan limits, overdue detection, return condition/remarks and history. Atomic transactions, concurrency-safe inventory, no duplicate return; preserve explicitly entered zero availability. Search/filter/sort/pagination and RBAC.
 
-## F8: Reports and academic case-study acceptance (mandatory)
+## F8 — Dashboard, Reports & Audit
 
-- Books per category, books per author, books per status, all books.
-- Verify mandatory search facilities in Books, Authors, Students and Borrow/Return.
-- Test migrations, database seed/upgrade, role controls, accessibility, offline behavior, theme stability and release/demo setup.
+- Actual database counts, trends, mandatory books by category/author/status/all books reports, circulation and overdue reports, date filters, PDF export; activity log and notification center; integrate existing security audit events and enforce permissions.
+
+## F9 — Quality & Release
+
+- Automated service/integration tests, fresh-install and upgrade tests, permissions/security regression, all nine themes and compact/maximized desktop, warnings/obsolete code cleanup, documentation and academic demonstration.
 
 ## Deferred / optional cleanup
 

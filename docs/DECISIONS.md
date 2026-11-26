@@ -1,6 +1,6 @@
 # LiteraHub — Architecture and Decisions Log
 
-**Updated:** 2026-11-25
+**Updated:** 2026-11-26
 
 ## Foundation and boundaries
 
@@ -17,20 +17,20 @@
 - The refactor strategy is **composition**, not mandatory inheritance from one generic catalog page base. Remaining localized duplication is acceptable until a specific feature justifies extraction.
 - All four catalog workflows and hybrid validations were developer-reported passed and pushed through commit `852b6a77` on 2026-11-25.
 
-## Login carousel — planned, not implemented
+## Authentication and security — accepted F5
 
-- Use the user's monochrome art in `LiteraHub.WinForms/Assets/Brand/Slide1`–`Slide3` and existing brand logo; inspect actual extensions and build actions when implementing.
-- For art designed as a monochrome foreground with transparency, apply theme tint using a cached colorized image derived from source alpha/luminance; never overwrite original assets. Choose suitable colors from `Theme.Colors` (Accent/Text/Surface) after checking each theme's contrast; keep backgrounds themed independently.
-- Recolor on theme changes and cache by source/theme/size. Preserve alpha, antialiasing, original aspect ratio and DPI; dispose generated bitmaps correctly. Avoid double tinting already colorized images.
-- Use local assets only; login works with animation disabled and without image loading. Respect reduced-motion preference where available; accessible Next/Previous/slide indicators and pause on form deactivation. No network dependency.
+- F5.0–F5.2: theme-adaptive split-screen login, three local carousel slides, validation, password visibility, and borderless themed window controls.
+- F5.3: staff CRUD, temporary passwords, personal names and Full Name search.
+- F5.3.5: granular RBAC, custom roles, permission-based navigation and transactional delegation checks.
+- F5.4: Profile & Settings, self-service name/username/password changes, recovery passkey management, nine-card theme picker, Go to Profile from own User Details.
+- F5.4.1: shared `ThemedDialogChrome`, 1px outline, flush-left accent stripe, draggable dialogs and themed notification feedback.
+- F5.5: offline recovery with hashed single-use 16-character alphanumeric passkeys, five failed attempts/15-minute lockout, issuance and regeneration audits, animated Forgot Password panel swap; mandatory password change stays in right login panel, confirmed sign-out returns to login.
+- F5.6: immutable protected System Owner identity for the bootstrap administrator; staff management cannot modify owner account; personal changes remain in Profile.
+- F5.6.1: equivalent-authority account changes require operation-specific owner authorization, existing RBAC permission and transactional checks; five failed attempts/15-minute persistent lockout, audit records, role escalation restrictions. Higher/incomparable permissions are blocked for non-owner actors. User-reported tests passed.
 
-## Password recovery — proposed design, pending security review
+The owner is an account identity, not an assignable role. The underlying Admin role remains. Own-account management routes through Profile. Owner approval does not confer missing permissions; approval is tied to a specific operation. The owner personally enters the password without disclosing it; separate owner sign-in is the stronger alternative. Audit records contain no plaintext credentials. Database safeguards do not defend against privileged SQL Server operators.
 
-- Desktop app runs without email/SMS/Google; **do not use a self-service reusable PIN, answer to security questions, public reset code or hardcoded master password**.
-- Preferred design: an authenticated administrator with an explicit `ResetStaffPasswords` permission can issue a single-use random temporary credential to another staff account, stored only as a strong password hash; force password change at next login, and write an auditable record of actor/target/time/outcome. Admin authentication/reverification, rate limiting and secure offline handling are required.
-- Do not permit an administrator to reset their own account via an unauthenticated dialog. Define a separate initial provisioning / last-admin lockout recovery runbook and authorization before coding.
-- The Login **Forgot Password?** action should explain "Contact your system administrator" and how a reset request is handled; no identity lookup disclosure.
-- Existing `AuthService` password hashing and `MustChangePassword` remain authoritative. Proposed changes may need a permission, user-service operation and versioned audit migration; not implemented yet.
+Use shared composition, theme-aware dialogs, and no native white caption bars. The compact shell is 1280×720; maximize fills the available display rather than forcing fixed 1920×1080. Preserve all nine themes.
 
 ## PSGC address selection — proposed design, not implemented
 

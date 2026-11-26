@@ -1,6 +1,6 @@
 # LiteraHub — Database Schema and Inventory Rules
 
-**Updated:** 2026-11-25  
+**Updated:** 2026-11-26  
 **Authoritative source:** `LiteraHub.Data/Bootstrap/Migrations.cs` and live SQL Server schema.
 
 > This is documentation, **not a migration**. Do not modify already-applied migrations in place. New fields/audit tables require new versioned migrations after examining current database constraints.
@@ -62,11 +62,23 @@ Persist explicitly chosen available count, including zero. `TotalCopies - Availa
 
 Status is constrained to `Borrowed`/`Returned`; `ReturnDate` may be null. The inventory fix identifies active loans as `Status='Borrowed' AND ReturnDate IS NULL`.
 
-## Users and offline password recovery plan
+## Accounts, roles and security migrations
 
-Known fields: `UserId`, `Username`, `PasswordHash`, `RoleId`, nullable `StudentId`, `MustChangePassword`, `IsActive`, `CreatedAt`; filtered unique index on nonnull StudentId.
+| Version | Changes |
+|---|---|
+| V1–V2 | Core tables, indexes and initial seed data |
+| V3 | Rename Good Condition to Good |
+| V4 | Multi-category book links |
+| V5 | Role descriptions/system flag, RolePermissions and seeded granular grants |
+| V6 | Users.RecoveryPasskeyHash NVARCHAR(100) NULL; RecoveryPasskeyCreatedAt DATETIME2(0) NULL |
+| V7 | Users.FirstName, MiddleName, LastName NVARCHAR(100) NULL (legacy rows preserved; service requires first/last for new/edited records) |
+| V8 | Users.RecoveryFailures INT default 0, RecoveryLockedUntil DATETIME2 NULL; RecoveryAudit |
+| V9 | Users.IsSystemOwner BIT default 0; filtered unique index UX_Users_OneSystemOwner; composite UQ_Users_OwnerIdentity; SystemOwnerAnchor composite FK; immutable anchor trigger |
+| V10 | OwnerAuthorizationState singleton and OwnerAuthorizationAudit |
 
-**No confirmed password-reset schema exists yet.** Proposed admin-assisted reset must reuse hashed password storage, force `MustChangePassword`, add an auditable change record via **new migration** if approved, protect authorization and prevent self-service bypass. No stored plaintext temporary credentials or universal recovery code.
+Users retain UserId, Username, PasswordHash, RoleId, nullable StudentId, MustChangePassword, IsActive and CreatedAt. RecoveryAudit: AuditId, nullable UserId and ActorUserId, EventType, CreatedAt. OwnerAuthorizationState: SingletonId, Failures, LockedUntil. OwnerAuthorizationAudit: AuditId, ActorUserId, TargetUserId, OwnerUserId, RequestedAction, Outcome, CreatedAt. Audit identifiers are historical records, not necessarily live user references.
+
+V9 existing database upgrade identifies UserId 1 only if active with active system Admin role; otherwise fails closed. During actual upgrade the original account was inactive and was explicitly restored after read-only verification; migration then passed user testing. Fresh installation seeds owner after migrations. Never silently promote another account or reset the database. Owner anchor protects identity, role and active state; app checks protect other personal/security fields. V10 checks permissions and approval within the account mutation transaction; failed attempts commit before mutation. Five failures/15 minutes for recovery and owner authorization. Hash secrets only, never log plaintext. Source: F5.6.1 Migrations.cs and DelegationGuard.cs. Verify live schema and final pushed source before F6.
 
 ## Proposed PSGC change impact — not yet migrated
 

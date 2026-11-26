@@ -1,6 +1,6 @@
 # LiteraHub — File Map and Responsibilities
 
-**Updated:** 2026-11-25  
+**Updated:** 2026-11-26  
 **Repository:** https://github.com/ImNatHarvey/LiteraHub
 
 ## Four-project solution
@@ -12,7 +12,7 @@ LiteraHub.Data/           # SQL bootstrap, migrations, Dapper repositories
 LiteraHub.Services/       # validation, authentication, book/student domain services
 LiteraHub.WinForms/       # WinForms program, pages, controls, themes, assets
   Assets/Brand/           # logo and user-provided monochrome Slide1–Slide3 (verify names/extensions)
-  Forms/                  # LoginForm, ChangePasswordForm, ShellForm, ThemedMessageDialog
+  Forms/                  # LoginForm, ShellForm, ThemedMessageDialog and specialized dialogs
   Pages/                  # four catalog pages and detail editors
   Controls/               # themed and shared UI components
   Theming/                # palettes, preferences
@@ -24,8 +24,7 @@ LiteraHub.WinForms/       # WinForms program, pages, controls, themes, assets
 | Path | Responsibility |
 |---|---|
 | `LiteraHub.WinForms/Program.cs` | composition, DB bootstrap, login-to-shell flow |
-| `LiteraHub.WinForms/Forms/LoginForm.cs` | CURRENT basic login UI; planned split-panel carousel redesign |
-| `LiteraHub.WinForms/Forms/ChangePasswordForm.cs` | forced password change |
+| `LiteraHub.WinForms/Forms/LoginForm.cs` | split-panel login, carousel, inline recovery and mandatory password change |
 | `LiteraHub.WinForms/Forms/ShellForm.cs` | dashboard, sidebar, themes/navigation |
 | `LiteraHub.WinForms/Forms/ThemedMessageDialog.cs` | theme-aware modal summaries; dynamic validation height |
 | `LiteraHub.WinForms/Pages/BooksPage.cs` | books list, search/filter/sort/paging, View navigation |
@@ -47,17 +46,29 @@ LiteraHub.WinForms/       # WinForms program, pages, controls, themes, assets
 | `LiteraHub.WinForms/Controls/ThemedAuthorPicker.cs` | searchable book author selection and aligned padding |
 | `LiteraHub.WinForms/Controls/ThemedCategoryPicker.cs` | searchable book category selection |
 | `LiteraHub.WinForms/Controls/ThemedFilterDropdown.cs` | selection control |
-| `LiteraHub.Services/Security/AuthService.cs` | staff sign-in and change password; no forgotten-password flow yet |
+| `LiteraHub.Services/Security/AuthService.cs` | staff sign-in and password changes |
 | `LiteraHub.Services/Students/StudentService.cs` | authoritative required fields and domain validation |
 | `LiteraHub.Data/Bootstrap/Migrations.cs` | authoritative current database schema/versions |
 | `LiteraHub.Data/Repositories/BookRepository.cs` | book persistence and active-loan inventory rules |
 | `LiteraHub.Data/Repositories/StudentRepository.cs` | student SQL and guarded hard-delete |
 
-## Planned additions — not yet present
+## F5 source map (verify exact signatures in latest source)
 
-- `LiteraHub.WinForms/Controls/LoginCarousel.cs` — working name only; verify asset naming and theme-recolor implementation.
-- Offline PSGC asset e.g. `Assets/Data/psgc-2026-q3.json`, plus DTO/repository/selection UI. Choose final names after reviewing data format and Student fields.
-- Secure admin-driven password reset service and optional audit migration, subject to explicit permission and security design.
+| Path | Responsibility |
+|---|---|
+| `LiteraHub.WinForms/Pages/UsersPage.cs`, `UserDetailsPage.cs` | Staff directory and permission-aware details; owner/peer protection |
+| `LiteraHub.WinForms/Pages/ProfilePage.cs` | Self-service account/security and appearance |
+| `LiteraHub.WinForms/Controls/ThemedDialogChrome.cs` | Shared frame and drag behavior |
+| `LiteraHub.WinForms/Controls/ThemedWindowControls.cs` | Shared caption controls |
+| `LiteraHub.WinForms/Forms/ThemePickerDialog.cs`, `ChangeNameDialog.cs`, `ChangeUsernameDialog.cs` | Profile dialogs |
+| `LiteraHub.WinForms/Forms/StaffCredentialsDialog.cs`, `OwnerAuthorizationDialog.cs` | One-time credential display and owner approval |
+| `LiteraHub.Core/Interfaces/IProfileService.cs`, `IRecoveryService.cs`, `IStaffUserService.cs`, `IStaffUserRepository.cs` | Security contracts |
+| `LiteraHub.Core/Models/ProfileModels.cs`, `StaffUserModels.cs` | Account models |
+| `LiteraHub.Services/Security/ProfileService.cs`, `RecoveryService.cs`, `StaffUserService.cs`, `PermissionService.cs` | Security/business rules |
+| `LiteraHub.Data/Repositories/ProfileRepository.cs`, `RecoveryRepository.cs`, `StaffUserRepository.cs`, `DelegationGuard.cs`, `RoleRepository.cs` | Transactional security persistence and enforcement |
+| `LiteraHub.Data/Bootstrap/Migrations.cs`, `DatabaseBootstrapper.cs` | Automatic schema upgrades and seed |
+
+F6 planned: local versioned PSGC data and reusable searchable address selectors; exact paths and persistence to be decided after inspecting Student code. F7–F9 remain pending.
 
 ## Docs to maintain
 
