@@ -121,7 +121,7 @@ public sealed class DetailsPageHeader : TableLayoutPanel
     }
 
     // Draws the same theme-aware Back control used in accepted Author Details.
-    private sealed class DetailsBackButton : Control
+    public sealed class DetailsBackButton : Control
     {
         private bool _hovered;
 
@@ -132,7 +132,15 @@ public sealed class DetailsPageHeader : TableLayoutPanel
                 ControlStyles.Selectable, true);
             Cursor = Cursors.Hand;
             TabStop = true;
+            Text = "Back";
             AccessibleName = "Back";
+        }
+
+        protected override void OnTextChanged(EventArgs e)
+        {
+            base.OnTextChanged(e);
+            AccessibleName = Text;
+            Invalidate();
         }
 
         public void RefreshTheme()
@@ -178,7 +186,8 @@ public sealed class DetailsPageHeader : TableLayoutPanel
             g.FillRectangle(background, ClientRectangle);
             using var border = new Pen(c.Border);
             g.DrawRectangle(border, 0, 0, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
-            int iconX = 18;
+            int textWidth = TextRenderer.MeasureText(Text, Font, Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width;
+            int iconX = Math.Max(10, (Width - textWidth - 26) / 2 + 7);
             int iconY = Height / 2;
             using var pen = new Pen(Enabled ? c.Accent : c.TextMuted, 2.2f)
             {
@@ -192,10 +201,10 @@ public sealed class DetailsPageHeader : TableLayoutPanel
                 new Point(iconX - 2, iconY),
                 new Point(iconX + 4, iconY + 6)
             });
-            TextRenderer.DrawText(g, "Back", Font,
-                new Rectangle(31, 0, Math.Max(0, Width - 34), Height),
+            TextRenderer.DrawText(g, Text, Font,
+                new Rectangle(iconX + 13, 0, Math.Max(0, Width - iconX - 16), Height),
                 Enabled ? c.Text : c.TextMuted,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
             if (Focused && ShowFocusCues)
                 ControlPaint.DrawFocusRectangle(g, new Rectangle(3, 3,
                     Math.Max(0, Width - 6), Math.Max(0, Height - 6)));

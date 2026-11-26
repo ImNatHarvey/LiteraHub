@@ -15,6 +15,15 @@ public sealed class ThemedUsersFilterSort : IconButton
     private Form? _popup;
     public int StatusIndex { get; private set; }
     public int RoleIndex { get; private set; }
+    private string[] _roleNames = { "All Roles" };
+    public string SelectedRoleName => _roleNames[RoleIndex];
+    public void SetRoleNames(IEnumerable<string> names)
+    {
+        string previous = SelectedRoleName;
+        _roleNames = new[] { "All Roles" }.Concat(names.Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)).ToArray();
+        RoleIndex = Math.Max(0, Array.FindIndex(_roleNames, n => string.Equals(n, previous, StringComparison.OrdinalIgnoreCase)));
+    }
     public int SortIndex { get; private set; }
     public event EventHandler? SelectionChanged;
 
@@ -255,11 +264,11 @@ public sealed class ThemedUsersFilterSort : IconButton
 
         Heading("ROLE");
         Option(RoleIndex == 0 ? "All Roles" :
-            "Role: " + new[] { "All", "Admin", "Librarian" }[RoleIndex],
+            "Role: " + SelectedRoleName,
             "submenu", RoleIndex != 0, () => { },
             child: true, openChild: anchor =>
             {
-                string[] names = { "All Roles", "Admin", "Librarian" };
+                string[] names = _roleNames;
                 var choices = new List<(string, string, bool, Action)>();
                 for (int i = 0; i < names.Length; i++)
                 {

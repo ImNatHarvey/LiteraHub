@@ -67,7 +67,9 @@ internal static class Program
             new SqlConnectionFactory(bootstrap.ConnectionString);
 
         var session = new SessionContext();
-        var permissions = new PermissionService(session);
+        var roleRepository = new RoleRepository(connectionFactory);
+        var permissions = new PermissionService(session, roleRepository);
+        IRoleService roles = new RoleService(roleRepository, permissions, session);
 
         var users = new UserRepository(connectionFactory);
         var auth = new AuthService(users, hasher, session);
@@ -108,7 +110,7 @@ internal static class Program
             authors,
             metadata,
             students,
-            staffUsers);
+            staffUsers, roles);
     }
 
     private static void RunSessions(
@@ -120,7 +122,7 @@ internal static class Program
         IAuthorCreationService authors,
         IBookMetadataService metadata,
         IStudentService students,
-        IStaffUserService staffUsers)
+        IStaffUserService staffUsers, IRoleService roles)
     {
         while (true)
         {
@@ -160,7 +162,7 @@ internal static class Program
                 authors,
                 metadata,
                 students,
-                staffUsers);
+                staffUsers, roles);
 
             shell.ShowDialog();
             auth.Logout();

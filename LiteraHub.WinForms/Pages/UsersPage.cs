@@ -1,4 +1,5 @@
-﻿using System.Drawing.Drawing2D;
+﻿using FontAwesome.Sharp;
+using System.Drawing.Drawing2D;
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
 using LiteraHub.WinForms.Controls;
@@ -12,6 +13,9 @@ public sealed class UsersPage : ThemedUserControl
 {
     private readonly IStaffUserService _service;
     private readonly int? _currentUserId;
+    private readonly IRoleService? _roles;
+    private RolesPage? _rolesPage;
+    private readonly IconButton _manageRoles = new() { Text = "Manage Roles", Dock = DockStyle.Right, Width = 160, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, IconChar = IconChar.ShieldAlt, IconSize = 20, ImageAlign = ContentAlignment.MiddleCenter, TextAlign = ContentAlignment.MiddleCenter, TextImageRelation = TextImageRelation.ImageBeforeText };
     private readonly Panel _host = new() { Dock = DockStyle.Fill };
     private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(Space.L), Margin = Padding.Empty };
     private readonly Label _title = new() { Text = "Users", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
@@ -44,15 +48,20 @@ public sealed class UsersPage : ThemedUserControl
     private bool _loaded;
     private bool _failed;
 
-    public UsersPage(IStaffUserService service, int? currentUserId = null)
+    public UsersPage(IStaffUserService service, int? currentUserId = null, IRoleService? roles = null)
     {
         _service = service;
         _currentUserId = currentUserId;
+        _roles = roles;
         Dock = DockStyle.Fill;
         _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         foreach (int h in new[] { 50, 56, 36, 0, 60 })
             _layout.RowStyles.Add(h == 0 ? new RowStyle(SizeType.Percent, 100) : new RowStyle(SizeType.Absolute, h));
-        _layout.Controls.Add(_title, 0, 0);
+        var heading = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
+        heading.Controls.Add(_title); heading.Controls.Add(_manageRoles); _manageRoles.BringToFront();
+        _layout.Controls.Add(heading, 0, 0);
+        _manageRoles.Visible = _roles is not null;
+        _manageRoles.Click += (_, _) => OpenRoles();
         _layout.Controls.Add(_toolbar, 0, 1);
         _layout.Controls.Add(_summary, 0, 2);
         _results.Controls.Add(_grid);
@@ -138,6 +147,22 @@ public sealed class UsersPage : ThemedUserControl
         ApplyTheme();
     }
 
+    private void OpenRoles()
+    {
+        if (_roles is null || _busy || _details is not null || _rolesPage is not null) return;
+        var page = new RolesPage(_roles) { Dock = DockStyle.Fill };
+        _rolesPage = page;
+        page.BackRequested += async (_, _) =>
+        {
+            _host.Controls.Remove(page);
+            page.Dispose(); _rolesPage = null;
+            _layout.Visible = true; _layout.BringToFront();
+            await LoadUsersAsync();
+        };
+        _layout.Visible = false;
+        _host.Controls.Add(page); page.BringToFront();
+    }
+
     private void UpdateResponsive()
     {
         bool compact = ClientSize.Width < 590;
@@ -156,7 +181,7 @@ public sealed class UsersPage : ThemedUserControl
     {
         var chips = new List<(string Text, Action Remove)>();
         if (_filter.StatusIndex != 0) chips.Add((_filter.StatusIndex == 1 ? "Record: Active" : "Record: Archived", _filter.ClearStatus));
-        if (_filter.RoleIndex != 0) chips.Add(("Role: " + (_filter.RoleIndex == 1 ? "Admin" : "Librarian"), _filter.ClearRole));
+        if (_filter.RoleIndex != 0) chips.Add(("Role: " + _filter.SelectedRoleName, _filter.ClearRole));
         CatalogToolbarChrome.ShowChips(_layout, _activeChips, chips, _filter.ClearFilters);
     }
 
@@ -257,6 +282,8 @@ public sealed class UsersPage : ThemedUserControl
             if (IsDisposed || Disposing) return;
             _all.Clear();
             _all.AddRange(users);
+            _filter.SetRoleNames(_all.Select(u => u.RoleName));
+            RefreshChips();
             _loaded = true;
             Filter();
         }
@@ -278,7 +305,7 @@ public sealed class UsersPage : ThemedUserControl
         if (!_loaded || _failed || IsDisposed) return;
         string query = _search.Text.Trim();
         _filtered = _all.Where(u =>
-            (_filter.RoleIndex == 0 || string.Equals(u.RoleName, _filter.RoleIndex == 1 ? "Admin" : "Librarian", StringComparison.OrdinalIgnoreCase)) &&
+            (_filter.RoleIndex == 0 || string.Equals(u.RoleName, _filter.SelectedRoleName, StringComparison.OrdinalIgnoreCase)) &&
             (_filter.StatusIndex == 0 || u.IsActive == (_filter.StatusIndex == 1)) &&
             (query.Length == 0 || u.Username.Contains(query, StringComparison.OrdinalIgnoreCase) || u.UserId.ToString().Contains(query)))
             .ToList();
@@ -330,7 +357,11 @@ public sealed class UsersPage : ThemedUserControl
                 ThemedMessageDialog.ShowAlert(FindForm(), "Users", "Account no longer exists.");
                 return;
             }
-            _details = new UserDetailsPage(_service, user, _currentUserId) { Dock = DockStyle.Fill };
+            var roleNames = _roles is null ? new[] { "Admin", "Librarian" } : (await _roles.GetAllAsync())
+                .Where(r => r.IsActive && !string.Equals(r.Name, "Borrower", StringComparison.OrdinalIgnoreCase))
+                .Select(r => r.Name).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToArray();
+            if (IsDisposed || Disposing) return;
+            _details = new UserDetailsPage(_service, user, _currentUserId, roleNames) { Dock = DockStyle.Fill };
             _details.BackRequested += async (_, _) =>
             {
                 if (_details is null) return;
@@ -380,6 +411,7 @@ public sealed class UsersPage : ThemedUserControl
             button.FlatAppearance.BorderColor = c.Border;
             button.FlatAppearance.BorderSize = 1;
         }
+        _manageRoles.IconColor = c.Accent; _manageRoles.BackColor = c.Surface; _manageRoles.ForeColor = c.Text; _manageRoles.Font = Theme.BodyStrong; _manageRoles.FlatAppearance.BorderColor = c.Border; _manageRoles.FlatAppearance.MouseOverBackColor = c.SurfaceAlt; _manageRoles.FlatAppearance.MouseDownBackColor = c.AccentSoft;
         _add.BackColor = c.Accent;
         _add.ForeColor = c.OnAccent;
         _add.FlatAppearance.BorderSize = 0;

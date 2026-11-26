@@ -10,6 +10,7 @@ internal static class Migrations
         new Migration(2, "Seed roles, statuses, categories, settings", V2()),
         new Migration(3, "Rename Good Condition status to Good", V3()),
         new Migration(4, "Link books to multiple categories", V4()),
+        new Migration(5, "Add role permission foundation", V5()),
     };
 
     private static string Index(string name, string table, string columns) =>
@@ -259,4 +260,128 @@ internal static class Migrations
         """
     };
 
+    // V5 is additive. Authorization remains on the existing matrix until the enforcement batch.
+    private static string[] V5() => new[]
+    {
+        """
+        IF COL_LENGTH(N'dbo.Roles', N'Description') IS NULL
+            ALTER TABLE dbo.Roles ADD Description NVARCHAR(500) NULL;
+        IF COL_LENGTH(N'dbo.Roles', N'IsSystem') IS NULL
+            ALTER TABLE dbo.Roles ADD IsSystem BIT NOT NULL
+                CONSTRAINT DF_Roles_IsSystem DEFAULT 0;
+        """,
+        """
+        UPDATE dbo.Roles SET IsSystem = 1
+        WHERE Name IN (N'Admin', N'Librarian', N'Borrower');
+        """,
+        """
+        IF OBJECT_ID(N'dbo.RolePermissions', N'U') IS NULL
+        CREATE TABLE dbo.RolePermissions (
+            RoleId INT NOT NULL CONSTRAINT FK_RolePermissions_Roles
+                REFERENCES dbo.Roles(RoleId),
+            PermissionKey NVARCHAR(64) NOT NULL,
+            CONSTRAINT PK_RolePermissions PRIMARY KEY (RoleId, PermissionKey)
+        );
+        """,
+        """
+        INSERT INTO dbo.RolePermissions (RoleId, PermissionKey)
+        SELECT r.RoleId, p.PermissionKey
+        FROM dbo.Roles r CROSS JOIN (VALUES
+            (N'ViewCatalog'),
+            (N'ManageBooks'),
+            (N'ManageStudents'),
+            (N'CreateLookups'),
+            (N'ManageLookups'),
+            (N'ProcessBorrowReturn'),
+            (N'ViewReports'),
+            (N'ManageUsers'),
+            (N'HardDelete'),
+            (N'ViewOwnLoans'),
+            (N'BooksView'),
+            (N'BooksAdd'),
+            (N'BooksEdit'),
+            (N'BooksArchiveRestore'),
+            (N'BooksDelete'),
+            (N'AuthorsView'),
+            (N'AuthorsAdd'),
+            (N'AuthorsEdit'),
+            (N'AuthorsArchiveRestore'),
+            (N'AuthorsDelete'),
+            (N'CategoriesView'),
+            (N'CategoriesAdd'),
+            (N'CategoriesEdit'),
+            (N'CategoriesArchiveRestore'),
+            (N'CategoriesDelete'),
+            (N'StudentsView'),
+            (N'StudentsAdd'),
+            (N'StudentsEdit'),
+            (N'StudentsArchiveRestore'),
+            (N'StudentsDelete'),
+            (N'UsersView'),
+            (N'UsersAdd'),
+            (N'UsersEdit'),
+            (N'UsersArchiveRestore'),
+            (N'UsersDelete'),
+            (N'RolesView'),
+            (N'RolesAdd'),
+            (N'RolesEdit'),
+            (N'RolesArchiveRestore'),
+            (N'RolesDelete'),
+            (N'BorrowReturnView'),
+            (N'BorrowReturnBorrow'),
+            (N'BorrowReturnReturn'),
+            (N'ReportsView'),
+            (N'ReportsExport'),
+            (N'ActivityLogView')
+        ) p(PermissionKey)
+        WHERE r.Name = N'Admin' AND NOT EXISTS (
+            SELECT 1 FROM dbo.RolePermissions rp
+            WHERE rp.RoleId = r.RoleId AND rp.PermissionKey = p.PermissionKey);
+        """,
+        """
+        INSERT INTO dbo.RolePermissions (RoleId, PermissionKey)
+        SELECT r.RoleId, p.PermissionKey
+        FROM dbo.Roles r CROSS JOIN (VALUES
+            (N'ViewCatalog'),
+            (N'ManageBooks'),
+            (N'ManageStudents'),
+            (N'CreateLookups'),
+            (N'ProcessBorrowReturn'),
+            (N'ViewReports'),
+            (N'BooksView'),
+            (N'BooksAdd'),
+            (N'BooksEdit'),
+            (N'BooksArchiveRestore'),
+            (N'StudentsView'),
+            (N'StudentsAdd'),
+            (N'StudentsEdit'),
+            (N'StudentsArchiveRestore'),
+            (N'AuthorsView'),
+            (N'AuthorsAdd'),
+            (N'CategoriesView'),
+            (N'CategoriesAdd'),
+            (N'BorrowReturnView'),
+            (N'BorrowReturnBorrow'),
+            (N'BorrowReturnReturn'),
+            (N'ReportsView')
+        ) p(PermissionKey)
+        WHERE r.Name = N'Librarian' AND NOT EXISTS (
+            SELECT 1 FROM dbo.RolePermissions rp
+            WHERE rp.RoleId = r.RoleId AND rp.PermissionKey = p.PermissionKey);
+        """,
+        """
+        INSERT INTO dbo.RolePermissions (RoleId, PermissionKey)
+        SELECT r.RoleId, p.PermissionKey
+        FROM dbo.Roles r CROSS JOIN (VALUES
+            (N'ViewCatalog'),
+            (N'ViewOwnLoans'),
+            (N'BooksView'),
+            (N'AuthorsView'),
+            (N'CategoriesView')
+        ) p(PermissionKey)
+        WHERE r.Name = N'Borrower' AND NOT EXISTS (
+            SELECT 1 FROM dbo.RolePermissions rp
+            WHERE rp.RoleId = r.RoleId AND rp.PermissionKey = p.PermissionKey);
+        """,
+    };
 }

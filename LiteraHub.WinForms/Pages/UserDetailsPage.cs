@@ -31,11 +31,8 @@ public sealed class UserDetailsPage : ThemedUserControl
     private bool _validationAttempted;
     private readonly ThemedTextField _username = new() { MaxLength = 50 };
     private readonly Label _roleLabel = new() { Text = "Role" };
-    private readonly ThemedFilterDropdown _role = new(new[] { "Select Role", "Admin", "Librarian" })
-    {
-        TextAlign = ContentAlignment.MiddleLeft,
-        Padding = new Padding(12, 0, 8, 0)
-    };
+    private readonly ThemedFilterDropdown _role;
+    private readonly string[] _roleNames;
 
     private readonly Label _status = new() { Text = "Status" };
     private readonly Label _statusValue = MakeView();
@@ -52,9 +49,13 @@ public sealed class UserDetailsPage : ThemedUserControl
     private bool _busy;
     public event EventHandler? BackRequested;
 
-    public UserDetailsPage(IStaffUserService service, StaffUser? user, int? currentUserId = null)
+    public UserDetailsPage(IStaffUserService service, StaffUser? user, int? currentUserId = null, IEnumerable<string>? roleNames = null)
     {
         _service = service;
+        _roleNames = new[] { "Select Role" }.Concat((roleNames ?? new[] { "Admin", "Librarian" })
+            .Where(n => !string.Equals(n, "Borrower", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)).ToArray();
+        _role = new ThemedFilterDropdown(_roleNames) { TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(12, 0, 8, 0) };
         _currentUserId = currentUserId;
         _user = user;
         _editing = user is null;
@@ -74,7 +75,7 @@ public sealed class UserDetailsPage : ThemedUserControl
         _delete.Visible = false;
         Controls.Add(_root);
         _username.Text = user?.Username ?? "";
-        _role.SelectedIndex = user is null ? 0 : user.RoleName == "Admin" ? 1 : 2;
+        _role.SelectedIndex = FindRoleIndex(user?.RoleName);
         _statusValue.Text = user is null ? "Active on creation" : (user.IsActive ? "Active" : "Inactive");
         _header.BackRequested += (_, _) => { if (!_busy) BackRequested?.Invoke(this, EventArgs.Empty); };
         _validation.Register(_username, () => IsValidUsername(_username.Text.Trim()),
@@ -136,10 +137,12 @@ public sealed class UserDetailsPage : ThemedUserControl
         TextAlign = ContentAlignment.MiddleCenter
     };
 
+    private int FindRoleIndex(string? name) => Math.Max(0, Array.FindIndex(_roleNames, 1, n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase)));
+
     private void Restore()
     {
         _username.Text = _user?.Username ?? "";
-        _role.SelectedIndex = _user is null ? 0 : _user.RoleName == "Admin" ? 1 : 2;
+        _role.SelectedIndex = FindRoleIndex(_user?.RoleName);
         _validationAttempted = false;
         _validation.Clear();
         RefreshValidationCaptions();
@@ -219,7 +222,7 @@ public sealed class UserDetailsPage : ThemedUserControl
         _header.BackEnabled = false;
         try
         {
-            var input = new StaffUserInput(username, _role.SelectedIndex == 1 ? "Admin" : "Librarian");
+            var input = new StaffUserInput(username, _roleNames[_role.SelectedIndex]);
             if (_user is null)
             {
                 StaffCreationResult result = await _service.CreateAsync(input);

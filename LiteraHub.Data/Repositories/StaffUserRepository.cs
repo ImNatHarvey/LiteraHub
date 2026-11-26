@@ -18,7 +18,7 @@ public sealed class StaffUserRepository : IStaffUserRepository
                u.MustChangePassword, u.CreatedAt
         FROM dbo.Users u
         INNER JOIN dbo.Roles r ON r.RoleId = u.RoleId
-        WHERE r.Name IN ('Admin', 'Librarian')
+        WHERE r.Name <> N'Borrower'
         """;
 
     public StaffUserRepository(IDbConnectionFactory factory) =>
@@ -53,13 +53,16 @@ public sealed class StaffUserRepository : IStaffUserRepository
     {
         await using var db = _factory.CreateConnection();
         await db.OpenAsync();
-        return await db.ExecuteScalarAsync<int>("""
+        await using var tx = await db.BeginTransactionAsync(IsolationLevel.Serializable);
+        int id = await db.ExecuteScalarAsync<int>("""
             INSERT INTO dbo.Users (Username, PasswordHash, RoleId, MustChangePassword, IsActive)
             OUTPUT INSERTED.UserId
             SELECT @Username, @PasswordHash, RoleId, 1, 1
-            FROM dbo.Roles
-            WHERE Name = @Role AND IsActive = 1;
-            """, new { input.Username, PasswordHash = passwordHash, Role = input.RoleName });
+            FROM dbo.Roles WITH (UPDLOCK, HOLDLOCK)
+            WHERE Name = @Role AND IsActive = 1 AND Name <> N'Borrower';
+            """, new { input.Username, PasswordHash = passwordHash, Role = input.RoleName }, tx);
+        await tx.CommitAsync();
+        return id;
     }
 
     public Task<bool> UpdateAsync(int userId, StaffUserInput input) =>
@@ -75,7 +78,7 @@ public sealed class StaffUserRepository : IStaffUserRepository
         // Only archived staff accounts are eligible; foreign keys protect referenced records.
         return await db.ExecuteAsync("""
             DELETE u FROM dbo.Users u JOIN dbo.Roles r ON r.RoleId = u.RoleId
-            WHERE u.UserId = @UserId AND u.IsActive = 0 AND r.Name IN ('Admin', 'Librarian');
+            WHERE u.UserId = @UserId AND u.IsActive = 0 AND r.Name <> N'Borrower';
             """, new { UserId = userId }) == 1;
     }
 
@@ -91,7 +94,7 @@ public sealed class StaffUserRepository : IStaffUserRepository
                 SELECT r.Name AS RoleName, u.IsActive
                 FROM dbo.Users u WITH (UPDLOCK, HOLDLOCK)
                 JOIN dbo.Roles r ON r.RoleId = u.RoleId
-                WHERE u.UserId = @UserId AND r.Name IN ('Admin','Librarian')
+                WHERE u.UserId = @UserId AND r.Name <> N'Borrower'
                 """, new { UserId = userId }, tx);
             if (current is null)
             {
@@ -100,6 +103,15 @@ public sealed class StaffUserRepository : IStaffUserRepository
             }
             string newRole = input?.RoleName ?? current.RoleName;
             bool newActive = active ?? current.IsActive;
+            if (input is not null || newActive)
+            {
+                int validRole = await db.ExecuteScalarAsync<int>("""
+                    SELECT COUNT(1) FROM dbo.Roles WITH (UPDLOCK, HOLDLOCK)
+                    WHERE Name = @Role AND IsActive = 1 AND Name <> N'Borrower';
+                    """, new { Role = newRole }, tx);
+                if (validRole == 0)
+                    throw new InvalidOperationException("Select an active staff role or restore the assigned role first.");
+            }
             if (current.RoleName == "Admin" && current.IsActive &&
                 (newRole != "Admin" || !newActive))
             {
@@ -115,7 +127,7 @@ public sealed class StaffUserRepository : IStaffUserRepository
                 UPDATE dbo.Users
                 SET Username = COALESCE(@Username, Username),
                     RoleId = CASE WHEN @Role IS NULL THEN RoleId ELSE
-                        (SELECT RoleId FROM dbo.Roles WHERE Name = @Role AND IsActive = 1) END,
+                        (SELECT RoleId FROM dbo.Roles WHERE Name = @Role AND IsActive = 1 AND Name <> N'Borrower') END,
                     IsActive = @IsActive
                 WHERE UserId = @UserId
                 """, new { UserId = userId, Username = input?.Username, Role = input?.RoleName, IsActive = newActive }, tx);

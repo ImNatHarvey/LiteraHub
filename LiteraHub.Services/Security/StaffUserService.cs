@@ -26,19 +26,19 @@ public sealed class StaffUserService : IStaffUserService
 
     public Task<IReadOnlyList<StaffUser>> GetAllAsync()
     {
-        _permissions.Demand(Permission.ManageUsers);
+        DemandAdmin();
         return _users.GetAllAsync();
     }
 
     public Task<StaffUser?> GetByIdAsync(int id)
     {
-        _permissions.Demand(Permission.ManageUsers);
+        DemandAdmin();
         return _users.GetByIdAsync(id);
     }
 
     public async Task<StaffCreationResult> CreateAsync(StaffUserInput input)
     {
-        _permissions.Demand(Permission.ManageUsers);
+        DemandAdmin();
         var validation = Validate(input);
         if (validation is not null) return StaffCreationResult.Fail(validation);
         var normalized = Normalize(input);
@@ -61,7 +61,7 @@ public sealed class StaffUserService : IStaffUserService
 
     public async Task<ServiceResult> UpdateAsync(int userId, StaffUserInput input)
     {
-        _permissions.Demand(Permission.ManageUsers);
+        DemandAdmin();
         if (userId == _session.Current?.UserId)
             return ServiceResult.Fail("You cannot edit your own staff account here. Use Profile Settings instead.");
         var validation = Validate(input);
@@ -80,7 +80,7 @@ public sealed class StaffUserService : IStaffUserService
 
     public async Task<ServiceResult> SetActiveAsync(int userId, bool active)
     {
-        _permissions.Demand(Permission.ManageUsers);
+        DemandAdmin();
         if (userId == _session.Current?.UserId)
             return ServiceResult.Fail("You cannot archive your own signed-in account.");
         try
@@ -94,11 +94,18 @@ public sealed class StaffUserService : IStaffUserService
 
     public async Task<ServiceResult> DeleteAsync(int userId)
     {
-        _permissions.Demand(Permission.ManageUsers);
+        DemandAdmin();
         _permissions.Demand(Permission.HardDelete);
         if (userId == _session.Current?.UserId) return ServiceResult.Fail("You cannot delete your own account.");
         try { return await _users.DeleteAsync(userId) ? ServiceResult.Ok() : ServiceResult.Fail("Account was not found or is still active. Archive it first."); }
         catch (DbException) { return ServiceResult.Fail("Unable to delete this account. It may be referenced by library records; keep it archived."); }
+    }
+
+    private void DemandAdmin()
+    {
+        _permissions.Demand(Permission.ManageUsers);
+        if (!string.Equals(_session.Current?.RoleName, RoleNames.Admin, StringComparison.OrdinalIgnoreCase))
+            throw new PermissionDeniedException(Permission.ManageUsers);
     }
 
     private static StaffUserInput Normalize(StaffUserInput input) =>
@@ -112,8 +119,9 @@ public sealed class StaffUserService : IStaffUserService
             return "Username must be between 3 and 50 characters.";
         if (!input.Username.Trim().All(c => char.IsLetterOrDigit(c) || c is '.' or '_' or '-'))
             return "Username may contain letters, numbers, periods, underscores, and hyphens only.";
-        if (input.RoleName is not (RoleNames.Admin or RoleNames.Librarian))
-            return "Select Admin or Librarian.";
+        if (string.IsNullOrWhiteSpace(input.RoleName) || input.RoleName.Trim().Length > 50 ||
+            string.Equals(input.RoleName.Trim(), RoleNames.Borrower, StringComparison.OrdinalIgnoreCase))
+            return "Select an active staff role.";
         return null;
     }
 

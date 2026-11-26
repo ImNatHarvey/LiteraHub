@@ -63,6 +63,7 @@ public sealed class ShellForm : Form
     private readonly IBookMetadataService _metadata;
     private readonly IStudentService _students;
     private readonly IStaffUserService _staffUsers;
+    private readonly IRoleService _roles;
 
     private readonly List<PageDef> _pages;
 
@@ -141,7 +142,7 @@ public sealed class ShellForm : Form
         IAuthorCreationService authors,
         IBookMetadataService metadata,
         IStudentService students,
-        IStaffUserService staffUsers)
+        IStaffUserService staffUsers, IRoleService roles)
     {
         _session = session ??
             throw new ArgumentNullException(nameof(session));
@@ -167,6 +168,7 @@ public sealed class ShellForm : Form
         _students = students ??
             throw new ArgumentNullException(nameof(students));
 
+        _roles = roles ?? throw new ArgumentNullException(nameof(roles));
         _staffUsers = staffUsers ??
             throw new ArgumentNullException(nameof(staffUsers));
 
@@ -463,7 +465,7 @@ public sealed class ShellForm : Form
         else if (key == "users")
         {
             if (!_permissions.Can(Permission.ManageUsers)) return;
-            next = new UsersPage(_staffUsers, _session.Current?.UserId);
+            next = new UsersPage(_staffUsers, _session.Current?.UserId, string.Equals(_session.Current?.RoleName, "Admin", StringComparison.OrdinalIgnoreCase) ? _roles : null);
         }
         else
         {
