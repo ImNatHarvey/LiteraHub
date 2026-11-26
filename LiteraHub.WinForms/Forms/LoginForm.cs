@@ -15,9 +15,8 @@ using LiteraHub.WinForms.Theming;
 namespace LiteraHub.WinForms.Forms;
 
 /// <summary>
-/// Two flush themed panels. The carousel starts on the left and Sign In on
-/// the right. Forgot Password swaps their locations without exposing an
-/// unfinished password-reset operation.
+/// Two flush themed panels with an inline password recovery view.
+/// Forgot Password swaps the form and carousel using the existing animation.
 /// </summary>
 public sealed class LoginForm : Form
 {
@@ -28,6 +27,13 @@ public sealed class LoginForm : Form
     private static extern IntPtr SendMessage(IntPtr handle, int message, IntPtr wParam, IntPtr lParam);
 
     private readonly IAuthService _auth;
+    private readonly IRecoveryService _recovery;
+    private readonly string[] _recoveryNames = { "Username", "Recovery passkey", "New password", "Confirm new password" };
+    private readonly Label[] _recoveryLabels = new Label[4];
+    private readonly ThemedTextField[] _recoveryFields = new ThemedTextField[4];
+    private readonly Button _reset = new() { Text = "Reset Password", Cursor = Cursors.Hand, FlatStyle = FlatStyle.Flat };
+    private readonly Label _recoveryStatus = new() { TextAlign = ContentAlignment.MiddleLeft };
+    private bool _recoveryError;
     private readonly Panel _accountPanel = new();
     private readonly LoginCarouselControl _carousel = new();
     private readonly ThemedWindowControls _windowControls = new() { ShowMaximizeButton = false, ShowMinimizeButton = false };
@@ -65,10 +71,10 @@ public sealed class LoginForm : Form
 
     private readonly Button _signIn = new() { Text = "Sign In", Cursor = Cursors.Hand, FlatStyle = FlatStyle.Flat };
     private readonly Label _footer = new() { Text = "LiteraHub  •  STI Balagtas", TextAlign = ContentAlignment.MiddleCenter };
-    private readonly Label _recoveryTitle = new() { Text = "Account recovery", TextAlign = ContentAlignment.MiddleCenter };
+    private readonly Label _recoveryTitle = new() { Text = "Reset Password", TextAlign = ContentAlignment.MiddleCenter };
     private readonly Label _recoveryDescription = new()
     {
-        Text = "Offline recovery passkeys are coming with User Management. Until then, please contact your system administrator.",
+        Text = "Use your recovery passkey to reset your password.",
         TextAlign = ContentAlignment.MiddleCenter
     };
     private readonly Button _back = new() { Text = "Back to Sign In", Cursor = Cursors.Hand, FlatStyle = FlatStyle.Flat };
@@ -86,9 +92,10 @@ public sealed class LoginForm : Form
 
     public AuthResult? Result { get; private set; }
 
-    public LoginForm(IAuthService auth)
+    public LoginForm(IAuthService auth, IRecoveryService recovery)
     {
         _auth = auth ?? throw new ArgumentNullException(nameof(auth));
+        _recovery = recovery ?? throw new ArgumentNullException(nameof(recovery));
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.None;
         Text = "LiteraHub — Sign In";
@@ -118,7 +125,8 @@ public sealed class LoginForm : Form
         _passwordFrame.Controls.Add(_password);
         _passwordFrame.Controls.Add(_passwordLeadingIcon);
         _passwordFrame.Controls.Add(_eye);
-        _recoveryView.Controls.AddRange(new Control[] { _recoveryTitle, _recoveryDescription, _back });
+        _recoveryView.Controls.AddRange(new Control[] { _recoveryTitle, _recoveryDescription, _back, _reset, _recoveryStatus });
+        BuildRecoveryFields();
         _recoveryView.Visible = false;
 
         _welcome.Font = new Font("Segoe UI", 27f, FontStyle.Bold);
@@ -151,6 +159,8 @@ public sealed class LoginForm : Form
         };
         _signIn.Click += async (_, _) => await SignInAsync();
         _forgot.Click += (_, _) => SwitchMode(true);
+        _reset.Click += async (_, _) => await ResetPasswordAsync();
+        FormClosing += (_, e) => { if (_busy && _recoveryMode) e.Cancel = true; };
         _back.Click += (_, _) => SwitchMode(false);
         _slide.Tick += (_, _) =>
         {
@@ -159,7 +169,12 @@ public sealed class LoginForm : Form
             float t = _elapsed * _elapsed * (3f - 2f * _elapsed);
             _position = _from + (_to - _from) * t;
             LayoutPanels();
-            if (_elapsed >= 1f) _slide.Stop();
+            if (_elapsed >= 1f)
+            {
+                _slide.Stop();
+                if (_recoveryMode) _recoveryFields[0].FocusInput();
+                else _username.FocusInput();
+            }
         };
         _accountPanel.MouseDown += BeginDrag;
         _loginView.MouseDown += BeginDrag;
@@ -176,6 +191,107 @@ public sealed class LoginForm : Form
         ApplyTheme();
         LayoutPanels();
         Shown += (_, _) => _username.FocusInput();
+    }
+
+    private void BuildRecoveryFields()
+    {
+        IconChar[] icons = { IconChar.UserAlt, IconChar.Key, IconChar.Lock, IconChar.Lock };
+        for (int i = 0; i < 4; i++)
+        {
+            int index = i;
+            _recoveryLabels[i] = new Label { Text = _recoveryNames[i], Font = Theme.Body };
+            _recoveryFields[i] = new ThemedTextField
+            {
+                TabIndex = i,
+                MaxLength = i == 0 ? 50 : i == 1 ? 16 : 72,
+                LeadingIcon = icons[i],
+                ShowPasswordToggle = i > 0
+            };
+            _recoveryView.Controls.Add(_recoveryLabels[i]);
+            _recoveryView.Controls.Add(_recoveryFields[i]);
+            _recoveryFields[i].TextChanged += (_, _) => RecoveryValidation(index, "");
+        }
+        _reset.TabIndex = 4;
+        _back.TabIndex = 5;
+        RecoveryStatus("Your recovery passkey can only be used once.");
+    }
+
+    private void RecoveryValidation(int index, string message)
+    {
+        _recoveryFields[index].HasValidationError = message.Length > 0;
+        _recoveryLabels[index].Text = _recoveryNames[index] + (message.Length > 0 ? " • " + message : "");
+        _recoveryLabels[index].ForeColor = message.Length > 0 ? Theme.Colors.Danger : Theme.Colors.Text;
+    }
+
+    private void RecoveryStatus(string message, bool error = false)
+    {
+        _recoveryError = error;
+        _recoveryStatus.Text = message;
+        _recoveryStatus.ForeColor = error ? Theme.Colors.Danger : Theme.Colors.TextMuted;
+    }
+
+    private void ClearRecovery()
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            _recoveryFields[i].Text = "";
+            _recoveryFields[i].HidePassword();
+            RecoveryValidation(i, "");
+        }
+        RecoveryStatus("Your recovery passkey can only be used once.");
+    }
+
+    private async Task ResetPasswordAsync()
+    {
+        if (_busy || !_recoveryMode || _slide.Enabled) return;
+        bool valid = true;
+        for (int i = 0; i < 4; i++)
+        {
+            bool missing = string.IsNullOrWhiteSpace(_recoveryFields[i].Text);
+            RecoveryValidation(i, missing ? "Required" : "");
+            valid &= !missing;
+        }
+        if (!valid) return;
+        if (_recoveryFields[2].Text != _recoveryFields[3].Text)
+        {
+            RecoveryValidation(3, "Does not match");
+            return;
+        }
+        _busy = true;
+        _reset.Enabled = _back.Enabled = false;
+        _reset.Text = "Resetting…";
+        foreach (var field in _recoveryFields) field.Enabled = false;
+        string username = _recoveryFields[0].Text;
+        bool success = false;
+        try
+        {
+            var result = await _recovery.ResetAsync(username, _recoveryFields[1].Text, _recoveryFields[2].Text);
+            if (IsDisposed || Disposing) return;
+            success = result.Success;
+            if (!success) RecoveryStatus(result.Error ?? "Recovery unavailable.", true);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(ex);
+            if (!IsDisposed && !Disposing) RecoveryStatus("Recovery unavailable. Please retry.", true);
+        }
+        finally
+        {
+            _busy = false;
+            if (!IsDisposed && !Disposing)
+            {
+                _reset.Enabled = _back.Enabled = true;
+                _reset.Text = "Reset Password";
+                foreach (var field in _recoveryFields) field.Enabled = true;
+            }
+        }
+        if (success && !IsDisposed && !Disposing)
+        {
+            _username.Text = username;
+            _password.Clear();
+            SwitchMode(false);
+            CatalogActionFeedback.Notify(this, "Password reset. Generate a new passkey after signing in.");
+        }
     }
 
     private void LoadLogo()
@@ -233,12 +349,25 @@ public sealed class LoginForm : Form
         _recoveryMode = recovery;
         _loginView.Visible = !recovery;
         _recoveryView.Visible = recovery;
-        AcceptButton = recovery ? _back : _signIn;
+        AcceptButton = recovery ? _reset : _signIn;
+        if (recovery)
+        {
+            _password.Clear();
+            _password.UseSystemPasswordChar = true;
+            _eye.IconChar = IconChar.Eye;
+            _eye.AccessibleName = "Show password";
+            ClearUsernameValidation(); ClearPasswordValidation();
+            ClearRecovery();
+            _recoveryFields[0].Text = _username.Text;
+        }
+        else ClearRecovery();
+        _accountPanel.BringToFront();
+        _windowControls.BringToFront();
         _from = _position;
         _to = recovery ? 0f : 1f;
         _elapsed = 0f;
         _slide.Start();
-        if (!recovery) BeginInvoke(new Action(() => { if (!IsDisposed) _username.FocusInput(); }));
+
     }
 
     private void LayoutPanels()
@@ -287,9 +416,17 @@ public sealed class LoginForm : Form
             _signIn.SetBounds(fx, startY + 403, fw, 45);
             _footer.SetBounds(fx, h - 65, fw, 24);
 
-            _recoveryTitle.SetBounds(fx, h / 2 - 142, fw, 54);
-            _recoveryDescription.SetBounds(fx, h / 2 - 76, fw, 105);
-            _back.SetBounds(fx, h / 2 + 56, fw, 44);
+            int ry = Math.Max(12, (h - 520) / 2);
+            _recoveryTitle.SetBounds(fx, ry, fw, 46);
+            _recoveryDescription.SetBounds(fx, ry + 46, fw, 38);
+            for (int i = 0; i < 4; i++)
+            {
+                _recoveryLabels[i].SetBounds(fx, ry + 94 + i * 67, fw, 22);
+                _recoveryFields[i].SetBounds(fx, ry + 118 + i * 67, fw, 40);
+            }
+            _recoveryStatus.SetBounds(fx, ry + 365, fw, 52);
+            _reset.SetBounds(fx, ry + 424, fw, 44);
+            _back.SetBounds(fx, ry + 474, fw, 34);
             LayoutPasswordInput();
         }
         finally { _layoutBusy = false; }
@@ -441,9 +578,23 @@ public sealed class LoginForm : Form
         _signIn.ForeColor = c.OnAccent;
         _signIn.FlatAppearance.BorderSize = 0;
         _signIn.FlatAppearance.MouseOverBackColor = c.Accent;
-        _back.BackColor = c.Accent;
-        _back.ForeColor = c.OnAccent;
+        _back.BackColor = c.Surface;
+        _back.ForeColor = c.Accent;
         _back.FlatAppearance.BorderSize = 0;
+        _back.FlatAppearance.MouseOverBackColor = c.Surface;
+        _back.FlatAppearance.MouseDownBackColor = c.Surface;
+        _reset.BackColor = c.Accent;
+        _reset.ForeColor = c.OnAccent;
+        _reset.FlatAppearance.BorderSize = 0;
+        _reset.FlatAppearance.MouseOverBackColor = c.Accent;
+        _reset.Font = Theme.BodyStrong;
+        _recoveryStatus.Font = Theme.Caption;
+        _recoveryStatus.ForeColor = _recoveryError ? c.Danger : c.TextMuted;
+        for (int i = 0; i < 4; i++)
+        {
+            _recoveryLabels[i].ForeColor = _recoveryFields[i].HasValidationError ? c.Danger : c.Text;
+            _recoveryFields[i].BackColor = c.Surface;
+        }
         _footer.ForeColor = c.TextMuted;
         _windowControls.SetSurfaceColor(
             _position < 0.5f ? c.AccentSoft : c.Surface);

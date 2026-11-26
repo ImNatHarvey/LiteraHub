@@ -103,6 +103,7 @@ internal static class Program
             new OpenLibraryMetadataService();
 
         RunSessions(
+            new RecoveryService(new RecoveryRepository(connectionFactory), hasher),
             auth,
             permissions,
             session,
@@ -115,6 +116,7 @@ internal static class Program
     }
 
     private static void RunSessions(
+        IRecoveryService recovery,
         IAuthService auth,
         IPermissionService permissions,
         ISessionContext session,
@@ -129,7 +131,7 @@ internal static class Program
         {
             AuthResult? login;
 
-            using (var loginForm = new LoginForm(auth))
+            using (var loginForm = new LoginForm(auth, recovery))
             {
                 if (loginForm.ShowDialog() != DialogResult.OK)
                     return;

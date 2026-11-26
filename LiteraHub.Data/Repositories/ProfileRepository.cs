@@ -70,7 +70,7 @@ public sealed class ProfileRepository(IDbConnectionFactory factory) : IProfileRe
         await using var conn = factory.CreateConnection();
         await conn.OpenAsync();
         return await conn.ExecuteAsync("""
-            UPDATE u SET RecoveryPasskeyHash = @passkeyHash, RecoveryPasskeyCreatedAt = SYSUTCDATETIME()
+            UPDATE u SET RecoveryPasskeyHash = @passkeyHash, RecoveryPasskeyCreatedAt = SYSUTCDATETIME(), RecoveryFailures = 0, RecoveryLockedUntil = NULL
             FROM dbo.Users u JOIN dbo.Roles r ON r.RoleId = u.RoleId
             WHERE u.UserId = @userId AND u.IsActive = 1 AND r.IsActive = 1
               AND u.MustChangePassword = 0

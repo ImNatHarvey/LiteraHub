@@ -13,6 +13,7 @@ internal static class Migrations
         new Migration(5, "Add role permission foundation", V5()),
         new Migration(6, "Add account recovery passkey storage", V6()),
         new Migration(7, "Add staff personal names", V7()),
+        new Migration(8, "Recovery limits and audit", V8()),
     };
 
     private static string Index(string name, string table, string columns) =>
@@ -401,6 +402,16 @@ internal static class Migrations
         IF COL_LENGTH(N'dbo.Users', N'FirstName') IS NULL ALTER TABLE dbo.Users ADD FirstName NVARCHAR(100) NULL;
         IF COL_LENGTH(N'dbo.Users', N'MiddleName') IS NULL ALTER TABLE dbo.Users ADD MiddleName NVARCHAR(100) NULL;
         IF COL_LENGTH(N'dbo.Users', N'LastName') IS NULL ALTER TABLE dbo.Users ADD LastName NVARCHAR(100) NULL;
+        """
+    };
+    private static string[] V8() => new[]
+    {
+        """
+        ALTER TABLE dbo.Users ADD RecoveryFailures INT NOT NULL DEFAULT 0, RecoveryLockedUntil DATETIME2 NULL;
+        CREATE TABLE dbo.RecoveryAudit (
+            AuditId BIGINT IDENTITY PRIMARY KEY, UserId INT NULL, ActorUserId INT NULL,
+            EventType NVARCHAR(40) NOT NULL, CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+        );
         """
     };
 }
