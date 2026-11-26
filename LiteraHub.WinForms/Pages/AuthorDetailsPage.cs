@@ -193,14 +193,14 @@ public sealed class AuthorDetailsPage : ThemedUserControl
         _header.SubtitleText = !existing ? "Create a new author record." :
             (_editing ? "Editing: " : "Viewing: ") + _author!.FullName;
         _primary.Text = _editing ? "Save Author" : "Edit Author";
-        _primary.Visible = _editing || _permissions.Can(Permission.ManageLookups);
+        _primary.Visible = _permissions.Can(_author is null ? RolePermission.AuthorsAdd : RolePermission.AuthorsEdit);
         _primary.Enabled = !_busy;
         _cancel.Visible = existing && _editing;
         // Mirror Book View/Edit: the three main actions remain visible in both modes.
-        _archive.Visible = existing && _permissions.Can(Permission.ManageLookups);
+        _archive.Visible = existing && _permissions.Can(RolePermission.AuthorsArchiveRestore);
         _archive.Text = "";
         _archive.AccessibleName = _author?.IsActive == false ? "Restore Author" : "Archive Author";
-        _delete.Visible = existing && _permissions.Can(Permission.HardDelete) && _permissions.Can(Permission.ManageLookups);
+        _delete.Visible = existing && _permissions.Can(RolePermission.AuthorsDelete);
         _delete.Text = "";
         _delete.AccessibleName = "Delete Author";
         _primary.Text = "";
@@ -326,7 +326,7 @@ public sealed class AuthorDetailsPage : ThemedUserControl
 
     private async Task ChangeActiveAsync()
     {
-        if (_busy || _author is null || !_permissions.Can(Permission.ManageLookups)) return;
+        if (_busy || _author is null || !_permissions.Can(RolePermission.AuthorsArchiveRestore)) return;
         bool restore = !_author.IsActive;
         if (!ThemedMessageDialog.Confirm(FindForm(), restore ? "Restore Author" : "Archive Author",
             $"{(restore ? "Restore" : "Archive")} '{_author.FullName}'?", danger: !restore,
@@ -348,8 +348,7 @@ public sealed class AuthorDetailsPage : ThemedUserControl
 
     private async Task DeleteAsync()
     {
-        if (_busy || _author is null || !_permissions.Can(Permission.HardDelete) ||
-            !_permissions.Can(Permission.ManageLookups)) return;
+        if (_busy || _author is null || !_permissions.Can(RolePermission.AuthorsDelete)) return;
         if (!ThemedMessageDialog.Confirm(FindForm(), "Delete Author",
             $"Permanently delete '{_author.FullName}'? Authors linked to books cannot be deleted.",
             danger: true, confirmText: "Delete")) return;
@@ -381,6 +380,11 @@ public sealed class AuthorDetailsPage : ThemedUserControl
     private async Task LoadBooksAsync()
     {
         if (_author is null || _loadingCovers) return;
+        if (!_permissions.Can(RolePermission.BooksView))
+        {
+            _associatedBooks.Visible = false;
+            return;
+        }
         _loadingCovers = true;
         try
         {

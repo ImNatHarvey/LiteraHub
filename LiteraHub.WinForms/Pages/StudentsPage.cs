@@ -88,7 +88,7 @@ public sealed class StudentsPage : ThemedUserControl
             if (!_hasLoadedData) return;
             if (_all.Count == 0)
             {
-                if (_permissions.Can(Permission.ManageStudents))
+                if (_permissions.Can(RolePermission.StudentsAdd))
                     _ = OpenDetailsAsync(null);
             }
             else if (!string.IsNullOrWhiteSpace(_search.Text))
@@ -224,7 +224,7 @@ public sealed class StudentsPage : ThemedUserControl
             _loading = false;
             if (!IsDisposed && !Disposing)
             {
-                _add.Enabled = _permissions.Can(Permission.ManageStudents);
+                _add.Enabled = _permissions.Can(RolePermission.StudentsAdd);
                 if (_loadFailed)
                 {
                     _emptyState.Configure(CatalogEmptyKind.LoadFailed, false,
@@ -296,7 +296,7 @@ public sealed class StudentsPage : ThemedUserControl
                 : CatalogEmptyKind.NoFilterResults;
 
         _emptyState.Configure(kind,
-            _permissions.Can(Permission.ManageStudents),
+            _permissions.Can(RolePermission.StudentsAdd),
             "student", "students", "student ID, name, email, or address");
         _emptyState.Visible = true;
         _emptyState.BringToFront();
@@ -304,13 +304,13 @@ public sealed class StudentsPage : ThemedUserControl
 
     private async Task OpenDetailsAsync(int? id)
     {
-        if (_details is not null || _loading) return;
+        if (_details is not null || _loading || !_permissions.Can(RolePermission.StudentsView) || (!id.HasValue && !_permissions.Can(RolePermission.StudentsAdd))) return;
         try
         {
             Student? student = id.HasValue ? await _service.GetByIdAsync(id.Value) : null;
             if (IsDisposed || Disposing) return;
             if (id.HasValue && student is null) { ThemedMessageDialog.ShowAlert(FindForm(), "Students", "Student not found."); await ReloadAsync(); return; }
-            var details = new StudentDetailsPage(_service, student, _permissions.Can(Permission.HardDelete)) { Dock = DockStyle.Fill };
+            var details = new StudentDetailsPage(_service, student, _permissions.Can(RolePermission.StudentsDelete), _permissions) { Dock = DockStyle.Fill };
             _details = details;
             details.BackRequested += async (_, _) => { CloseDetails(); await ReloadAsync(); };
             _layout.Visible = false;
@@ -445,7 +445,9 @@ public sealed class StudentsPage : ThemedUserControl
         bool compactToolbar = ClientSize.Width < 590;
         CatalogToolbarChrome.Install(_layout, _toolbar, _status,
             _search, _filter, _add, _sortControl, _activeChips,
-            compactToolbar, _permissions.Can(Permission.ManageStudents));
+            compactToolbar, _permissions.Can(RolePermission.StudentsView));
+        _add.Visible = _permissions.Can(RolePermission.StudentsAdd);
+        _toolbar.ColumnStyles[3].Width = _permissions.Can(RolePermission.StudentsAdd) ? (compactToolbar ? 44 : 160) : 0;
     }
 
     private void RefreshActiveFilterChips()

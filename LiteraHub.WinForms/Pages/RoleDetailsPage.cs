@@ -12,6 +12,9 @@ namespace LiteraHub.WinForms.Pages;
 public sealed class RoleDetailsPage : ThemedUserControl
 {
     private readonly IRoleService _service;
+    private readonly IPermissionService _permissions;
+    private readonly HashSet<RolePermission> _grantable;
+    private readonly bool _canManageTarget;
     private readonly RoleDefinition? _role;
     private readonly HashSet<RolePermission> _original;
     private readonly Dictionary<RolePermission, CheckBox> _checks = new();
@@ -43,9 +46,14 @@ public sealed class RoleDetailsPage : ThemedUserControl
     private bool _editing, _busy, _setting, _arranging;
     public event EventHandler? BackRequested;
 
-    public RoleDetailsPage(IRoleService service, RoleDefinition? role, IEnumerable<RolePermission> permissions)
+    public RoleDetailsPage(IRoleService service, RoleDefinition? role, IEnumerable<RolePermission> permissions, IPermissionService authorization, string actorRole)
     {
         _service = service; _role = role; _original = permissions.ToHashSet();
+        _permissions = authorization;
+        _grantable = authorization.GrantedRolePermissions().ToHashSet();
+        bool admin = string.Equals(actorRole, RoleNames.Admin, StringComparison.OrdinalIgnoreCase);
+        _canManageTarget = role is null || admin || (!role.IsSystem &&
+            !string.Equals(role.Name, actorRole, StringComparison.OrdinalIgnoreCase) && _original.IsSubsetOf(_grantable));
         Dock = DockStyle.Fill; Padding = new Padding(Space.L);
         _root.Margin = Padding.Empty; _root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 98));
@@ -111,10 +119,11 @@ public sealed class RoleDetailsPage : ThemedUserControl
         bool editPermissions = editing && _role?.IsSystem != true;
         _name.Visible = editPermissions; _description.Visible = editing;
         _viewName.Visible = !editPermissions; _viewDescription.Visible = !editing;
-        foreach (var box in _checks.Values) { box.Enabled = editPermissions && !_busy; box.TabStop = editPermissions; }
+        foreach (var pair in _checks) { pair.Value.Enabled = editPermissions && !_busy && _grantable.Contains(pair.Key); pair.Value.TabStop = pair.Value.Enabled; }
         _all.Visible = _clear.Visible = editPermissions;
-        _primary.Visible = true;
-        _archive.Visible = _delete.Visible = _role is { IsSystem: false };
+        _primary.Visible = _canManageTarget && _permissions.Can(_role is null ? RolePermission.RolesAdd : RolePermission.RolesEdit);
+        _archive.Visible = _canManageTarget && _role is { IsSystem: false } && _permissions.Can(RolePermission.RolesArchiveRestore);
+        _delete.Visible = _canManageTarget && _role is { IsSystem: false } && _permissions.Can(RolePermission.RolesDelete);
         _cancel.Visible = editing;
         _primary.Text = _archive.Text = _delete.Text = "";
         _primary.AccessibleName = editing ? "Save Role" : "Edit Role";
@@ -123,12 +132,12 @@ public sealed class RoleDetailsPage : ThemedUserControl
         _header.HeadingText = _role is null ? "Add Role" : editing ? "Edit Role" : "Role Details";
         _header.SubtitleText = _role is null ? "Create a custom role and select its permissions." : $"Role ID: {_role.RoleId}";
         _type.Text = _role is null ? "Custom · Active on creation" : $"{(_role.IsSystem ? "System" : "Custom")} · {(_role.IsActive ? "Active" : "Archived")}";
-        _notice.Text = _role?.IsSystem == true ? "Only the description of a built-in role can be edited." : "Permissions are stored now; granular enforcement follows in a later batch.";
+        _notice.Text = _role?.IsSystem == true ? "Only the description of a built-in role can be edited." : _canManageTarget ? "Only permissions you hold may be granted." : "This role is protected or has permissions beyond your own.";
         _footer.ArrangeActions(); ApplyTheme();
     }
     private void PermissionChanged(RolePermission permission, string prefix)
     {
-        if (_setting || !_editing || _role?.IsSystem == true) return;
+        if (_setting || !_editing || _role?.IsSystem == true || !_grantable.Contains(permission)) return;
         _setting = true;
         try
         {
@@ -154,7 +163,7 @@ public sealed class RoleDetailsPage : ThemedUserControl
     {
         if (!_editing || _busy || _role?.IsSystem == true) return;
         _setting = true;
-        try { foreach (var box in _checks.Values) box.Checked = value; }
+        try { foreach (var pair in _checks) pair.Value.Checked = value && _grantable.Contains(pair.Key); }
         finally { _setting = false; }
         UpdateCount();
     }
@@ -165,7 +174,7 @@ public sealed class RoleDetailsPage : ThemedUserControl
         _busy = busy; _header.BackEnabled = !busy;
         foreach (var button in new[] { _primary, _archive, _delete, _cancel }) button.Enabled = !busy;
         _name.Enabled = _description.Enabled = !busy; _all.Enabled = _clear.Enabled = !busy;
-        foreach (var box in _checks.Values) box.Enabled = _editing && !busy && _role?.IsSystem != true;
+        foreach (var pair in _checks) pair.Value.Enabled = _editing && !busy && _role?.IsSystem != true && _grantable.Contains(pair.Key);
     }
     private async Task SaveAsync()
     {

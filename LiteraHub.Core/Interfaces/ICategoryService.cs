@@ -1,5 +1,4 @@
-﻿
-using LiteraHub.Core.Models;
+﻿using LiteraHub.Core.Models;
 
 namespace LiteraHub.Core.Interfaces;
 
@@ -7,6 +6,8 @@ public interface ICategoryService
 {
     Task<IReadOnlyList<Category>> GetAllAsync(
         bool includeInactive = false);
+
+    Task<IReadOnlyList<Category>> GetBookLookupAsync();
 
     Task<Category?> GetByIdAsync(int categoryId);
 

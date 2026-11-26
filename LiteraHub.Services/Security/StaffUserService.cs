@@ -13,32 +13,34 @@ public sealed class StaffUserService : IStaffUserService
     private readonly IPermissionService _permissions;
     private readonly ISessionContext _session;
     private readonly IPasswordHasher _hasher;
+    private readonly IRoleRepository _roles;
     private const string Alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 
     public StaffUserService(IStaffUserRepository users, IPermissionService permissions,
-        ISessionContext session, IPasswordHasher hasher)
+        ISessionContext session, IPasswordHasher hasher, IRoleRepository roles)
     {
         _users = users;
         _permissions = permissions;
         _session = session;
         _hasher = hasher;
+        _roles = roles;
     }
 
     public Task<IReadOnlyList<StaffUser>> GetAllAsync()
     {
-        DemandAdmin();
+        _permissions.Demand(RolePermission.UsersView);
         return _users.GetAllAsync();
     }
 
     public Task<StaffUser?> GetByIdAsync(int id)
     {
-        DemandAdmin();
+        _permissions.Demand(RolePermission.UsersView);
         return _users.GetByIdAsync(id);
     }
 
     public async Task<StaffCreationResult> CreateAsync(StaffUserInput input)
     {
-        DemandAdmin();
+        _permissions.Demand(RolePermission.UsersAdd);
         var validation = Validate(input);
         if (validation is not null) return StaffCreationResult.Fail(validation);
         var normalized = Normalize(input);
@@ -49,10 +51,12 @@ public sealed class StaffUserService : IStaffUserService
         try
         {
             string hash = await Task.Run(() => _hasher.Hash(password));
-            int id = await _users.CreateAsync(normalized, hash);
+            int id = await _users.CreateAsync(normalized, hash, Actor);
             return id > 0 ? StaffCreationResult.Ok(password) :
                 StaffCreationResult.Fail("Selected role is not available.");
         }
+        catch (InvalidOperationException ex) { return StaffCreationResult.Fail(ex.Message); }
+        catch (UnauthorizedAccessException ex) { return StaffCreationResult.Fail(ex.Message); }
         catch (DbException)
         {
             return StaffCreationResult.Fail("Account could not be created. Check the username and database connection.");
@@ -61,7 +65,7 @@ public sealed class StaffUserService : IStaffUserService
 
     public async Task<ServiceResult> UpdateAsync(int userId, StaffUserInput input)
     {
-        DemandAdmin();
+        _permissions.Demand(RolePermission.UsersEdit);
         if (userId == _session.Current?.UserId)
             return ServiceResult.Fail("You cannot edit your own staff account here. Use Profile Settings instead.");
         var validation = Validate(input);
@@ -71,41 +75,57 @@ public sealed class StaffUserService : IStaffUserService
             return ServiceResult.Fail("Username is already in use.");
         try
         {
-            return await _users.UpdateAsync(userId, normalized) ? ServiceResult.Ok() :
+            return await _users.UpdateAsync(userId, normalized, Actor) ? ServiceResult.Ok() :
                 ServiceResult.Fail("Staff account was not found.");
         }
         catch (InvalidOperationException ex) { return ServiceResult.Fail(ex.Message); }
+        catch (UnauthorizedAccessException ex) { return ServiceResult.Fail(ex.Message); }
         catch (DbException) { return ServiceResult.Fail("Unable to update this account."); }
     }
 
     public async Task<ServiceResult> SetActiveAsync(int userId, bool active)
     {
-        DemandAdmin();
+        _permissions.Demand(RolePermission.UsersArchiveRestore);
         if (userId == _session.Current?.UserId)
             return ServiceResult.Fail("You cannot archive your own signed-in account.");
         try
         {
-            return await _users.SetActiveAsync(userId, active) ? ServiceResult.Ok() :
+            return await _users.SetActiveAsync(userId, active, Actor) ? ServiceResult.Ok() :
                 ServiceResult.Fail("Staff account was not found.");
         }
         catch (InvalidOperationException ex) { return ServiceResult.Fail(ex.Message); }
+        catch (UnauthorizedAccessException ex) { return ServiceResult.Fail(ex.Message); }
         catch (DbException) { return ServiceResult.Fail("Unable to change account status."); }
     }
 
     public async Task<ServiceResult> DeleteAsync(int userId)
     {
-        DemandAdmin();
-        _permissions.Demand(Permission.HardDelete);
+        _permissions.Demand(RolePermission.UsersDelete);
         if (userId == _session.Current?.UserId) return ServiceResult.Fail("You cannot delete your own account.");
-        try { return await _users.DeleteAsync(userId) ? ServiceResult.Ok() : ServiceResult.Fail("Account was not found or is still active. Archive it first."); }
+        try { return await _users.DeleteAsync(userId, Actor) ? ServiceResult.Ok() : ServiceResult.Fail("Account was not found or is still active. Archive it first."); }
+        catch (InvalidOperationException ex) { return ServiceResult.Fail(ex.Message); }
+        catch (UnauthorizedAccessException ex) { return ServiceResult.Fail(ex.Message); }
         catch (DbException) { return ServiceResult.Fail("Unable to delete this account. It may be referenced by library records; keep it archived."); }
     }
 
-    private void DemandAdmin()
+    private UserSession Actor => _session.Current ?? throw new UnauthorizedAccessException("Sign in first.");
+
+    // Assignment choices are separate from Roles management; a Users-only role may retrieve these.
+    public async Task<IReadOnlyList<RoleDefinition>> GetManageableRolesAsync()
     {
-        _permissions.Demand(Permission.ManageUsers);
-        if (!string.Equals(_session.Current?.RoleName, RoleNames.Admin, StringComparison.OrdinalIgnoreCase))
-            throw new PermissionDeniedException(Permission.ManageUsers);
+        _permissions.Demand(RolePermission.UsersView);
+        var actor = Actor;
+        var roles = await _roles.GetAllAsync();
+        var grants = _permissions.GrantedRolePermissions().Select(p => p.ToString()).ToHashSet(StringComparer.Ordinal);
+        bool admin = string.Equals(actor.RoleName, RoleNames.Admin, StringComparison.OrdinalIgnoreCase);
+        var allowed = new List<RoleDefinition>();
+        foreach (var role in roles)
+        {
+            if (string.Equals(role.Name, RoleNames.Borrower, StringComparison.OrdinalIgnoreCase)) continue;
+            if (admin || (!role.IsSystem && (await _roles.GetPermissionKeysAsync(role.RoleId)).All(grants.Contains)))
+                allowed.Add(role);
+        }
+        return allowed;
     }
 
     private static StaffUserInput Normalize(StaffUserInput input) =>

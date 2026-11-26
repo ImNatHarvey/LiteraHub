@@ -8,6 +8,7 @@ using System.Drawing;
 using System.Linq;
 using System.Threading.Tasks;
 using LiteraHub.Core.Interfaces;
+using LiteraHub.Core.Security;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using LiteraHub.Core.Models;
@@ -132,6 +133,7 @@ public sealed class BookEditorPage : ThemedUserControl
     };
     private bool _saving;
     private bool _canHardDelete;
+    private IPermissionService? _permissions;
     private bool _statusesLoaded;
     private int[] _statusIds = Array.Empty<int>();
     private string? _coverPath;
@@ -177,8 +179,9 @@ public sealed class BookEditorPage : ThemedUserControl
         IBookService books,
         bool canHardDelete,
         IAuthorCreationService authorCreation,
-        bool canCreateAuthors)
+        bool canCreateAuthors, IPermissionService permissions)
     {
+        _permissions = permissions;
         _canHardDelete = canHardDelete;
         // ConfigureServices runs after the constructor populated the editor.
         // Keep Delete visible on existing books; permission controls whether it is enabled.
@@ -200,11 +203,12 @@ public sealed class BookEditorPage : ThemedUserControl
         _authors.AddAuthorRequested += HandleAddAuthorRequested;
         // BooksPage passes Permission.CreateLookups for this parameter.
         // It governs both Add Author and Add Category.
-        _category.AllowCreateCategory = canCreateAuthors;
+        _category.AllowCreateCategory = permissions.Can(RolePermission.CategoriesAdd);
         _category.AddCategoryRequested -= HandleAddCategoryRequested;
         _category.AddCategoryRequested += HandleAddCategoryRequested;
         _lookup.Enabled = _editing;
 
+        RefreshEditorMode();
         if (IsHandleCreated)
         {
             _ = LoadCategoriesAsync();
@@ -448,7 +452,7 @@ public sealed class BookEditorPage : ThemedUserControl
         _categoriesLoading = true;
         try
         {
-            var items = await _categoryService.GetAllAsync(false);
+            var items = await _categoryService.GetBookLookupAsync();
             if (IsDisposed || Disposing)
                 return;
 
@@ -1301,8 +1305,9 @@ public sealed class BookEditorPage : ThemedUserControl
         _save.AccessibleName = _editing ? "Save Book" : "Edit Book";
         // The view action is always available. Saving requires loaded lookups.
         _save.Enabled = !_editing || (_authorsLoaded && _statusesLoaded && _category.HasCategories);
-        _archive.Visible = _existing is not null;
-        _delete.Visible = _existing is not null;
+        _save.Visible = _permissions?.Can(_existing is null ? RolePermission.BooksAdd : RolePermission.BooksEdit) ?? true;
+        _archive.Visible = _existing is not null && (_permissions?.Can(RolePermission.BooksArchiveRestore) ?? false);
+        _delete.Visible = _existing is not null && _canHardDelete;
         _cancelEdit.Visible = _existing is not null && _editing;
         _lookup.Enabled = _editing && _metadataService is not null;
         if (_existing is not null)

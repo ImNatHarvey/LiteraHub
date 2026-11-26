@@ -16,41 +16,41 @@ public sealed class ShellForm : Form
         string Key,
         string Title,
         IconChar Icon,
-        Permission Permission,
+        RolePermission? Permission,
         string Note);
 
     private static readonly PageDef[] AllPages =
     {
         new("home", "Home", AppIcons.Home,
-            Permission.ViewCatalog,
+            null,
             "Overview and quick stats. Built after the core modules."),
 
         new("books", "Books", AppIcons.Books,
-            Permission.ViewCatalog,
+            RolePermission.BooksView,
             "Books catalog and management."),
 
         new("authors", "Authors", AppIcons.Authors,
-            Permission.ViewCatalog,
+            RolePermission.AuthorsView,
             "Authors module. Step 5."),
 
         new("categories", "Categories", AppIcons.Categories,
-            Permission.ViewCatalog,
+            RolePermission.CategoriesView,
             "Categories management."),
 
         new("students", "Students", AppIcons.Students,
-            Permission.ManageStudents,
+            RolePermission.StudentsView,
             "Student directory. Step 6."),
 
         new("borrow", "Borrow && Return", AppIcons.BorrowReturn,
-            Permission.ProcessBorrowReturn,
+            RolePermission.BorrowReturnView,
             "Borrow and return. Step 6."),
 
         new("reports", "Reports", AppIcons.Reports,
-            Permission.ViewReports,
+            RolePermission.ReportsView,
             "The four summary lists. Step 7."),
 
         new("users", "Users", AppIcons.Users,
-            Permission.ManageUsers,
+            RolePermission.UsersView,
             "Staff accounts (Admin only).")
     };
 
@@ -173,7 +173,8 @@ public sealed class ShellForm : Form
             throw new ArgumentNullException(nameof(staffUsers));
 
         _pages = AllPages
-            .Where(p => permissions.Can(p.Permission))
+            .Where(p => p.Permission is null || permissions.Can(p.Permission.Value) || (p.Key == "users" && permissions.Can(RolePermission.RolesView)))
+            .Select(p => p.Key == "users" && !permissions.Can(RolePermission.UsersView) ? p with { Title = "Roles && Permissions" } : p)
             .ToList();
 
         SuspendLayout();
@@ -428,7 +429,7 @@ public sealed class ShellForm : Form
         var page = _pages.FirstOrDefault(
             p => p.Key == key);
 
-        if (page is null)
+        if (page is null || (page.Permission is { } required && !_permissions.Can(required) && !(key == "users" && _permissions.Can(RolePermission.RolesView))))
             return;
 
         Control next;
@@ -464,8 +465,13 @@ public sealed class ShellForm : Form
 
         else if (key == "users")
         {
-            if (!_permissions.Can(Permission.ManageUsers)) return;
-            next = new UsersPage(_staffUsers, _session.Current?.UserId, string.Equals(_session.Current?.RoleName, "Admin", StringComparison.OrdinalIgnoreCase) ? _roles : null);
+            string actorRole = _session.Current?.RoleName ?? "";
+            if (_permissions.Can(RolePermission.UsersView))
+                next = new UsersPage(_staffUsers, _permissions, actorRole, _session.Current?.UserId,
+                    _permissions.Can(RolePermission.RolesView) ? _roles : null);
+            else if (_permissions.Can(RolePermission.RolesView))
+                next = new RolesPage(_roles, _permissions, actorRole, showBack: false);
+            else return;
         }
         else
         {
@@ -484,7 +490,7 @@ public sealed class ShellForm : Form
     {
         if (_authorBookOverlay is not null || origin.IsDisposed) return;
         // BookEditorPage exposes Edit controls; do not bypass ManageBooks authorization.
-        if (!_permissions.Can(Permission.ManageBooks))
+        if (!_permissions.Can(RolePermission.BooksView))
         {
             ThemedMessageDialog.ShowAlert(this, "View Book",
                 "Book details navigation is unavailable for this role.");
@@ -500,8 +506,8 @@ public sealed class ShellForm : Form
         if (book is null || origin.IsDisposed || _currentPage != origin) return;
         var editor = new BookEditorPage(book) { Dock = DockStyle.Fill };
         editor.ConfigureServices(_categories, _metadata, _books,
-            _permissions.Can(Permission.HardDelete), _authors,
-            _permissions.Can(Permission.CreateLookups));
+            _permissions.Can(RolePermission.BooksDelete), _authors,
+            _permissions.Can(RolePermission.AuthorsAdd), _permissions);
         editor.BackRequested += (_, _) => CloseAuthorBookOverlay();
         editor.Saved += async (_, _) =>
         {
@@ -518,7 +524,7 @@ public sealed class ShellForm : Form
     {
         if (_authorBookOverlay is not null || origin.IsDisposed) return;
         // BookEditorPage includes edit controls. Keep existing permission protections.
-        if (!_permissions.Can(Permission.ManageBooks))
+        if (!_permissions.Can(RolePermission.BooksView))
         {
             ThemedMessageDialog.ShowAlert(this, "View Book",
                 "Book details navigation is unavailable for this role.");
@@ -535,8 +541,8 @@ public sealed class ShellForm : Form
             _authorBookOverlay is not null) return;
         var editor = new BookEditorPage(book) { Dock = DockStyle.Fill };
         editor.ConfigureServices(_categories, _metadata, _books,
-            _permissions.Can(Permission.HardDelete), _authors,
-            _permissions.Can(Permission.CreateLookups));
+            _permissions.Can(RolePermission.BooksDelete), _authors,
+            _permissions.Can(RolePermission.AuthorsAdd), _permissions);
         editor.BackRequested += (_, _) => CloseAuthorBookOverlay();
         editor.Saved += async (_, _) =>
         {

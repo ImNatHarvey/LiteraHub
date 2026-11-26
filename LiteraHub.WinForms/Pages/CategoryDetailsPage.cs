@@ -168,14 +168,13 @@ public sealed class CategoryDetailsPage : ThemedUserControl
         _header.HeadingText = !existing ? "Add Category" : _editing ? "Edit Category" : "View Category";
         _header.SubtitleText = !existing ? "Create a new category record." :
             (_editing ? "Editing: " : "Viewing: ") + _category!.Name;
-        _primary.Visible = (_editing && _permissions.Can(Permission.CreateLookups)) ||
-            (existing && _permissions.Can(Permission.ManageLookups));
+        _primary.Visible = _permissions.Can(_category is null ? RolePermission.CategoriesAdd : RolePermission.CategoriesEdit);
         _primary.Enabled = !_busy;
         _cancel.Visible = existing && _editing;
-        _archive.Visible = existing && _permissions.Can(Permission.ManageLookups);
+        _archive.Visible = existing && _permissions.Can(RolePermission.CategoriesArchiveRestore);
         _archive.Text = "";
         _archive.AccessibleName = _category?.IsActive == false ? "Restore Category" : "Archive Category";
-        _delete.Visible = existing && _permissions.Can(Permission.HardDelete) && _permissions.Can(Permission.ManageLookups);
+        _delete.Visible = existing && _permissions.Can(RolePermission.CategoriesDelete);
         _delete.Text = "";
         _delete.AccessibleName = "Delete Category";
         _primary.Text = "";
@@ -232,7 +231,7 @@ public sealed class CategoryDetailsPage : ThemedUserControl
         {
             if (_category is null)
             {
-                if (!_permissions.Can(Permission.CreateLookups)) return;
+                if (!_permissions.Can(RolePermission.CategoriesAdd)) return;
                 var created = await _categories.CreateAsync(input);
                 if (!created.Success) { Alert(created.Error ?? "Unable to create category."); return; }
                 var list = await _categories.GetAllAsync(true);
@@ -268,7 +267,7 @@ public sealed class CategoryDetailsPage : ThemedUserControl
 
     private async Task ChangeActiveAsync()
     {
-        if (_busy || _category is null || !_permissions.Can(Permission.ManageLookups)) return;
+        if (_busy || _category is null || !_permissions.Can(RolePermission.CategoriesArchiveRestore)) return;
         bool restore = !_category.IsActive;
         if (!ThemedMessageDialog.Confirm(FindForm(), restore ? "Restore Category" : "Archive Category",
             $"{(restore ? "Restore" : "Archive")} '{_category.Name}'?", danger: !restore,
@@ -291,8 +290,7 @@ public sealed class CategoryDetailsPage : ThemedUserControl
 
     private async Task DeleteAsync()
     {
-        if (_busy || _category is null || !_permissions.Can(Permission.HardDelete) ||
-            !_permissions.Can(Permission.ManageLookups)) return;
+        if (_busy || _category is null || !_permissions.Can(RolePermission.CategoriesDelete)) return;
         if (!ThemedMessageDialog.Confirm(FindForm(), "Delete Category",
             $"Permanently delete '{_category.Name}'? Categories linked to books cannot be deleted.",
             danger: true, confirmText: "Delete")) return;
@@ -325,6 +323,11 @@ public sealed class CategoryDetailsPage : ThemedUserControl
     private async Task LoadBooksAsync()
     {
         if (_category is null || _loadingCovers) return;
+        if (!_permissions.Can(RolePermission.BooksView))
+        {
+            _associatedBooks.Visible = false;
+            return;
+        }
         _loadingCovers = true;
         try
         {

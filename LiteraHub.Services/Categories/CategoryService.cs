@@ -25,17 +25,20 @@ public sealed class CategoryService : ICategoryService
     public Task<IReadOnlyList<Category>> GetAllAsync(
         bool includeInactive = false)
     {
-        _permissions.Demand(Permission.ViewCatalog);
-
-        if (includeInactive)
-            _permissions.Demand(Permission.ManageLookups);
+        _permissions.Demand(RolePermission.CategoriesView);
 
         return _repository.GetAllAsync(includeInactive);
     }
 
+    public Task<IReadOnlyList<Category>> GetBookLookupAsync()
+    {
+        _permissions.Demand(RolePermission.BooksView);
+        return _repository.GetAllAsync(false);
+    }
+
     public Task<Category?> GetByIdAsync(int categoryId)
     {
-        _permissions.Demand(Permission.ViewCatalog);
+        _permissions.Demand(RolePermission.CategoriesView);
 
         if (categoryId <= 0)
             return Task.FromResult<Category?>(null);
@@ -52,7 +55,7 @@ public sealed class CategoryService : ICategoryService
             return null;
 
         if (!category.IsActive &&
-            !_permissions.Can(Permission.ManageLookups))
+            !_permissions.Can(RolePermission.CategoriesView))
             return null;
 
         return category;
@@ -61,7 +64,7 @@ public sealed class CategoryService : ICategoryService
     public async Task<ServiceResult> CreateAsync(
         CategoryInput input)
     {
-        _permissions.Demand(Permission.CreateLookups);
+        _permissions.Demand(RolePermission.CategoriesAdd);
 
         var validation = Validate(input);
 
@@ -94,7 +97,7 @@ public sealed class CategoryService : ICategoryService
         int categoryId,
         CategoryInput input)
     {
-        _permissions.Demand(Permission.ManageLookups);
+        _permissions.Demand(RolePermission.CategoriesEdit);
 
         if (categoryId <= 0)
             return ServiceResult.Fail("Invalid category ID.");
@@ -142,7 +145,7 @@ public sealed class CategoryService : ICategoryService
         int categoryId,
         bool isActive)
     {
-        _permissions.Demand(Permission.ManageLookups);
+        _permissions.Demand(RolePermission.CategoriesArchiveRestore);
 
         if (categoryId <= 0)
             return ServiceResult.Fail("Invalid category ID.");
@@ -174,8 +177,7 @@ public sealed class CategoryService : ICategoryService
 
     public async Task<ServiceResult> DeleteAsync(int categoryId)
     {
-        _permissions.Demand(Permission.HardDelete);
-        _permissions.Demand(Permission.ManageLookups);
+        _permissions.Demand(RolePermission.CategoriesDelete);
 
         if (categoryId <= 0)
             return ServiceResult.Fail("Invalid category ID.");

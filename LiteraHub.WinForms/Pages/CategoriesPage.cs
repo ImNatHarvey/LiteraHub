@@ -185,11 +185,11 @@ public sealed class CategoriesPage : ThemedUserControl
     private bool _loadFailed;
 
     private bool CanManage =>
-        _permissions.Can(Permission.ManageLookups);
+        _permissions.Can(RolePermission.CategoriesView);
 
     private bool CanDelete =>
         CanManage &&
-        _permissions.Can(Permission.HardDelete);
+        _permissions.Can(RolePermission.CategoriesDelete);
 
     private int ActionCount => CanDelete ? 3 : 2;
 
@@ -237,7 +237,7 @@ public sealed class CategoriesPage : ThemedUserControl
 
             if (_allCategories.Count == 0)
             {
-                if (_permissions.Can(Permission.CreateLookups))
+                if (_permissions.Can(RolePermission.CategoriesAdd))
                     OpenCategoryDetails(null);
             }
             else if (!string.IsNullOrWhiteSpace(_search.Text))
@@ -253,7 +253,7 @@ public sealed class CategoriesPage : ThemedUserControl
         _filterSort.Visible = CanManage;
 
         _addButton.Visible =
-            _permissions.Can(Permission.CreateLookups);
+            _permissions.Can(RolePermission.CategoriesAdd);
 
         _search.Placeholder = "Search categories...";
 
@@ -549,7 +549,7 @@ public sealed class CategoriesPage : ThemedUserControl
                     : CatalogEmptyKind.NoFilterResults;
 
             _emptyState.Configure(kind,
-                _permissions.Can(Permission.CreateLookups),
+                _permissions.Can(RolePermission.CategoriesAdd),
                 "category", "categories", "category name or description");
             _emptyState.Visible = true;
             _emptyState.BringToFront();
@@ -611,7 +611,7 @@ public sealed class CategoriesPage : ThemedUserControl
     private void OpenCategoryDetails(Category? category)
     {
         if (_details is not null || IsDisposed || Disposing) return;
-        if (category is null && !_permissions.Can(Permission.CreateLookups)) return;
+        if (category is null && !_permissions.Can(RolePermission.CategoriesAdd)) return;
         var details = new CategoryDetailsPage(_categories, _books, _permissions, category);
         _details = details;
         details.BackRequested += (_, _) => CloseCategoryDetails();
@@ -906,7 +906,7 @@ public sealed class CategoriesPage : ThemedUserControl
                 _grid.Enabled = true;
 
                 _addButton.Enabled =
-                    _permissions.Can(Permission.CreateLookups);
+                    _permissions.Can(RolePermission.CategoriesAdd);
 
                 // Populate the table after loading is complete.
                 // Pagination is updated again after _working
@@ -944,6 +944,8 @@ public sealed class CategoriesPage : ThemedUserControl
         CatalogToolbarChrome.Install(_layout, _toolbar, _status,
             _search, _filterSort, _addButton, _sortControl, _activeChips,
             compactToolbar, CanManage);
+        _addButton.Visible = _permissions.Can(RolePermission.CategoriesAdd);
+        _toolbar.ColumnStyles[3].Width = _permissions.Can(RolePermission.CategoriesAdd) ? (compactToolbar ? 44 : 160) : 0;
     }
 
     private void RefreshActiveFilterChips()

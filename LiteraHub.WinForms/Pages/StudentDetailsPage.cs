@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using LiteraHub.Core.Interfaces;
+using LiteraHub.Core.Security;
 using LiteraHub.Core.Models;
 using LiteraHub.WinForms.Controls;
 using LiteraHub.WinForms.Forms;
@@ -60,8 +61,11 @@ public sealed class StudentDetailsPage : ThemedUserControl
 
     public event EventHandler? BackRequested;
 
-    public StudentDetailsPage(IStudentService service, Student? student, bool canHardDelete)
+    private readonly IPermissionService _permissions;
+
+    public StudentDetailsPage(IStudentService service, Student? student, bool canHardDelete, IPermissionService permissions)
     {
+        _permissions = permissions;
         _service = service ?? throw new ArgumentNullException(nameof(service));
         _canHardDelete = canHardDelete;
         _original = student;
@@ -408,9 +412,10 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _save.AccessibleName = editing ? "Save Student" : "Edit Student";
         // Match Book Editor: the three action buttons retain their positions
         // and remain visible for an existing record in View and Edit.
-        _archive.Visible = _original is not null;
+        _save.Visible = _permissions.Can(_original is null ? RolePermission.StudentsAdd : RolePermission.StudentsEdit);
+        _archive.Visible = _original is not null && _permissions.Can(RolePermission.StudentsArchiveRestore);
         _archive.AccessibleName = _original?.IsActive == false ? "Restore Student" : "Archive Student";
-        _delete.Visible = _original is not null;
+        _delete.Visible = _original is not null && _canHardDelete;
         _delete.Enabled = _canHardDelete && !_busy;
         _cancel.Visible = _original is not null && editing;
         _detailsHeader.HeadingText = _original is null ? "Add Student" : editing ? "Edit Student" : "Student Details";

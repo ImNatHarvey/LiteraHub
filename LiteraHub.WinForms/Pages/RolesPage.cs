@@ -1,6 +1,7 @@
 ﻿using System.Drawing.Drawing2D;
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
+using LiteraHub.Core.Security;
 using LiteraHub.WinForms.Controls;
 using LiteraHub.WinForms.Forms;
 using LiteraHub.WinForms.Theming;
@@ -11,6 +12,8 @@ namespace LiteraHub.WinForms.Pages;
 public sealed class RolesPage : ThemedUserControl
 {
     private readonly IRoleService _service;
+    private readonly IPermissionService _permissions;
+    private readonly string _actorRole;
 
     private readonly Panel _host = new() { Dock = DockStyle.Fill };
     private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(Space.L), Margin = Padding.Empty };
@@ -46,9 +49,12 @@ public sealed class RolesPage : ThemedUserControl
     private bool _loaded;
     private bool _failed;
 
-    public RolesPage(IRoleService service)
+    public RolesPage(IRoleService service, IPermissionService permissions, string actorRole, bool showBack = true)
     {
         _service = service;
+        _permissions = permissions;
+        _actorRole = actorRole;
+        _back.Visible = showBack;
 
         Dock = DockStyle.Fill;
         _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -152,6 +158,8 @@ public sealed class RolesPage : ThemedUserControl
         _responsiveInitialized = true;
         _compact = compact;
         CatalogToolbarChrome.Install(_layout, _toolbar, _summary, _search, _filter, _add, _sortControl, _activeChips, compact, true);
+        _add.Visible = _permissions.Can(RolePermission.RolesAdd);
+        _toolbar.ColumnStyles[3].Width = _permissions.Can(RolePermission.RolesAdd) ? (compact ? 44 : 160) : 0;
         _add.Text = compact ? "+" : "+ Add Role";
         _add.Font = compact ? new Font("Segoe UI", 18f) : Theme.BodyStrong;
         _pagination.ColumnStyles[1].Width = compact ? 245 : 300;
@@ -277,7 +285,7 @@ public sealed class RolesPage : ThemedUserControl
             _empty.Visible = true;
             _empty.BringToFront();
         }
-        finally { _busy = false; if (!IsDisposed) _add.Enabled = true; }
+        finally { _busy = false; if (!IsDisposed) _add.Enabled = _permissions.Can(RolePermission.RolesAdd); }
     }
 
     private void Filter()
@@ -318,7 +326,7 @@ public sealed class RolesPage : ThemedUserControl
         {
             var kind = _all.Count == 0 ? CatalogEmptyKind.NoRecords :
                 queryIsActive() ? CatalogEmptyKind.NoSearchResults : CatalogEmptyKind.NoFilterResults;
-            _empty.Configure(kind, true, "role", "roles", "role name or role ID");
+            _empty.Configure(kind, _permissions.Can(RolePermission.RolesAdd), "role", "roles", "role name or role ID");
             _empty.BringToFront();
         }
         bool queryIsActive() => !string.IsNullOrWhiteSpace(_search.Text);
@@ -326,7 +334,7 @@ public sealed class RolesPage : ThemedUserControl
 
     private async Task OpenDetailsAsync(int? id)
     {
-        if (_busy || _details is not null) return;
+        if (_busy || _details is not null || !_permissions.Can(RolePermission.RolesView) || (!id.HasValue && !_permissions.Can(RolePermission.RolesAdd))) return;
         _busy = true;
         try
         {
@@ -338,7 +346,7 @@ public sealed class RolesPage : ThemedUserControl
                 ThemedMessageDialog.ShowAlert(FindForm(), "Roles & Permissions", "Role no longer exists.");
                 return;
             }
-            _details = new RoleDetailsPage(_service, user, grants) { Dock = DockStyle.Fill };
+            _details = new RoleDetailsPage(_service, user, grants, _permissions, _actorRole) { Dock = DockStyle.Fill };
             _details.BackRequested += async (_, _) =>
             {
                 if (_details is null) return;

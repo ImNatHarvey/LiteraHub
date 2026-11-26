@@ -194,7 +194,7 @@ public sealed class BooksPage : ThemedUserControl
     private bool _openingEditor;
 
     private bool CanManage =>
-        _permissions.Can(Permission.ManageBooks);
+        _permissions.Can(RolePermission.BooksView);
 
     private int TotalPages =>
         Math.Max(
@@ -241,7 +241,7 @@ public sealed class BooksPage : ThemedUserControl
             }
             if (_allBooks.Count == 0)
             {
-                if (CanManage) await OpenEditorAsync();
+                if (_permissions.Can(RolePermission.BooksAdd)) await OpenEditorAsync();
             }
             else if (!string.IsNullOrWhiteSpace(_search.Text))
             {
@@ -257,7 +257,7 @@ public sealed class BooksPage : ThemedUserControl
             "Search ISBN, title, author, category, status...";
 
         _filter.Visible = CanManage;
-        _addButton.Visible = CanManage;
+        _addButton.Visible = _permissions.Can(RolePermission.BooksAdd);
         _addButton.AccessibleName = "Add Book";
 
         _addButton.Click += async (_, _) =>
@@ -712,7 +712,7 @@ public sealed class BooksPage : ThemedUserControl
 
     private async Task OpenEditorAsync(Book? selected = null)
     {
-        if (!CanManage ||
+        if (!CanManage || (selected is null && !_permissions.Can(RolePermission.BooksAdd)) ||
             _editor is not null ||
             _openingEditor ||
             _loadingData)
@@ -749,9 +749,9 @@ public sealed class BooksPage : ThemedUserControl
                 _categories,
                 _metadata,
                 _books,
-                _permissions.Can(Permission.HardDelete),
+                _permissions.Can(RolePermission.BooksDelete),
                 _authors,
-                _permissions.Can(Permission.CreateLookups));
+                _permissions.Can(RolePermission.AuthorsAdd), _permissions);
 
             editor.BackRequested += HandleBackRequested;
             editor.Saved += async (_, _) =>
@@ -778,7 +778,7 @@ public sealed class BooksPage : ThemedUserControl
             _openingEditor = false;
 
             if (!IsDisposed && !Disposing)
-                _addButton.Enabled = CanManage;
+                _addButton.Enabled = _permissions.Can(RolePermission.BooksAdd);
         }
     }
 
@@ -873,7 +873,7 @@ public sealed class BooksPage : ThemedUserControl
             if (!IsDisposed && !Disposing)
             {
                 _grid.Enabled = true;
-                _addButton.Enabled = CanManage;
+                _addButton.Enabled = _permissions.Can(RolePermission.BooksAdd);
 
                 if (!_loadFailed)
                     FilterBooks();
@@ -966,7 +966,7 @@ public sealed class BooksPage : ThemedUserControl
                 : hasSearch
                     ? CatalogEmptyKind.NoSearchResults
                     : CatalogEmptyKind.NoFilterResults;
-            _emptyState.Configure(kind, CanManage);
+            _emptyState.Configure(kind, _permissions.Can(RolePermission.BooksAdd));
             _emptyState.Visible = true;
             _emptyState.BringToFront();
         }
@@ -1111,6 +1111,8 @@ public sealed class BooksPage : ThemedUserControl
         CatalogToolbarChrome.Install(_layout, _toolbar, _status,
             _search, _filter, _addButton, _sortControl, _activeChips,
             compactToolbar, CanManage);
+        _addButton.Visible = _permissions.Can(RolePermission.BooksAdd);
+        _toolbar.ColumnStyles[3].Width = _permissions.Can(RolePermission.BooksAdd) ? (compactToolbar ? 44 : 160) : 0;
     }
 
     private void RefreshActiveFilterChips()

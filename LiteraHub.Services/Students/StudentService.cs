@@ -19,13 +19,13 @@ public sealed class StudentService : IStudentService
 
     public Task<IReadOnlyList<Student>> GetAllAsync(bool includeInactive = false)
     {
-        _permissions.Demand(Permission.ManageStudents);
+        _permissions.Demand(RolePermission.StudentsView);
         return _repository.GetAllAsync(includeInactive);
     }
 
     public Task<Student?> GetByIdAsync(int studentId)
     {
-        _permissions.Demand(Permission.ManageStudents);
+        _permissions.Demand(RolePermission.StudentsView);
         return studentId > 0
             ? _repository.GetByIdAsync(studentId)
             : Task.FromResult<Student?>(null);
@@ -33,7 +33,7 @@ public sealed class StudentService : IStudentService
 
     public async Task<ServiceResult> CreateAsync(StudentInput input)
     {
-        _permissions.Demand(Permission.ManageStudents);
+        _permissions.Demand(RolePermission.StudentsAdd);
         var validation = Validate(input);
         if (!validation.Success) return validation;
         var normalized = Normalize(input);
@@ -52,7 +52,7 @@ public sealed class StudentService : IStudentService
 
     public async Task<ServiceResult> UpdateAsync(int studentId, StudentInput input)
     {
-        _permissions.Demand(Permission.ManageStudents);
+        _permissions.Demand(RolePermission.StudentsEdit);
         if (studentId <= 0) return ServiceResult.Fail("Invalid student record ID.");
         var validation = Validate(input);
         if (!validation.Success) return validation;
@@ -76,7 +76,7 @@ public sealed class StudentService : IStudentService
 
     public async Task<ServiceResult> SetActiveAsync(int studentId, bool isActive)
     {
-        _permissions.Demand(Permission.ManageStudents);
+        _permissions.Demand(RolePermission.StudentsArchiveRestore);
         if (studentId <= 0) return ServiceResult.Fail("Invalid student record ID.");
         var existing = await _repository.GetByIdAsync(studentId);
         if (existing is null) return ServiceResult.Fail("Student not found.");
@@ -95,8 +95,7 @@ public sealed class StudentService : IStudentService
 
     public async Task<ServiceResult> DeleteAsync(int studentId)
     {
-        _permissions.Demand(Permission.ManageStudents);
-        _permissions.Demand(Permission.HardDelete);
+        _permissions.Demand(RolePermission.StudentsDelete);
         if (studentId <= 0) return ServiceResult.Fail("Invalid student record ID.");
         if (await _repository.GetByIdAsync(studentId) is null)
             return ServiceResult.Fail("Student not found.");

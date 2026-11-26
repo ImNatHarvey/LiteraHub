@@ -163,7 +163,7 @@ public sealed class AuthorsPage : ThemedUserControl
     private bool _compact;
 
     private bool CanManage =>
-        _permissions.Can(Permission.ManageLookups);
+        _permissions.Can(RolePermission.AuthorsView);
 
     private int ActionCount => 1;
 
@@ -198,7 +198,7 @@ public sealed class AuthorsPage : ThemedUserControl
             }
             if (_authors.Length == 0)
             {
-                if (_permissions.Can(Permission.CreateLookups))
+                if (_permissions.Can(RolePermission.AuthorsAdd))
                     OpenAuthorDetails(null);
             }
             else if (!string.IsNullOrWhiteSpace(_search.Text))
@@ -215,7 +215,7 @@ public sealed class AuthorsPage : ThemedUserControl
         _filter.Visible = CanManage;
 
         _add.Visible =
-            _permissions.Can(Permission.CreateLookups);
+            _permissions.Can(RolePermission.AuthorsAdd);
 
         _search.TextChanged += (_, _) =>
         {
@@ -734,7 +734,7 @@ public sealed class AuthorsPage : ThemedUserControl
 
     private void OpenAuthorDetails(AuthorRecord? author)
     {
-        if (_details is not null || IsDisposed || Disposing) return;
+        if (_details is not null || IsDisposed || Disposing || !_permissions.Can(RolePermission.AuthorsView) || (author is null && !_permissions.Can(RolePermission.AuthorsAdd))) return;
         var details = new AuthorDetailsPage(_creation, _books, _permissions, author);
         _details = details;
         details.BackRequested += (_, _) => CloseAuthorDetails();
@@ -824,7 +824,7 @@ public sealed class AuthorsPage : ThemedUserControl
             if (!IsDisposed && !Disposing)
             {
                 _add.Enabled =
-                    _permissions.Can(Permission.CreateLookups);
+                    _permissions.Can(RolePermission.AuthorsAdd);
 
                 if (_loadFailed)
                 {
@@ -920,7 +920,7 @@ public sealed class AuthorsPage : ThemedUserControl
                     ? CatalogEmptyKind.NoSearchResults
                     : CatalogEmptyKind.NoFilterResults;
             _emptyState.Configure(kind,
-                _permissions.Can(Permission.CreateLookups),
+                _permissions.Can(RolePermission.AuthorsAdd),
                 "author", "authors", "author ID, name, or gender");
             _emptyState.Visible = true;
             _emptyState.BringToFront();
@@ -1097,6 +1097,8 @@ public sealed class AuthorsPage : ThemedUserControl
         CatalogToolbarChrome.Install(_layout, _toolbar, _status,
             _search, _filter, _add, _sortControl, _activeChips,
             compactToolbar, CanManage);
+        _add.Visible = _permissions.Can(RolePermission.AuthorsAdd);
+        _toolbar.ColumnStyles[3].Width = _permissions.Can(RolePermission.AuthorsAdd) ? (compactToolbar ? 44 : 160) : 0;
     }
 
     private void RefreshActiveFilterChips()

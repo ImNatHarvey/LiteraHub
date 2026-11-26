@@ -96,7 +96,7 @@ internal static class Program
             new StudentRepository(connectionFactory), permissions);
 
         IStaffUserService staffUsers = new StaffUserService(
-            new StaffUserRepository(connectionFactory), permissions, session, hasher);
+            new StaffUserRepository(connectionFactory), permissions, session, hasher, roleRepository);
 
         IBookMetadataService metadata =
             new OpenLibraryMetadataService();

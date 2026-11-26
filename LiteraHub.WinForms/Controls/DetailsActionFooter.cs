@@ -86,11 +86,7 @@ public sealed class DetailsActionFooter : Panel
             int left = Math.Max(0,
                 width - (actionWidth * 3 + gap * 2));
 
-            // Keep original slots even if an action is hidden by permissions.
-            _delete.SetBounds(left, top, actionWidth, height);
-            _archive.SetBounds(left + actionWidth + gap, top, actionWidth, height);
-            _primary.SetBounds(left + (actionWidth + gap) * 2, top,
-                actionWidth, height);
+            left = ArrangeVisible(width, top, actionWidth, height, gap);
             _cancel.SetBounds(0, top,
                 Math.Min(115, Math.Max(80, left - gap)), height);
 
@@ -133,16 +129,32 @@ public sealed class DetailsActionFooter : Panel
                 (fullWidth * 2 / 3 - 2 * gap) / 3));
         int left = Math.Max(0, fullWidth - actionWidth * 3 - 2 * gap);
 
-        _delete.SetBounds(left, actionY, actionWidth, height);
-        _archive.SetBounds(left + actionWidth + gap, actionY, actionWidth, height);
-        _primary.SetBounds(left + (actionWidth + gap) * 2,
-            actionY, actionWidth, height);
+        left = ArrangeVisible(fullWidth, actionY, actionWidth, height, gap);
 
         int cancelWidth = portrait
             ? Math.Min(115, fullWidth)
             : Math.Min(115, Math.Max(80, left - gap));
         _cancel.SetBounds(0, portrait ? 4 : 8, cancelWidth, height);
         _cancel.Visible = showCancel;
+    }
+
+    private int ArrangeVisible(int width, int y, int actionWidth, int height, int gap)
+    {
+        int right = width;
+        foreach (var button in new[] { _primary, _archive, _delete })
+        {
+            if (button is null || !button.Visible) continue;
+            right -= actionWidth;
+            button.SetBounds(Math.Max(0, right), y, actionWidth, height);
+            right -= gap;
+        }
+        return Math.Max(0, right + gap);
+    }
+
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        ArrangeActions();
     }
 
     private void HandleThemeChanged(object? sender, EventArgs e)

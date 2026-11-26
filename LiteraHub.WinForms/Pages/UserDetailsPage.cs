@@ -1,6 +1,7 @@
 ﻿using System.Drawing.Drawing2D;
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
+using LiteraHub.Core.Security;
 using LiteraHub.WinForms.Controls;
 using LiteraHub.WinForms.Forms;
 using LiteraHub.WinForms.Theming;
@@ -11,6 +12,8 @@ namespace LiteraHub.WinForms.Pages;
 public sealed class UserDetailsPage : ThemedUserControl
 {
     private readonly IStaffUserService _service;
+    private readonly IPermissionService _permissions;
+    private readonly bool _canManageTarget;
     private StaffUser? _user;
     private readonly int? _currentUserId;
     private bool IsOwnAccount => _user is not null && _user.UserId == _currentUserId;
@@ -49,9 +52,11 @@ public sealed class UserDetailsPage : ThemedUserControl
     private bool _busy;
     public event EventHandler? BackRequested;
 
-    public UserDetailsPage(IStaffUserService service, StaffUser? user, int? currentUserId = null, IEnumerable<string>? roleNames = null)
+    public UserDetailsPage(IStaffUserService service, StaffUser? user, IPermissionService permissions, bool canManageTarget, int? currentUserId = null, IEnumerable<string>? roleNames = null)
     {
         _service = service;
+        _permissions = permissions;
+        _canManageTarget = canManageTarget;
         _roleNames = new[] { "Select Role" }.Concat((roleNames ?? new[] { "Admin", "Librarian" })
             .Where(n => !string.Equals(n, "Borrower", StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)).ToArray();
@@ -163,9 +168,9 @@ public sealed class UserDetailsPage : ThemedUserControl
         if (!editing) { _viewUsername.BringToFront(); _viewRole.BringToFront(); }
         _save.Text = "";
         _save.AccessibleName = editing ? "Save User" : "Edit User";
-        _archive.Visible = _user is not null && !IsOwnAccount;
-        _save.Visible = !IsOwnAccount;
-        _delete.Visible = _user is not null && !IsOwnAccount;
+        _archive.Visible = _user is not null && !IsOwnAccount && _canManageTarget && _permissions.Can(RolePermission.UsersArchiveRestore);
+        _save.Visible = !IsOwnAccount && _canManageTarget && _permissions.Can(_user is null ? RolePermission.UsersAdd : RolePermission.UsersEdit);
+        _delete.Visible = _user is not null && !IsOwnAccount && _canManageTarget && _permissions.Can(RolePermission.UsersDelete);
         _archive.Text = "";
         _archive.AccessibleName = _user?.IsActive == false ? "Restore User" : "Archive User";
         _cancel.Visible = editing;

@@ -28,46 +28,38 @@ public sealed class BookService : IBookService
     public Task<IReadOnlyList<Book>> GetAllAsync(
         bool includeInactive = false)
     {
-        _permissions.Demand(Permission.ViewCatalog);
-
-        if (includeInactive)
-            _permissions.Demand(Permission.ManageBooks);
+        _permissions.Demand(RolePermission.BooksView);
 
         return _repository.GetAllAsync(includeInactive);
     }
 
     public async Task<Book?> GetByIdAsync(int bookId)
     {
-        _permissions.Demand(Permission.ViewCatalog);
+        _permissions.Demand(RolePermission.BooksView);
 
         if (bookId <= 0)
             return null;
 
         var book = await _repository.GetByIdAsync(bookId);
 
-        if (book is not null &&
-            !book.IsActive &&
-            !_permissions.Can(Permission.ManageBooks))
-            return null;
-
         return book;
     }
 
     public Task<IReadOnlyList<BookLookupOption>> GetAuthorsAsync()
     {
-        _permissions.Demand(Permission.ViewCatalog);
+        _permissions.Demand(RolePermission.BooksView);
         return _repository.GetAuthorsAsync();
     }
 
     public Task<IReadOnlyList<BookLookupOption>> GetStatusesAsync()
     {
-        _permissions.Demand(Permission.ViewCatalog);
+        _permissions.Demand(RolePermission.BooksView);
         return _repository.GetStatusesAsync();
     }
 
     public async Task<ServiceResult> CreateAsync(BookInput input)
     {
-        _permissions.Demand(Permission.ManageBooks);
+        _permissions.Demand(RolePermission.BooksAdd);
 
         var validation = Validate(input);
 
@@ -75,6 +67,8 @@ public sealed class BookService : IBookService
             return validation;
 
         var normalized = Normalize(input);
+        if ((normalized.PendingAuthorNames?.Count ?? 0) > 0)
+            _permissions.Demand(RolePermission.AuthorsAdd);
 
         var duplicate = await _repository.GetByIsbnAsync(
             normalized.Isbn);
@@ -104,7 +98,7 @@ public sealed class BookService : IBookService
         int bookId,
         BookInput input)
     {
-        _permissions.Demand(Permission.ManageBooks);
+        _permissions.Demand(RolePermission.BooksEdit);
 
         if (bookId <= 0)
             return ServiceResult.Fail("Invalid book ID.");
@@ -115,6 +109,8 @@ public sealed class BookService : IBookService
             return validation;
 
         var normalized = Normalize(input);
+        if ((normalized.PendingAuthorNames?.Count ?? 0) > 0)
+            _permissions.Demand(RolePermission.AuthorsAdd);
 
         var existing = await _repository.GetByIdAsync(bookId);
 
@@ -156,7 +152,7 @@ public sealed class BookService : IBookService
         int bookId,
         bool isActive)
     {
-        _permissions.Demand(Permission.ManageBooks);
+        _permissions.Demand(RolePermission.BooksArchiveRestore);
 
         if (bookId <= 0)
             return ServiceResult.Fail("Invalid book ID.");
@@ -187,8 +183,7 @@ public sealed class BookService : IBookService
 
     public async Task<ServiceResult> DeleteAsync(int bookId)
     {
-        _permissions.Demand(Permission.ManageBooks);
-        _permissions.Demand(Permission.HardDelete);
+        _permissions.Demand(RolePermission.BooksDelete);
 
         if (bookId <= 0)
             return ServiceResult.Fail("Invalid book ID.");

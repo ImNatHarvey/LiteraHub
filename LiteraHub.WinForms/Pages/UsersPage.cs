@@ -2,6 +2,7 @@
 using System.Drawing.Drawing2D;
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
+using LiteraHub.Core.Security;
 using LiteraHub.WinForms.Controls;
 using LiteraHub.WinForms.Forms;
 using LiteraHub.WinForms.Theming;
@@ -12,6 +13,8 @@ namespace LiteraHub.WinForms.Pages;
 public sealed class UsersPage : ThemedUserControl
 {
     private readonly IStaffUserService _service;
+    private readonly IPermissionService _permissions;
+    private readonly string _actorRole;
     private readonly int? _currentUserId;
     private readonly IRoleService? _roles;
     private RolesPage? _rolesPage;
@@ -48,9 +51,11 @@ public sealed class UsersPage : ThemedUserControl
     private bool _loaded;
     private bool _failed;
 
-    public UsersPage(IStaffUserService service, int? currentUserId = null, IRoleService? roles = null)
+    public UsersPage(IStaffUserService service, IPermissionService permissions, string actorRole, int? currentUserId = null, IRoleService? roles = null)
     {
         _service = service;
+        _permissions = permissions;
+        _actorRole = actorRole;
         _currentUserId = currentUserId;
         _roles = roles;
         Dock = DockStyle.Fill;
@@ -60,7 +65,7 @@ public sealed class UsersPage : ThemedUserControl
         var heading = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
         heading.Controls.Add(_title); heading.Controls.Add(_manageRoles); _manageRoles.BringToFront();
         _layout.Controls.Add(heading, 0, 0);
-        _manageRoles.Visible = _roles is not null;
+        _manageRoles.Visible = _roles is not null && _permissions.Can(RolePermission.RolesView);
         _manageRoles.Click += (_, _) => OpenRoles();
         _layout.Controls.Add(_toolbar, 0, 1);
         _layout.Controls.Add(_summary, 0, 2);
@@ -149,8 +154,8 @@ public sealed class UsersPage : ThemedUserControl
 
     private void OpenRoles()
     {
-        if (_roles is null || _busy || _details is not null || _rolesPage is not null) return;
-        var page = new RolesPage(_roles) { Dock = DockStyle.Fill };
+        if (_roles is null || !_permissions.Can(RolePermission.RolesView) || _busy || _details is not null || _rolesPage is not null) return;
+        var page = new RolesPage(_roles, _permissions, _actorRole) { Dock = DockStyle.Fill };
         _rolesPage = page;
         page.BackRequested += async (_, _) =>
         {
@@ -170,6 +175,8 @@ public sealed class UsersPage : ThemedUserControl
         _responsiveInitialized = true;
         _compact = compact;
         CatalogToolbarChrome.Install(_layout, _toolbar, _summary, _search, _filter, _add, _sortControl, _activeChips, compact, true);
+        _add.Visible = _permissions.Can(RolePermission.UsersAdd);
+        _toolbar.ColumnStyles[3].Width = _permissions.Can(RolePermission.UsersAdd) ? (compact ? 44 : 160) : 0;
         _add.Text = compact ? "+" : "+ Add User";
         _add.Font = compact ? new Font("Segoe UI", 18f) : Theme.BodyStrong;
         _pagination.ColumnStyles[1].Width = compact ? 245 : 300;
@@ -297,7 +304,7 @@ public sealed class UsersPage : ThemedUserControl
             _empty.Visible = true;
             _empty.BringToFront();
         }
-        finally { _busy = false; if (!IsDisposed) _add.Enabled = true; }
+        finally { _busy = false; if (!IsDisposed) _add.Enabled = _permissions.Can(RolePermission.UsersAdd); }
     }
 
     private void Filter()
@@ -338,7 +345,7 @@ public sealed class UsersPage : ThemedUserControl
         {
             var kind = _all.Count == 0 ? CatalogEmptyKind.NoRecords :
                 queryIsActive() ? CatalogEmptyKind.NoSearchResults : CatalogEmptyKind.NoFilterResults;
-            _empty.Configure(kind, true, "user", "users", "username or user ID");
+            _empty.Configure(kind, _permissions.Can(RolePermission.UsersAdd), "user", "users", "username or user ID");
             _empty.BringToFront();
         }
         bool queryIsActive() => !string.IsNullOrWhiteSpace(_search.Text);
@@ -346,7 +353,7 @@ public sealed class UsersPage : ThemedUserControl
 
     private async Task OpenDetailsAsync(int? id)
     {
-        if (_busy || _details is not null) return;
+        if (_busy || _details is not null || !_permissions.Can(RolePermission.UsersView) || (!id.HasValue && !_permissions.Can(RolePermission.UsersAdd))) return;
         _busy = true;
         try
         {
@@ -357,11 +364,11 @@ public sealed class UsersPage : ThemedUserControl
                 ThemedMessageDialog.ShowAlert(FindForm(), "Users", "Account no longer exists.");
                 return;
             }
-            var roleNames = _roles is null ? new[] { "Admin", "Librarian" } : (await _roles.GetAllAsync())
-                .Where(r => r.IsActive && !string.Equals(r.Name, "Borrower", StringComparison.OrdinalIgnoreCase))
-                .Select(r => r.Name).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToArray();
+            var manageable = await _service.GetManageableRolesAsync();
+            var roleNames = manageable.Where(r => r.IsActive).Select(r => r.Name).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToArray();
+            bool canManageTarget = user is null || manageable.Any(r => string.Equals(r.Name, user.RoleName, StringComparison.OrdinalIgnoreCase));
             if (IsDisposed || Disposing) return;
-            _details = new UserDetailsPage(_service, user, _currentUserId, roleNames) { Dock = DockStyle.Fill };
+            _details = new UserDetailsPage(_service, user, _permissions, canManageTarget, _currentUserId, roleNames) { Dock = DockStyle.Fill };
             _details.BackRequested += async (_, _) =>
             {
                 if (_details is null) return;

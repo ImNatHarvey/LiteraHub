@@ -3,6 +3,7 @@ using System.Data;
 using System.Data.Common;
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
+using LiteraHub.Core.Security;
 
 namespace LiteraHub.Data.Repositories;
 
@@ -40,15 +41,17 @@ public sealed class RoleRepository : IRoleRepository
             FROM dbo.Users u
             JOIN dbo.Roles r ON r.RoleId = u.RoleId
             JOIN dbo.RolePermissions rp ON rp.RoleId = r.RoleId
-            WHERE u.UserId = @userId AND u.IsActive = 1
+            WHERE u.UserId = @userId AND u.IsActive = 1 AND u.MustChangePassword = 0
               AND r.IsActive = 1 AND r.Name = @roleName;
             """, new { userId, roleName }).ToList();
     }
-    public async Task<int> CreateAsync(RoleInput input)
+    public async Task<int> CreateAsync(RoleInput input, UserSession actor)
     {
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
         await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable);
+        var guard = await DelegationGuard.LoadAsync(conn, tx, actor, RolePermission.RolesAdd, RolePermission.RolesView);
+        guard.CheckNewPermissions(input.Permissions);
         var id = await conn.ExecuteScalarAsync<int>("""
             INSERT INTO dbo.Roles (Name, Description, IsActive, IsSystem)
             OUTPUT INSERTED.RoleId VALUES (@Name, @Description, 1, 0);
@@ -58,11 +61,14 @@ public sealed class RoleRepository : IRoleRepository
         return id;
     }
 
-    public async Task<bool> UpdateAsync(int roleId, RoleInput input)
+    public async Task<bool> UpdateAsync(int roleId, RoleInput input, UserSession actor)
     {
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
         await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable);
+        var guard = await DelegationGuard.LoadAsync(conn, tx, actor, RolePermission.RolesEdit, RolePermission.RolesView);
+        var target = await guard.CheckRoleAsync(roleId, null, roleMutation: true);
+        if (!target.IsSystem) guard.CheckNewPermissions(input.Permissions);
         // System role updates may only change the description. Never replace their permissions.
         var systemUpdated = await conn.ExecuteAsync("""
             UPDATE dbo.Roles SET Description = @Description
@@ -91,11 +97,13 @@ public sealed class RoleRepository : IRoleRepository
                 new { roleId, key = permission.ToString() }, tx);
     }
 
-    public async Task<bool> SetActiveAsync(int roleId, bool active)
+    public async Task<bool> SetActiveAsync(int roleId, bool active, UserSession actor)
     {
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
         await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable);
+        var guard = await DelegationGuard.LoadAsync(conn, tx, actor, RolePermission.RolesArchiveRestore, RolePermission.RolesView);
+        await guard.CheckRoleAsync(roleId, null, roleMutation: true);
         var changed = await conn.ExecuteAsync("""
             UPDATE dbo.Roles SET IsActive = @active
             WHERE RoleId = @roleId AND IsSystem = 0 AND IsActive <> @active
@@ -105,11 +113,13 @@ public sealed class RoleRepository : IRoleRepository
         return changed == 1;
     }
 
-    public async Task<bool> DeleteAsync(int roleId)
+    public async Task<bool> DeleteAsync(int roleId, UserSession actor)
     {
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
         await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable);
+        var guard = await DelegationGuard.LoadAsync(conn, tx, actor, RolePermission.RolesDelete, RolePermission.RolesView);
+        await guard.CheckRoleAsync(roleId, null, roleMutation: true);
         var allowed = await conn.ExecuteScalarAsync<int>("""
             SELECT COUNT(*) FROM dbo.Roles WITH (UPDLOCK, HOLDLOCK)
             WHERE RoleId = @roleId AND IsSystem = 0 AND IsActive = 0

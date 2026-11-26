@@ -27,7 +27,7 @@ public sealed class AuthorCreationService
     public async Task<AuthorCreationResult> CreateAsync(
         AuthorInput input)
     {
-        _permissions.Demand(Permission.CreateLookups);
+        _permissions.Demand(RolePermission.AuthorsAdd);
 
         var validation = Validate(input);
 
@@ -62,17 +62,12 @@ public sealed class AuthorCreationService
     public async Task<AuthorRecord?> GetByIdAsync(
         int authorId)
     {
-        _permissions.Demand(Permission.ViewCatalog);
+        _permissions.Demand(RolePermission.AuthorsView);
 
         if (authorId <= 0)
             return null;
 
         var author = await _repository.GetByIdAsync(authorId);
-
-        if (author is not null &&
-            !author.IsActive &&
-            !_permissions.Can(Permission.ManageLookups))
-            return null;
 
         return author;
     }
@@ -81,7 +76,7 @@ public sealed class AuthorCreationService
         int authorId,
         AuthorInput input)
     {
-        _permissions.Demand(Permission.ManageLookups);
+        _permissions.Demand(RolePermission.AuthorsEdit);
 
         if (authorId <= 0)
             return ServiceResult.Fail("Invalid author ID.");
@@ -131,7 +126,7 @@ public sealed class AuthorCreationService
         int authorId,
         bool isActive)
     {
-        _permissions.Demand(Permission.ManageLookups);
+        _permissions.Demand(RolePermission.AuthorsArchiveRestore);
 
         if (authorId <= 0)
             return ServiceResult.Fail("Invalid author ID.");
@@ -166,8 +161,7 @@ public sealed class AuthorCreationService
 
     public async Task<ServiceResult> DeleteAsync(int authorId)
     {
-        _permissions.Demand(Permission.ManageLookups);
-        _permissions.Demand(Permission.HardDelete);
+        _permissions.Demand(RolePermission.AuthorsDelete);
 
         if (authorId <= 0)
             return ServiceResult.Fail("Invalid author ID.");
@@ -249,10 +243,7 @@ public sealed class AuthorCreationService
     public Task<IReadOnlyList<AuthorRecord>> GetAllAsync(
     bool includeInactive = false)
     {
-        _permissions.Demand(Permission.ViewCatalog);
-
-        if (includeInactive)
-            _permissions.Demand(Permission.ManageLookups);
+        _permissions.Demand(RolePermission.AuthorsView);
 
         return _repository.GetAllAsync(includeInactive);
     }

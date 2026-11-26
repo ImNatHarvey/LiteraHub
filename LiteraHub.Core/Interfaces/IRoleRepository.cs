@@ -5,10 +5,10 @@ namespace LiteraHub.Core.Interfaces;
 public interface IRoleRepository
 {
     Task<IReadOnlyList<RoleDefinition>> GetAllAsync();
-    Task<int> CreateAsync(RoleInput input);
-    Task<bool> UpdateAsync(int roleId, RoleInput input);
-    Task<bool> SetActiveAsync(int roleId, bool active);
-    Task<bool> DeleteAsync(int roleId);
+    Task<int> CreateAsync(RoleInput input, UserSession actor);
+    Task<bool> UpdateAsync(int roleId, RoleInput input, UserSession actor);
+    Task<bool> SetActiveAsync(int roleId, bool active, UserSession actor);
+    Task<bool> DeleteAsync(int roleId, UserSession actor);
     Task<IReadOnlyList<string>> GetPermissionKeysAsync(int roleId);
     IReadOnlyList<string> GetActiveUserPermissionKeys(int userId, string roleName);
 }

@@ -2,6 +2,7 @@
 using Dapper;
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
+using LiteraHub.Core.Security;
 
 namespace LiteraHub.Data.Repositories;
 
@@ -49,11 +50,13 @@ public sealed class StaffUserRepository : IStaffUserRepository
             """, new { Username = username, ExceptUserId = exceptUserId }) > 0;
     }
 
-    public async Task<int> CreateAsync(StaffUserInput input, string passwordHash)
+    public async Task<int> CreateAsync(StaffUserInput input, string passwordHash, UserSession actor)
     {
         await using var db = _factory.CreateConnection();
         await db.OpenAsync();
         await using var tx = await db.BeginTransactionAsync(IsolationLevel.Serializable);
+        var guard = await DelegationGuard.LoadAsync(db, tx, actor, RolePermission.UsersAdd, RolePermission.UsersView);
+        await guard.CheckRoleAsync(null, input.RoleName, roleMutation: false, requireActive: true);
         int id = await db.ExecuteScalarAsync<int>("""
             INSERT INTO dbo.Users (Username, PasswordHash, RoleId, MustChangePassword, IsActive)
             OUTPUT INSERTED.UserId
@@ -65,31 +68,39 @@ public sealed class StaffUserRepository : IStaffUserRepository
         return id;
     }
 
-    public Task<bool> UpdateAsync(int userId, StaffUserInput input) =>
-        ChangeAsync(userId, input, null);
+    public Task<bool> UpdateAsync(int userId, StaffUserInput input, UserSession actor) =>
+        ChangeAsync(userId, input, null, actor);
 
-    public Task<bool> SetActiveAsync(int userId, bool isActive) =>
-        ChangeAsync(userId, null, isActive);
+    public Task<bool> SetActiveAsync(int userId, bool isActive, UserSession actor) =>
+        ChangeAsync(userId, null, isActive, actor);
 
-    public async Task<bool> DeleteAsync(int userId)
+    public async Task<bool> DeleteAsync(int userId, UserSession actor)
     {
         await using var db = _factory.CreateConnection();
         await db.OpenAsync();
+        await using var tx = await db.BeginTransactionAsync(IsolationLevel.Serializable);
+        var guard = await DelegationGuard.LoadAsync(db, tx, actor, RolePermission.UsersDelete, RolePermission.UsersView);
+        await guard.CheckStaffAsync(userId, actor.UserId);
         // Only archived staff accounts are eligible; foreign keys protect referenced records.
-        return await db.ExecuteAsync("""
+        int deleted = await db.ExecuteAsync("""
             DELETE u FROM dbo.Users u JOIN dbo.Roles r ON r.RoleId = u.RoleId
             WHERE u.UserId = @UserId AND u.IsActive = 0 AND r.Name <> N'Borrower';
-            """, new { UserId = userId }) == 1;
+            """, new { UserId = userId }, tx);
+        await tx.CommitAsync();
+        return deleted == 1;
     }
 
     // Serializable transaction protects the last active Admin against simultaneous changes.
-    private async Task<bool> ChangeAsync(int userId, StaffUserInput? input, bool? active)
+    private async Task<bool> ChangeAsync(int userId, StaffUserInput? input, bool? active, UserSession actor)
     {
         await using var db = _factory.CreateConnection();
         await db.OpenAsync();
         await using var tx = await db.BeginTransactionAsync(IsolationLevel.Serializable);
         try
         {
+            var guard = await DelegationGuard.LoadAsync(db, tx, actor, input is null ? RolePermission.UsersArchiveRestore : RolePermission.UsersEdit, RolePermission.UsersView);
+            await guard.CheckStaffAsync(userId, actor.UserId);
+            if (input is not null) await guard.CheckRoleAsync(null, input.RoleName, roleMutation: false, requireActive: true);
             var current = await db.QuerySingleOrDefaultAsync<StaffState>("""
                 SELECT r.Name AS RoleName, u.IsActive
                 FROM dbo.Users u WITH (UPDLOCK, HOLDLOCK)
