@@ -20,20 +20,7 @@ public sealed class ThemedMessageDialog : Form
     private readonly ThemedWindowControls _window = new() { ShowMinimizeButton = false, ShowMaximizeButton = false };
     private IconButton? _copy;
     private Label? _secret;
-    private readonly Panel _accentStripe = new() { Dock = DockStyle.Left, Width = 4, TabStop = false };
 
-    [DllImport("user32.dll")]
-    private static extern bool ReleaseCapture();
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-
-    private void BeginDrag(object? sender, MouseEventArgs e)
-    {
-        if (e.Button != MouseButtons.Left) return;
-        ReleaseCapture();
-        SendMessage(Handle, 0x00A1, (IntPtr)2, IntPtr.Zero);
-    }
     private readonly bool _danger;
     private readonly bool _confirmation;
 
@@ -169,8 +156,6 @@ public sealed class ThemedMessageDialog : Form
 
         var heading = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
         heading.Controls.Add(_titleLabel);
-        heading.MouseDown += BeginDrag;
-        _titleLabel.MouseDown += BeginDrag;
         _titleLabel.Padding = new Padding(0, 0, 48, 0);
         _window.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         heading.Controls.Add(_window);
@@ -219,15 +204,14 @@ public sealed class ThemedMessageDialog : Form
             content.Controls.Add(credential, 1, 1);
         }
         Controls.Add(root);
-        Controls.Add(_accentStripe);
-        _accentStripe.BringToFront();
+        ThemedDialogChrome.Attach(this, _titleLabel, heading);
 
 
         // Expand the dialog to fit longer messages.
         // Keeps short confirmation dialogs at their original size.
 
         int messageWidth = ClientSize.Width
-            - _accentStripe.Width
+            - ThemedDialogChrome.AccentWidth
             - root.Padding.Horizontal
             - (int)content.ColumnStyles[0].Width
             - 12;
@@ -332,7 +316,6 @@ public sealed class ThemedMessageDialog : Form
         BackColor = c.Background;
         ForeColor = c.Text;
         _window.SetSurfaceColor(c.Background);
-        _accentStripe.BackColor = c.Accent;
         if (_secret is not null)
         {
             _secret.BackColor = c.SurfaceAlt;

@@ -21,9 +21,8 @@ public sealed class ChangeNameDialog : Form
         var c = Theme.Colors;
         FormBorderStyle = FormBorderStyle.None; StartPosition = FormStartPosition.CenterParent;
         ShowInTaskbar = false; ClientSize = new Size(480, 440); BackColor = c.Background;
-        Controls.Add(new Panel { Dock = DockStyle.Left, Width = 4, BackColor = c.Accent });
         var title = new Label { Text = "Edit Name", Font = Theme.Title, ForeColor = c.Text, Bounds = new Rectangle(24, 16, 350, 32) };
-        Controls.Add(title); title.MouseDown += BeginDrag; MouseDown += BeginDrag;
+        Controls.Add(title); ThemedDialogChrome.Attach(this, title);
         var close = new ThemedWindowControls { ShowMinimizeButton = false, ShowMaximizeButton = false };
         close.Bind(this); close.SetSurfaceColor(c.Background); close.Location = new Point(ClientSize.Width - close.Width - 12, 10); Controls.Add(close);
         _fields[0].Text = info.FirstName ?? ""; _fields[1].Text = info.MiddleName ?? ""; _fields[2].Text = info.LastName ?? "";
@@ -73,8 +72,4 @@ public sealed class ChangeNameDialog : Form
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); ThemedMessageDialog.ShowAlert(this, "Edit Name", "Unable to save name.", true); }
         finally { _busy = false; if (!IsDisposed) { _save.Enabled = _cancel.Enabled = true; foreach (var f in _fields) f.Enabled = true; } }
     }
-    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool ReleaseCapture();
-    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-    private void BeginDrag(object? sender, MouseEventArgs e)
-    { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0x00A1, (IntPtr)2, IntPtr.Zero); } }
 }

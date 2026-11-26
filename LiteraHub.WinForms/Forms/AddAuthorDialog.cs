@@ -103,15 +103,16 @@ public sealed class AddAuthorDialog : Form
         _save.Text = editing ? "Save Changes" : "Save Author";
 
         StartPosition = FormStartPosition.CenterParent;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
+        FormBorderStyle = FormBorderStyle.None;
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        ClientSize = new Size(440, 545);
-        MinimumSize = new Size(350, 575);
+        ClientSize = new Size(440, 590);
+        MinimumSize = new Size(350, 590);
         Font = Theme.Body;
 
         BuildLayout();
+        ThemedDialogChrome.Attach(this, _title, addCloseButton: true);
 
         if (existing is not null)
         {

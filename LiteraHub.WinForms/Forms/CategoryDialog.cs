@@ -95,15 +95,16 @@ public sealed class CategoryDialog : Form
         _save.Text = editing ? "Save Changes" : "Save Category";
 
         StartPosition = FormStartPosition.CenterParent;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
+        FormBorderStyle = FormBorderStyle.None;
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        ClientSize = new Size(440, 390);
+        ClientSize = new Size(440, 420);
         MinimumSize = new Size(350, 420);
         Font = Theme.Body;
 
         BuildLayout();
+        ThemedDialogChrome.Attach(this, _title, addCloseButton: true);
 
         if (existing is not null)
         {

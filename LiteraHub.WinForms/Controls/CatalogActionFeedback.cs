@@ -116,9 +116,7 @@ public sealed class CatalogActionFeedback : ThemedUserControl
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using var pen = new Pen(Theme.Colors.Border, 1f);
-        e.Graphics.DrawRectangle(pen, 0, 0, Math.Max(0, Width - 1), Math.Max(0, Height - 1));
+        ThemedDialogChrome.DrawFrame(e.Graphics, ClientRectangle);
     }
 
     protected override void Dispose(bool disposing)

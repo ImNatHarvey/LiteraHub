@@ -16,19 +16,15 @@ public sealed class ThemePickerDialog : Form
         ClientSize = new Size(690, 510);
         BackColor = c.Background;
         Padding = Padding.Empty;
-        var stripe = new Panel { Dock = DockStyle.Left, Width = 4, BackColor = c.Accent };
-        Controls.Add(stripe);
         var title = new Label { Text = "Choose a theme", Font = Theme.Title, ForeColor = c.Text, AutoSize = false, Location = new Point(24, 16), Size = new Size(570, 34) };
         Controls.Add(title);
-        title.MouseDown += BeginDrag;
-        MouseDown += BeginDrag;
         _close.Location = new Point(ClientSize.Width - _close.Width - 12, 10);
         _close.Bind(this);
         _close.SetSurfaceColor(c.Background);
         Controls.Add(_close);
         var hint = new Label { Text = "Select a color palette to apply it throughout LiteraHub.", Font = Theme.Body, ForeColor = c.TextMuted, Location = new Point(24, 54), Size = new Size(630, 26) };
         Controls.Add(hint);
-        hint.MouseDown += BeginDrag;
+        ThemedDialogChrome.Attach(this, title, hint);
         var grid = new TableLayoutPanel { Location = new Point(24, 88), Size = new Size(642, 395), ColumnCount = 3, RowCount = 3, Margin = Padding.Empty };
         for (int i = 0; i < 3; i++) { grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / 3)); grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / 3)); }
         int index = 0;
@@ -42,22 +38,6 @@ public sealed class ThemePickerDialog : Form
         _close.BringToFront();
         KeyPreview = true;
         KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) { DialogResult = DialogResult.Cancel; Close(); } };
-    }
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern bool ReleaseCapture();
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-    private void BeginDrag(object? sender, MouseEventArgs e)
-    {
-        if (e.Button != MouseButtons.Left) return;
-        ReleaseCapture();
-        SendMessage(Handle, 0x00A1, (IntPtr)2, IntPtr.Zero);
-    }
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        base.OnPaint(e);
-        using var pen = new Pen(Theme.Colors.Border);
-        e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
     }
     private sealed class ThemeCard : Button
     {

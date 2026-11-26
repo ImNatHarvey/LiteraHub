@@ -228,15 +228,11 @@ public sealed class ThemedBirthDateDialog : Form
         close.Bind(this); close.SetSurfaceColor(Theme.Colors.Background);
         close.Location = new Point(ClientSize.Width - close.Width - 6, 6);
         Controls.Add(title); Controls.Add(close); close.BringToFront();
-        title.MouseDown += BeginDrag; MouseDown += BeginDrag;
+        ThemedDialogChrome.Attach(this, title);
         KeyPreview = true;
         KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) { DialogResult = DialogResult.Cancel; Close(); } };
         RefreshMonth();
     }
-    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool ReleaseCapture();
-    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-    private void BeginDrag(object? sender, MouseEventArgs e)
-    { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0x00A1, (IntPtr)2, IntPtr.Zero); } }
 
 
     // Custom themed spinner button.

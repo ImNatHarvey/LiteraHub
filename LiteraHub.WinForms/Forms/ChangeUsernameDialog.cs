@@ -22,9 +22,8 @@ public sealed class ChangeUsernameDialog : Form
         var c = Theme.Colors;
         FormBorderStyle = FormBorderStyle.None; StartPosition = FormStartPosition.CenterParent;
         ShowInTaskbar = false; ClientSize = new Size(480, 316); BackColor = c.Background;
-        Controls.Add(new Panel { Dock = DockStyle.Left, Width = 4, BackColor = c.Accent });
         var title = new Label { Text = "Change Username", Font = Theme.Title, ForeColor = c.Text, Bounds = new Rectangle(24, 16, 350, 32) };
-        Controls.Add(title); title.MouseDown += BeginDrag; MouseDown += BeginDrag;
+        Controls.Add(title); ThemedDialogChrome.Attach(this, title);
         _close.Location = new Point(ClientSize.Width - _close.Width - 12, 10);
         _close.Bind(this); _close.SetSurfaceColor(c.Background); Controls.Add(_close);
         var hint = new Label { Text = "Current username: " + username, Font = Theme.Body, ForeColor = c.TextMuted, Bounds = new Rectangle(24, 54, 432, 24) };
@@ -76,8 +75,4 @@ public sealed class ChangeUsernameDialog : Form
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); ThemedMessageDialog.ShowAlert(this, "Change Username", "Unable to change username.", true); }
         finally { _busy = false; if (!IsDisposed) _save.Enabled = _cancel.Enabled = _username.Enabled = _password.Enabled = true; }
     }
-    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool ReleaseCapture();
-    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-    private void BeginDrag(object? sender, MouseEventArgs e)
-    { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0x00A1, (IntPtr)2, IntPtr.Zero); } }
 }
