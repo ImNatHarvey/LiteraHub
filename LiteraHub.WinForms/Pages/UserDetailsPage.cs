@@ -221,7 +221,11 @@ public sealed class UserDetailsPage : ThemedUserControl
         _archive.Text = "";
         _archive.AccessibleName = _user?.IsActive == false ? "Restore User" : "Archive User";
         _cancel.Visible = editing;
-        _recoveryLabel.Visible = _recoveryValue.Visible = _user is not null && !editing && !IsOwnAccount;
+        _recoveryLabel.Visible = _recoveryValue.Visible =
+            _user is not null &&
+            !editing &&
+            !IsOwnAccount &&
+            !_user.IsSystemOwner;
         _recoveryValue.Text = _user?.HasRecoveryPasskey == true ? "Configured" : "Not configured";
         _regenerate.Visible = _user is { IsActive: true, RoleIsActive: true } && !editing && !IsOwnAccount && _canManageTarget && _permissions.Can(RolePermission.UsersEdit);
         _regenerate.Text = _user?.HasRecoveryPasskey == true ? "Regenerate Recovery Passkey" : "Generate Recovery Passkey";
