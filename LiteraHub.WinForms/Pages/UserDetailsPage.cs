@@ -26,6 +26,9 @@ public sealed class UserDetailsPage : ThemedUserControl
     private readonly Label _viewRole = MakeView();
     private readonly Label _passwordLabel = new() { Text = "Password status" };
     private readonly Label _passwordValue = MakeView();
+    private readonly Label _recoveryLabel = new() { Text = "Recovery passkey" };
+    private readonly Label _recoveryValue = MakeView();
+    private readonly CenteredIconButton _regenerate = new() { Text = "Regenerate Recovery Passkey", IconChar = IconChar.Key, IconSize = 18, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand };
     private readonly TableLayoutPanel _root = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Margin = Padding.Empty, Padding = Padding.Empty };
     private readonly DetailsPageHeader _header = new() { Dock = DockStyle.Fill };
     private readonly Panel _surface = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
@@ -93,6 +96,8 @@ public sealed class UserDetailsPage : ThemedUserControl
         _root.Controls.Add(_footer, 0, 2);
         _surface.Controls.AddRange(new Control[] { _section, _usernameLabel, _username,
             _roleLabel, _role, _status, _statusValue, _passwordHint, _securitySection, _createdLabel, _createdValue, _passwordLabel, _passwordValue, _viewUsername, _viewRole });
+        _surface.Controls.AddRange(new Control[] { _recoveryLabel, _recoveryValue, _regenerate });
+        _regenerate.Click += async (_, _) => await RegenerateAsync();
         _surface.Controls.AddRange(_nameCaptions);
         _surface.Controls.AddRange(_nameFields);
         _surface.Controls.AddRange(_nameViews);
@@ -215,6 +220,10 @@ public sealed class UserDetailsPage : ThemedUserControl
         _archive.Text = "";
         _archive.AccessibleName = _user?.IsActive == false ? "Restore User" : "Archive User";
         _cancel.Visible = editing;
+        _recoveryLabel.Visible = _recoveryValue.Visible = _user is not null && !editing && !IsOwnAccount;
+        _recoveryValue.Text = _user?.HasRecoveryPasskey == true ? "Configured" : "Not configured";
+        _regenerate.Visible = _user is { IsActive: true, RoleIsActive: true } && !editing && !IsOwnAccount && _canManageTarget && _permissions.Can(RolePermission.UsersEdit);
+        _regenerate.Text = _user?.HasRecoveryPasskey == true ? "Regenerate Recovery Passkey" : "Generate Recovery Passkey";
         _passwordHint.Visible = _user is null || (IsOwnAccount && !editing);
         _passwordHint.Text = IsOwnAccount ? "This is your signed-in account. Manage your personal information and security in Profile & Settings." : "New accounts receive a secure temporary password. The staff member must change it upon first sign-in.";
         _createdValue.Text = _user is null ? "On creation" : _user.CreatedAt.ToString("MMMM d, yyyy");
@@ -281,7 +290,7 @@ public sealed class UserDetailsPage : ThemedUserControl
                 StaffCreationResult result = await _service.CreateAsync(input);
                 if (!result.Success) { ThemedMessageDialog.ShowAlert(FindForm(), "Add User", result.Message, true); return; }
                 // The generated temporary password is shown only here and is not persisted in plaintext.
-                ThemedMessageDialog.ShowTemporaryPassword(FindForm(), username, result.TemporaryPassword ?? "");
+                StaffCredentialsDialog.ShowCredentials(FindForm(), username, result.TemporaryPassword!, result.RecoveryPasskey!);
                 CatalogActionFeedback.Notify(this, "User added successfully.");
                 BackRequested?.Invoke(this, EventArgs.Empty);
             }
@@ -301,6 +310,25 @@ public sealed class UserDetailsPage : ThemedUserControl
             ThemedMessageDialog.ShowAlert(FindForm(), "Users", "Unable to save the account.", true);
         }
         finally { _busy = false; if (!IsDisposed) { _save.Enabled = true; _header.BackEnabled = true; } }
+    }
+
+    private async Task RegenerateAsync()
+    {
+        if (_busy || _user is null || IsOwnAccount || !_canManageTarget || !_permissions.Can(RolePermission.UsersEdit)) return;
+        if (!ThemedMessageDialog.Confirm(FindForm(), "Recovery passkey", $"Issue a new recovery passkey for '{_user.Username}'? Any previous passkey will become invalid.", true, "Generate")) return;
+        _busy = true; _regenerate.Enabled = false; _header.BackEnabled = false;
+        try
+        {
+            var result = await _service.RegeneratePasskeyAsync(_user.UserId);
+            if (!result.Success) { ThemedMessageDialog.ShowAlert(FindForm(), "Recovery passkey", result.Message, true); return; }
+            StaffCredentialsDialog.ShowCredentials(FindForm(), _user.Username, null, result.RecoveryPasskey!);
+            if (IsDisposed) return;
+            _user = await _service.GetByIdAsync(_user.UserId);
+            SetEditing(false);
+            CatalogActionFeedback.Notify(this, "Recovery passkey issued successfully.");
+        }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); ThemedMessageDialog.ShowAlert(FindForm(), "Recovery passkey", "Unable to complete recovery passkey operation.", true); }
+        finally { _busy = false; if (!IsDisposed) { _regenerate.Enabled = true; _header.BackEnabled = true; } }
     }
 
     private async Task ChangeStatusAsync()
@@ -374,6 +402,9 @@ public sealed class UserDetailsPage : ThemedUserControl
         _passwordLabel.SetBounds(right + 4, 262, column - 4, 22);
         _passwordValue.SetBounds(right, 286, column, 40);
         _passwordHint.SetBounds(right + 4, 340, column - 4, 90);
+        _recoveryLabel.SetBounds(right + 4, 332, column - 4, 22);
+        _recoveryValue.SetBounds(right, 356, column, 40);
+        _regenerate.SetBounds(right, 404, column, 40);
     }
 
     private void DrawAction(PaintEventArgs e, Button button, int kind)
@@ -408,6 +439,12 @@ public sealed class UserDetailsPage : ThemedUserControl
         foreach (var label in _nameCaptions) { label.Font = Theme.Body; label.ForeColor = c.Text; }
         foreach (var view in new[] { _viewUsername, _viewRole, _statusValue, _createdValue, _passwordValue }.Concat(_nameViews))
         { view.BackColor = c.SurfaceAlt; view.ForeColor = c.Text; view.Font = Theme.BodyStrong; view.Invalidate(); }
+        _recoveryLabel.Font = Theme.Body; _recoveryLabel.ForeColor = c.Text;
+        _recoveryValue.BackColor = c.SurfaceAlt; _recoveryValue.ForeColor = c.Text; _recoveryValue.Font = Theme.BodyStrong; _recoveryValue.Invalidate();
+        _regenerate.Font = Theme.BodyStrong; _regenerate.BackColor = c.Accent; _regenerate.ForeColor = _regenerate.IconColor = c.OnAccent;
+        _regenerate.FlatAppearance.BorderSize = 0;
+        _regenerate.FlatAppearance.MouseOverBackColor = ControlPaint.Light(c.Accent, .08f);
+        _regenerate.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(c.Accent, .08f);
         _role.ApplyTheme();
         RefreshValidationCaptions();
         _delete.BackColor = Color.FromArgb(255, 143, 137);

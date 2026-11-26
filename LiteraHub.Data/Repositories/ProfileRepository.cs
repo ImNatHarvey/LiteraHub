@@ -69,12 +69,16 @@ public sealed class ProfileRepository(IDbConnectionFactory factory) : IProfileRe
     {
         await using var conn = factory.CreateConnection();
         await conn.OpenAsync();
-        return await conn.ExecuteAsync("""
+        await using var tx = await conn.BeginTransactionAsync();
+        int changed = await conn.ExecuteAsync("""
             UPDATE u SET RecoveryPasskeyHash = @passkeyHash, RecoveryPasskeyCreatedAt = SYSUTCDATETIME(), RecoveryFailures = 0, RecoveryLockedUntil = NULL
             FROM dbo.Users u JOIN dbo.Roles r ON r.RoleId = u.RoleId
             WHERE u.UserId = @userId AND u.IsActive = 1 AND r.IsActive = 1
               AND u.MustChangePassword = 0
               AND u.PasswordHash COLLATE Latin1_General_100_BIN2 = @expectedHash;
-            """, new { userId, expectedHash, passkeyHash }) == 1;
+            """, new { userId, expectedHash, passkeyHash }, tx);
+        if (changed == 1) await conn.ExecuteAsync("INSERT dbo.RecoveryAudit(UserId,ActorUserId,EventType) VALUES (@userId,@userId,N'SelfPasskeyRegenerated')", new { userId }, tx);
+        await tx.CommitAsync();
+        return changed == 1;
     }
 }

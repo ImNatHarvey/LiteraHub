@@ -142,18 +142,11 @@ internal static class Program
             if (login?.Session is null)
                 return;
 
-            if (login.MustChangePassword)
+            // Defense in depth: LoginForm must complete the forced change first.
+            if (login.MustChangePassword || session.Current?.UserId != login.Session.UserId)
             {
-                using var change = new ChangePasswordForm(
-                    auth,
-                    login.Session.UserId,
-                    login.Session.Username);
-
-                if (change.ShowDialog() != DialogResult.OK)
-                {
-                    auth.Logout();
-                    continue;
-                }
+                auth.Logout();
+                continue;
             }
 
             using var shell = new ShellForm(

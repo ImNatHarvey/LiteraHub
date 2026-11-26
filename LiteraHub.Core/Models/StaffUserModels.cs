@@ -12,14 +12,16 @@ public sealed class StaffUser
     public string RoleName { get; set; } = "";
     public bool IsActive { get; set; }
     public bool MustChangePassword { get; set; }
+    public bool HasRecoveryPasskey { get; set; }
+    public bool RoleIsActive { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 
 public sealed record StaffUserInput(string Username, string RoleName, string? FirstName = null, string? MiddleName = null, string? LastName = null);
 
-public sealed record StaffCreationResult(bool Success, string Message, string? TemporaryPassword = null)
+public sealed record StaffCreationResult(bool Success, string Message, string? TemporaryPassword = null, string? RecoveryPasskey = null)
 {
     public static StaffCreationResult Fail(string message) => new(false, message);
-    public static StaffCreationResult Ok(string temporaryPassword) =>
-        new(true, "Staff account created.", temporaryPassword);
+    public static StaffCreationResult Ok(string temporaryPassword, string passkey) =>
+        new(true, "Staff account created.", temporaryPassword, passkey);
 }

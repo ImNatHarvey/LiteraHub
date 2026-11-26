@@ -16,7 +16,8 @@ public sealed class StaffUserRepository : IStaffUserRepository
     }
     private const string ListSql = """
         SELECT u.UserId, u.Username, r.Name AS RoleName, u.IsActive,
-               u.MustChangePassword, u.CreatedAt, u.FirstName, u.MiddleName, u.LastName
+               u.MustChangePassword, u.CreatedAt, u.FirstName, u.MiddleName, u.LastName,
+               r.IsActive AS RoleIsActive, CAST(CASE WHEN u.RecoveryPasskeyHash IS NULL THEN 0 ELSE 1 END AS BIT) AS HasRecoveryPasskey
         FROM dbo.Users u
         INNER JOIN dbo.Roles r ON r.RoleId = u.RoleId
         WHERE r.Name <> N'Borrower'
@@ -50,7 +51,7 @@ public sealed class StaffUserRepository : IStaffUserRepository
             """, new { Username = username, ExceptUserId = exceptUserId }) > 0;
     }
 
-    public async Task<int> CreateAsync(StaffUserInput input, string passwordHash, UserSession actor)
+    public async Task<int> CreateAsync(StaffUserInput input, string passwordHash, string passkeyHash, UserSession actor)
     {
         await using var db = _factory.CreateConnection();
         await db.OpenAsync();
@@ -58,14 +59,34 @@ public sealed class StaffUserRepository : IStaffUserRepository
         var guard = await DelegationGuard.LoadAsync(db, tx, actor, RolePermission.UsersAdd, RolePermission.UsersView);
         await guard.CheckRoleAsync(null, input.RoleName, roleMutation: false, requireActive: true);
         int id = await db.ExecuteScalarAsync<int>("""
-            INSERT INTO dbo.Users (Username, PasswordHash, RoleId, MustChangePassword, IsActive, FirstName, MiddleName, LastName)
+            INSERT INTO dbo.Users (Username, PasswordHash, RoleId, MustChangePassword, IsActive, FirstName, MiddleName, LastName, RecoveryPasskeyHash, RecoveryPasskeyCreatedAt)
             OUTPUT INSERTED.UserId
-            SELECT @Username, @PasswordHash, RoleId, 1, 1, @FirstName, @MiddleName, @LastName
+            SELECT @Username, @PasswordHash, RoleId, 1, 1, @FirstName, @MiddleName, @LastName, @passkeyHash, SYSUTCDATETIME()
             FROM dbo.Roles WITH (UPDLOCK, HOLDLOCK)
             WHERE Name = @Role AND IsActive = 1 AND Name <> N'Borrower';
-            """, new { input.Username, input.FirstName, input.MiddleName, input.LastName, PasswordHash = passwordHash, Role = input.RoleName }, tx);
+            """, new { input.Username, input.FirstName, input.MiddleName, input.LastName, PasswordHash = passwordHash, passkeyHash, Role = input.RoleName }, tx);
+        if (id > 0) await db.ExecuteAsync("INSERT dbo.RecoveryAudit(UserId, ActorUserId, EventType) VALUES (@id,@actorId,N'PasskeyIssued')", new { id, actorId = actor.UserId }, tx);
         await tx.CommitAsync();
         return id;
+    }
+
+    public async Task<bool> RegeneratePasskeyAsync(int userId, string passkeyHash, UserSession actor)
+    {
+        if (userId == actor.UserId) throw new UnauthorizedAccessException("Use Profile & Settings.");
+        await using var db = _factory.CreateConnection();
+        await db.OpenAsync();
+        await using var tx = await db.BeginTransactionAsync(IsolationLevel.Serializable);
+        var guard = await DelegationGuard.LoadAsync(db, tx, actor, RolePermission.UsersEdit, RolePermission.UsersView);
+        await guard.CheckStaffAsync(userId, actor.UserId);
+        int changed = await db.ExecuteAsync("""
+            UPDATE u SET RecoveryPasskeyHash=@passkeyHash, RecoveryPasskeyCreatedAt=SYSUTCDATETIME(),
+                RecoveryFailures=0, RecoveryLockedUntil=NULL
+            FROM dbo.Users u JOIN dbo.Roles r ON r.RoleId=u.RoleId
+            WHERE u.UserId=@userId AND u.IsActive=1 AND r.IsActive=1 AND r.Name<>N'Borrower';
+            """, new { userId, passkeyHash }, tx);
+        if (changed == 1) await db.ExecuteAsync("INSERT dbo.RecoveryAudit(UserId,ActorUserId,EventType) VALUES (@userId,@actorId,N'AdminPasskeyRegenerated')", new { userId, actorId = actor.UserId }, tx);
+        await tx.CommitAsync();
+        return changed == 1;
     }
 
     public Task<bool> UpdateAsync(int userId, StaffUserInput input, UserSession actor) =>

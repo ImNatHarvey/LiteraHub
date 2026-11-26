@@ -80,6 +80,18 @@ public sealed class LoginForm : Form
     private readonly Button _back = new() { Text = "Back to Sign In", Cursor = Cursors.Hand, FlatStyle = FlatStyle.Flat };
     private readonly System.Windows.Forms.Timer _slide = new() { Interval = 15 };
 
+    private readonly Panel _changeView = new();
+    private readonly Label _changeTitle = new() { Text = "Set a new password", TextAlign = ContentAlignment.MiddleCenter };
+    private readonly Label _changeIntro = new() { TextAlign = ContentAlignment.MiddleCenter };
+    private readonly Label _changePolicy = new() { Text = "At least 8 characters, with a letter and a number.", TextAlign = ContentAlignment.TopLeft };
+    private readonly Label _changeStatus = new() { TextAlign = ContentAlignment.MiddleLeft };
+    private readonly string[] _changeNames = { "Current password", "New password", "Confirm new password" };
+    private readonly Label[] _changeLabels = new Label[3];
+    private readonly ThemedTextField[] _changeFields = new ThemedTextField[3];
+    private readonly Button _changeSave = new() { Text = "Save Password", FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand };
+    private readonly Button _changeCancel = new() { Text = "Sign Out", FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand };
+    private AuthResult? _pendingLogin;
+    private bool _changeError;
     private bool _recoveryMode;
     private bool _busy;
     private bool _usernameInvalid;
@@ -127,6 +139,7 @@ public sealed class LoginForm : Form
         _passwordFrame.Controls.Add(_eye);
         _recoveryView.Controls.AddRange(new Control[] { _recoveryTitle, _recoveryDescription, _back, _reset, _recoveryStatus });
         BuildRecoveryFields();
+        BuildChangeView();
         _recoveryView.Visible = false;
 
         _welcome.Font = new Font("Segoe UI", 27f, FontStyle.Bold);
@@ -160,7 +173,11 @@ public sealed class LoginForm : Form
         _signIn.Click += async (_, _) => await SignInAsync();
         _forgot.Click += (_, _) => SwitchMode(true);
         _reset.Click += async (_, _) => await ResetPasswordAsync();
-        FormClosing += (_, e) => { if (_busy && _recoveryMode) e.Cancel = true; };
+        FormClosing += (_, e) =>
+        {
+            if (_busy && DialogResult != DialogResult.OK) { e.Cancel = true; return; }
+            if (DialogResult != DialogResult.OK) { _auth.Logout(); _pendingLogin = null; }
+        };
         _back.Click += (_, _) => SwitchMode(false);
         _slide.Tick += (_, _) =>
         {
@@ -191,6 +208,179 @@ public sealed class LoginForm : Form
         ApplyTheme();
         LayoutPanels();
         Shown += (_, _) => _username.FocusInput();
+    }
+
+    private void BuildChangeView()
+    {
+        _accountPanel.Controls.Add(_changeView);
+        _changeView.Visible = false;
+        _changeTitle.Font = new Font("Segoe UI", 24f, FontStyle.Bold);
+        _changeIntro.Font = Theme.Body;
+        _changePolicy.Font = Theme.Caption;
+        _changeStatus.Font = Theme.Caption;
+        _changeStatus.TextChanged += (_, _) => LayoutPanels();
+        _changeSave.Font = _changeCancel.Font = Theme.BodyStrong;
+        _changeView.Controls.AddRange(new Control[] { _changeTitle, _changeIntro, _changePolicy, _changeStatus, _changeSave, _changeCancel });
+        for (int i = 0; i < 3; i++)
+        {
+            int index = i;
+            _changeLabels[i] = new Label { Text = _changeNames[i], Font = Theme.Body };
+            _changeFields[i] = new ThemedTextField { LeadingIcon = IconChar.Lock, ShowPasswordToggle = true, MaxLength = 72, TabIndex = i };
+            _changeView.Controls.Add(_changeLabels[i]);
+            _changeView.Controls.Add(_changeFields[i]);
+            _changeFields[i].TextChanged += (_, _) => ChangeValidation(index, "");
+        }
+        _changeSave.TabIndex = 3;
+        _changeCancel.TabIndex = 4;
+        _changeSave.Click += async (_, _) => await SaveRequiredPasswordAsync();
+        // This is an in-form navigation action, not a modal Cancel button.
+        _changeCancel.DialogResult = DialogResult.None;
+        _changeCancel.Click += (_, _) => RequestRequiredPasswordSignOut();
+        _changeView.MouseDown += BeginDrag;
+        _changeTitle.MouseDown += BeginDrag;
+        _changeIntro.MouseDown += BeginDrag;
+    }
+
+    private void ChangeValidation(int i, string message)
+    {
+        _changeFields[i].HasValidationError = message.Length > 0;
+        _changeLabels[i].Text = _changeNames[i] + (message.Length > 0 ? " • " + message : "");
+        _changeLabels[i].ForeColor = message.Length > 0 ? Theme.Colors.Danger : Theme.Colors.Text;
+    }
+
+    private void ClearChangeFields()
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            _changeFields[i].Text = "";
+            _changeFields[i].HidePassword();
+            ChangeValidation(i, "");
+        }
+        _changeError = false;
+        _changeStatus.Text = "";
+        _changeStatus.ForeColor = Theme.Colors.TextMuted;
+    }
+
+    private void ShowChangeView(AuthResult result)
+    {
+        _pendingLogin = result;
+        _password.Clear();
+        _password.UseSystemPasswordChar = true;
+        _eye.IconChar = IconChar.Eye;
+        _eye.AccessibleName = "Show password";
+        ClearChangeFields();
+        _changeIntro.Text = $"Signed in as {result.Session?.Username}. Choose a new password before continuing.";
+        _loginView.Visible = false;
+        _recoveryView.Visible = false;
+        _changeView.Visible = true;
+        _changeView.BringToFront();
+        AcceptButton = _changeSave;
+        CancelButton = null;
+        _changeCancel.DialogResult = DialogResult.None;
+        _changeFields[0].FocusInput();
+    }
+
+    private void RequestRequiredPasswordSignOut()
+    {
+        if (_busy || _pendingLogin is null) return;
+        bool confirmed = ThemedMessageDialog.Confirm(this, "Sign out?",
+            "Your password has not been changed. You will return to Sign In and must set a new password the next time you sign in. Continue?",
+            danger: true, confirmText: "Sign Out");
+        if (confirmed)
+            CancelRequiredPassword();
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        // Preserve Escape as a sign-out request without assigning Form.CancelButton.
+        if (keyData == Keys.Escape && _pendingLogin is not null)
+        {
+            RequestRequiredPasswordSignOut();
+            return true;
+        }
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    private void CancelRequiredPassword()
+    {
+        if (_busy) return;
+        _auth.Logout();
+        _pendingLogin = null;
+        Result = null;
+        ClearChangeFields();
+        _changeView.Visible = false;
+        _loginView.Visible = true;
+        _loginView.BringToFront();
+        AcceptButton = _signIn;
+        CancelButton = null;
+        _password.Clear();
+        _username.FocusInput();
+    }
+
+    private async Task SaveRequiredPasswordAsync()
+    {
+        if (_busy || _pendingLogin?.Session is not { } account) return;
+        bool valid = true;
+        for (int i = 0; i < 3; i++)
+        {
+            bool missing = string.IsNullOrEmpty(_changeFields[i].Text);
+            ChangeValidation(i, missing ? "Required" : "");
+            valid &= !missing;
+        }
+        if (!valid) return;
+        if (_changeFields[1].Text != _changeFields[2].Text)
+        {
+            ChangeValidation(2, "Does not match");
+            return;
+        }
+        _busy = true;
+        _changeSave.Enabled = _changeCancel.Enabled = false;
+        foreach (var field in _changeFields) field.Enabled = false;
+        _changeSave.Text = "Saving…";
+        try
+        {
+            var result = await _auth.ChangePasswordAsync(account.UserId, _changeFields[0].Text, _changeFields[1].Text);
+            if (result.Success)
+            {
+                // Reauthenticate with the new password to obtain a fresh, unrestricted result.
+                var fresh = await _auth.LoginAsync(account.Username, _changeFields[1].Text);
+                if (fresh.Success && fresh.Session is not null && !fresh.MustChangePassword)
+                {
+                    Result = fresh;
+                    _pendingLogin = null;
+                    ClearChangeFields();
+                    _busy = false;
+                    DialogResult = DialogResult.OK;
+                    return;
+                }
+                _auth.Logout();
+                _busy = false;
+                CancelRequiredPassword();
+                CatalogActionFeedback.Notify(this, "Password saved. Please sign in again.");
+                return;
+            }
+            _changeError = true;
+            _changeStatus.ForeColor = Theme.Colors.Danger;
+            _changeStatus.Text = result.Error ?? "Unable to change password.";
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(ex);
+            _auth.Logout();
+            _changeError = true;
+            _changeStatus.ForeColor = Theme.Colors.Danger;
+            _changeStatus.Text = "Unable to complete password change. Please try again or sign out.";
+        }
+        finally
+        {
+            _busy = false;
+            if (!IsDisposed && !Disposing)
+            {
+                _changeSave.Enabled = _changeCancel.Enabled = true;
+                _changeSave.Text = "Save Password";
+                foreach (var field in _changeFields) field.Enabled = true;
+            }
+        }
     }
 
     private void BuildRecoveryFields()
@@ -345,7 +535,7 @@ public sealed class LoginForm : Form
 
     private void SwitchMode(bool recovery)
     {
-        if (_recoveryMode == recovery || _busy) return;
+        if (_recoveryMode == recovery || _busy || _pendingLogin is not null) return;
         _recoveryMode = recovery;
         _loginView.Visible = !recovery;
         _recoveryView.Visible = recovery;
@@ -397,6 +587,7 @@ public sealed class LoginForm : Form
 
             _loginView.Bounds = _accountPanel.ClientRectangle;
             _recoveryView.Bounds = _accountPanel.ClientRectangle;
+            _changeView.Bounds = _accountPanel.ClientRectangle;
             int fw = Math.Min(365, Math.Max(260, accountWidth - 84));
             int fx = (accountWidth - fw) / 2;
             // The heading, fields, forgot link, error, action and footer share
@@ -427,6 +618,20 @@ public sealed class LoginForm : Form
             _recoveryStatus.SetBounds(fx, ry + 365, fw, 52);
             _reset.SetBounds(fx, ry + 424, fw, 44);
             _back.SetBounds(fx, ry + 474, fw, 34);
+            int errorHeight = string.IsNullOrWhiteSpace(_changeStatus.Text) ? 0 : 48;
+            int cy = Math.Max(16, (h - (455 + errorHeight)) / 2);
+            _changeTitle.SetBounds(fx, cy, fw, 48);
+            _changeIntro.SetBounds(fx, cy + 52, fw, 44);
+            for (int i = 0; i < 3; i++)
+            {
+                _changeLabels[i].SetBounds(fx, cy + 112 + i * 72, fw, 22);
+                _changeFields[i].SetBounds(fx, cy + 136 + i * 72, fw, 40);
+            }
+            _changePolicy.SetBounds(fx, cy + 328, fw, 36);
+            _changeStatus.Visible = errorHeight > 0;
+            _changeStatus.SetBounds(fx, cy + 364, fw, errorHeight);
+            _changeSave.SetBounds(fx, cy + 372 + errorHeight, fw, 45);
+            _changeCancel.SetBounds(fx, cy + 425 + errorHeight, fw, 30);
             LayoutPasswordInput();
         }
         finally { _layoutBusy = false; }
@@ -444,7 +649,7 @@ public sealed class LoginForm : Form
 
     private async Task SignInAsync()
     {
-        if (_busy || _recoveryMode) return;
+        if (_busy || _recoveryMode || _pendingLogin is not null || _slide.Enabled) return;
         bool missingUser = string.IsNullOrWhiteSpace(_username.Text);
         bool missingPassword = string.IsNullOrEmpty(_password.Text);
         if (missingUser || missingPassword)
@@ -460,6 +665,11 @@ public sealed class LoginForm : Form
             if (IsDisposed || Disposing) return;
             if (result.Success)
             {
+                if (result.MustChangePassword)
+                {
+                    ShowChangeView(result);
+                    return;
+                }
                 Result = result;
                 DialogResult = DialogResult.OK;
                 return;
@@ -550,6 +760,25 @@ public sealed class LoginForm : Form
         _accountPanel.BackColor = c.Surface;
         _loginView.BackColor = c.Surface;
         _recoveryView.BackColor = c.Surface;
+        _changeView.BackColor = c.Surface;
+        _changeTitle.ForeColor = c.Text;
+        _changeIntro.ForeColor = c.TextMuted;
+        _changePolicy.ForeColor = c.TextMuted;
+        _changeStatus.ForeColor = _changeError ? c.Danger : c.TextMuted;
+        _changeSave.BackColor = c.Accent;
+        _changeSave.ForeColor = c.OnAccent;
+        _changeSave.FlatAppearance.BorderSize = 0;
+        _changeSave.FlatAppearance.MouseOverBackColor = ControlPaint.Light(c.Accent, .08f);
+        _changeCancel.BackColor = c.Surface;
+        _changeCancel.ForeColor = c.Accent;
+        _changeCancel.FlatAppearance.BorderSize = 0;
+        _changeCancel.FlatAppearance.MouseOverBackColor = c.Surface;
+        _changeCancel.FlatAppearance.MouseDownBackColor = c.Surface;
+        for (int i = 0; i < 3; i++)
+        {
+            _changeFields[i].BackColor = c.Surface;
+            _changeLabels[i].ForeColor = _changeFields[i].HasValidationError ? c.Danger : c.Text;
+        }
         _welcome.ForeColor = c.Text;
         RetintLogo();
         _subtitle.ForeColor = c.TextMuted;

@@ -46,13 +46,15 @@ public sealed class StaffUserService : IStaffUserService
         var normalized = Normalize(input);
         if (await _users.UsernameExistsAsync(normalized.Username))
             return StaffCreationResult.Fail("Username is already in use.");
-        // This is a temporary *password*, not a recovery passkey. The latter has its own later phase.
+        // Both credentials are issued once; only their hashes are stored.
         string password = GenerateTemporaryPassword();
+        string passkey = GeneratePasskey();
         try
         {
             string hash = await Task.Run(() => _hasher.Hash(password));
-            int id = await _users.CreateAsync(normalized, hash, Actor);
-            return id > 0 ? StaffCreationResult.Ok(password) :
+            string passkeyHash = await Task.Run(() => _hasher.Hash(passkey));
+            int id = await _users.CreateAsync(normalized, hash, passkeyHash, Actor);
+            return id > 0 ? StaffCreationResult.Ok(password, passkey) :
                 StaffCreationResult.Fail("Selected role is not available.");
         }
         catch (InvalidOperationException ex) { return StaffCreationResult.Fail(ex.Message); }
@@ -61,6 +63,26 @@ public sealed class StaffUserService : IStaffUserService
         {
             return StaffCreationResult.Fail("Account could not be created. Check the username and database connection.");
         }
+    }
+
+    private static string GeneratePasskey() => new string(Enumerable.Range(0, 16)
+        .Select(_ => Alphabet[RandomNumberGenerator.GetInt32(Alphabet.Length)]).ToArray());
+
+    public async Task<StaffCreationResult> RegeneratePasskeyAsync(int userId)
+    {
+        _permissions.Demand(RolePermission.UsersEdit);
+        if (userId == Actor.UserId) return StaffCreationResult.Fail("Use Profile & Settings for your own account.");
+        try
+        {
+            string key = GeneratePasskey();
+            string hash = await Task.Run(() => _hasher.Hash(key));
+            return await _users.RegeneratePasskeyAsync(userId, hash, Actor)
+                ? new StaffCreationResult(true, "Recovery passkey regenerated.", RecoveryPasskey: key)
+                : StaffCreationResult.Fail("Account or role is inactive or unavailable.");
+        }
+        catch (InvalidOperationException ex) { return StaffCreationResult.Fail(ex.Message); }
+        catch (UnauthorizedAccessException ex) { return StaffCreationResult.Fail(ex.Message); }
+        catch (DbException) { return StaffCreationResult.Fail("Unable to regenerate recovery passkey."); }
     }
 
     public async Task<ServiceResult> UpdateAsync(int userId, StaffUserInput input)
