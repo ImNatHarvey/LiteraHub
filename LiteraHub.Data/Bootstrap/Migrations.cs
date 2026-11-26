@@ -15,6 +15,7 @@ internal static class Migrations
         new Migration(7, "Add staff personal names", V7()),
         new Migration(8, "Recovery limits and audit", V8()),
         new Migration(9, "Protect the original system owner", V9()),
+        new Migration(10, "Owner authorization limits and audit", V10()),
     };
 
     private static string Index(string name, string table, string columns) =>
@@ -451,6 +452,24 @@ internal static class Migrations
             IF EXISTS (SELECT 1 FROM deleted)
                 THROW 51002, 'The system owner anchor cannot be modified or removed.', 1;
         END;
+        """
+    };
+    private static string[] V10() => new[]
+    {
+        """
+        CREATE TABLE dbo.OwnerAuthorizationState (
+            SingletonId INT NOT NULL PRIMARY KEY CHECK (SingletonId=1),
+            Failures INT NOT NULL DEFAULT 0 CHECK (Failures>=0),
+            LockedUntil DATETIME2 NULL
+        );
+        INSERT dbo.OwnerAuthorizationState(SingletonId) VALUES(1);
+        CREATE TABLE dbo.OwnerAuthorizationAudit (
+            AuditId BIGINT IDENTITY PRIMARY KEY,
+            ActorUserId INT NOT NULL, TargetUserId INT NOT NULL,
+            OwnerUserId INT NOT NULL, RequestedAction NVARCHAR(50) NOT NULL,
+            Outcome NVARCHAR(30) NOT NULL,
+            CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+        );
         """
     };
 }

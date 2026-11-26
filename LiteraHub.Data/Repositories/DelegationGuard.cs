@@ -1,4 +1,5 @@
-﻿using System.Data.Common;
+﻿using LiteraHub.Core.Interfaces;
+using System.Data.Common;
 using Dapper;
 using LiteraHub.Core.Models;
 using LiteraHub.Core.Security;
@@ -13,8 +14,11 @@ internal sealed class DelegationGuard
     private readonly HashSet<string> _keys;
     public int RoleId { get; }
     public bool IsAdmin { get; }
-    private DelegationGuard(DbConnection db, DbTransaction tx, int roleId, bool admin, HashSet<string> keys)
-    { _db = db; _tx = tx; RoleId = roleId; IsAdmin = admin; _keys = keys; }
+    public bool IsOwner { get; }
+    private sealed class OwnerState { public int UserId { get; set; } public string PasswordHash { get; set; } = ""; }
+    private sealed class LimitState { public int Failures { get; set; } public bool Locked { get; set; } }
+    private DelegationGuard(DbConnection db, DbTransaction tx, int roleId, bool admin, bool owner, HashSet<string> keys)
+    { _db = db; _tx = tx; RoleId = roleId; IsAdmin = admin; IsOwner = owner; _keys = keys; }
 
     public static async Task<DelegationGuard> LoadAsync(DbConnection db, DbTransaction tx, UserSession actor, RolePermission action, RolePermission view)
     {
@@ -30,8 +34,9 @@ internal sealed class DelegationGuard
         var keys = (await ReadKeysAsync(db, tx, role.RoleId)).ToHashSet(StringComparer.Ordinal);
         if (!keys.Contains(action.ToString()) || !keys.Contains(view.ToString()))
             throw new RolePermissionDeniedException(action);
+        bool owner = await db.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Users WITH (UPDLOCK,HOLDLOCK) WHERE UserId=@UserId AND IsSystemOwner=1", new { actor.UserId }, tx) == 1;
         return new DelegationGuard(db, tx, role.RoleId,
-            role.IsSystem && string.Equals(role.Name, RoleNames.Admin, StringComparison.OrdinalIgnoreCase), keys);
+            role.IsSystem && string.Equals(role.Name, RoleNames.Admin, StringComparison.OrdinalIgnoreCase), owner, keys);
     }
 
     private static Task<IEnumerable<string>> ReadKeysAsync(DbConnection db, DbTransaction tx, int roleId) =>
@@ -48,22 +53,33 @@ internal sealed class DelegationGuard
             throw new InvalidOperationException("The selected role is unavailable.");
         if (string.Equals(role.Name, RoleNames.Borrower, StringComparison.OrdinalIgnoreCase) && !roleMutation)
             throw new InvalidOperationException("Borrower is not a staff role.");
-        if (IsAdmin) return role;
-        if (role.IsSystem || (roleMutation && role.RoleId == RoleId))
+        if (IsOwner) return role;
+        if ((!IsAdmin && role.IsSystem) || (roleMutation && role.RoleId == RoleId))
             throw new InvalidOperationException("You cannot manage a protected role or change your own role.");
         var keys = await ReadKeysAsync(_db, _tx, role.RoleId);
         if (keys.Any(k => !_keys.Contains(k)))
             throw new InvalidOperationException("You cannot manage a role with permissions beyond your own.");
+        if (roleMutation && _keys.SetEquals(keys))
+            throw new InvalidOperationException("Only the System Owner can modify roles with equivalent authority.");
         return role;
+    }
+
+    public async Task CheckAssignmentAsync(string name, bool allowEquivalent = false)
+    {
+        var role = await CheckRoleAsync(null, name, false, true);
+        if (!IsOwner && !allowEquivalent && _keys.SetEquals(await ReadKeysAsync(_db, _tx, role.RoleId)))
+            throw new InvalidOperationException("Only the System Owner can assign a role with equivalent authority without approval.");
     }
 
     public void CheckNewPermissions(IEnumerable<RolePermission> permissions)
     {
         if (permissions.Any(p => !Enum.IsDefined(p) || !_keys.Contains(p.ToString())))
             throw new InvalidOperationException("You cannot grant permissions beyond your own access.");
+        if (!IsOwner && _keys.SetEquals(permissions.Select(p => p.ToString())))
+            throw new InvalidOperationException("Only the System Owner can create or grant an equivalent permission set.");
     }
 
-    public async Task CheckStaffAsync(int targetId, int actorId)
+    public async Task<bool> CheckStaffAsync(int targetId, int actorId, string action, IPasswordHasher hasher, string? ownerPassword)
     {
         if (targetId == actorId) throw new InvalidOperationException("You cannot manage your own account here.");
         if (await _db.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Users WITH (UPDLOCK, HOLDLOCK) WHERE UserId=@targetId AND IsSystemOwner=1", new { targetId }, _tx) > 0)
@@ -73,5 +89,45 @@ internal sealed class DelegationGuard
             """, new { targetId }, _tx);
         if (roleId is null) throw new InvalidOperationException("Staff account was not found.");
         await CheckRoleAsync(roleId, null, roleMutation: false);
+        if (IsOwner) return false;
+        var targetKeys = await ReadKeysAsync(_db, _tx, roleId.Value);
+        if (!_keys.SetEquals(targetKeys)) return false;
+        if (ownerPassword is null) throw new InvalidOperationException("System Owner authorization required.");
+        var owner = await _db.QuerySingleOrDefaultAsync<OwnerState>("""
+            SELECT u.UserId,u.PasswordHash FROM dbo.Users u WITH (UPDLOCK,HOLDLOCK)
+            JOIN dbo.Roles r WITH (UPDLOCK,HOLDLOCK) ON r.RoleId=u.RoleId
+            WHERE u.IsSystemOwner=1 AND u.IsActive=1 AND u.MustChangePassword=0 AND r.IsActive=1;
+            """, transaction: _tx);
+        if (owner is null) throw new InvalidOperationException("System Owner authorization is unavailable.");
+        var limit = await _db.QuerySingleAsync<LimitState>("""
+            SELECT Failures,CAST(CASE WHEN LockedUntil>SYSUTCDATETIME() THEN 1 ELSE 0 END AS BIT) AS Locked
+            FROM dbo.OwnerAuthorizationState WITH (UPDLOCK,HOLDLOCK) WHERE SingletonId=1;
+            """, transaction: _tx);
+        if (limit.Locked)
+        {
+            await AuditAsync(actorId, targetId, owner.UserId, action, "Locked");
+            await _tx.CommitAsync();
+            throw new InvalidOperationException("Owner authorization is temporarily locked. Try again later.");
+        }
+        bool valid = ownerPassword.Length > 0 && System.Text.Encoding.UTF8.GetByteCount(ownerPassword) <= 72 && hasher.Verify(ownerPassword, owner.PasswordHash);
+        if (!valid)
+        {
+            await _db.ExecuteAsync("""
+                UPDATE dbo.OwnerAuthorizationState SET
+                    Failures=CASE WHEN LockedUntil IS NOT NULL THEN 1 ELSE Failures+1 END,
+                    LockedUntil=CASE WHEN LockedUntil IS NULL AND Failures+1>=5 THEN DATEADD(MINUTE,15,SYSUTCDATETIME()) ELSE NULL END
+                WHERE SingletonId=1;
+                """, transaction: _tx);
+            await AuditAsync(actorId, targetId, owner.UserId, action, "Denied");
+            // Commit only the failed attempt, before any requested mutation has happened.
+            await _tx.CommitAsync();
+            throw new InvalidOperationException("System Owner authorization was denied.");
+        }
+        await _db.ExecuteAsync("UPDATE dbo.OwnerAuthorizationState SET Failures=0,LockedUntil=NULL WHERE SingletonId=1", transaction: _tx);
+        await AuditAsync(actorId, targetId, owner.UserId, action, "Approved");
+        return true;
     }
+    private Task<int> AuditAsync(int actorId, int targetId, int ownerId, string action, string outcome) =>
+        _db.ExecuteAsync("INSERT dbo.OwnerAuthorizationAudit(ActorUserId,TargetUserId,OwnerUserId,RequestedAction,Outcome) VALUES(@actorId,@targetId,@ownerId,@action,@outcome)",
+            new { actorId, targetId, ownerId, action, outcome }, _tx);
 }

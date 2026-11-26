@@ -68,7 +68,7 @@ public sealed class StaffUserService : IStaffUserService
     private static string GeneratePasskey() => new string(Enumerable.Range(0, 16)
         .Select(_ => Alphabet[RandomNumberGenerator.GetInt32(Alphabet.Length)]).ToArray());
 
-    public async Task<StaffCreationResult> RegeneratePasskeyAsync(int userId)
+    public async Task<StaffCreationResult> RegeneratePasskeyAsync(int userId, string? ownerPassword = null)
     {
         _permissions.Demand(RolePermission.UsersEdit);
         if (userId == Actor.UserId) return StaffCreationResult.Fail("Use Profile & Settings for your own account.");
@@ -78,7 +78,7 @@ public sealed class StaffUserService : IStaffUserService
         {
             string key = GeneratePasskey();
             string hash = await Task.Run(() => _hasher.Hash(key));
-            return await _users.RegeneratePasskeyAsync(userId, hash, Actor)
+            return await _users.RegeneratePasskeyAsync(userId, hash, Actor, ownerPassword)
                 ? new StaffCreationResult(true, "Recovery passkey regenerated.", RecoveryPasskey: key)
                 : StaffCreationResult.Fail("Account or role is inactive or unavailable.");
         }
@@ -87,7 +87,7 @@ public sealed class StaffUserService : IStaffUserService
         catch (DbException) { return StaffCreationResult.Fail("Unable to regenerate recovery passkey."); }
     }
 
-    public async Task<ServiceResult> UpdateAsync(int userId, StaffUserInput input)
+    public async Task<ServiceResult> UpdateAsync(int userId, StaffUserInput input, string? ownerPassword = null)
     {
         _permissions.Demand(RolePermission.UsersEdit);
         if (userId == _session.Current?.UserId)
@@ -101,7 +101,7 @@ public sealed class StaffUserService : IStaffUserService
             return ServiceResult.Fail("The System Owner is protected.");
         try
         {
-            return await _users.UpdateAsync(userId, normalized, Actor) ? ServiceResult.Ok() :
+            return await _users.UpdateAsync(userId, normalized, Actor, ownerPassword) ? ServiceResult.Ok() :
                 ServiceResult.Fail("Staff account was not found.");
         }
         catch (InvalidOperationException ex) { return ServiceResult.Fail(ex.Message); }
@@ -109,7 +109,7 @@ public sealed class StaffUserService : IStaffUserService
         catch (DbException) { return ServiceResult.Fail("Unable to update this account."); }
     }
 
-    public async Task<ServiceResult> SetActiveAsync(int userId, bool active)
+    public async Task<ServiceResult> SetActiveAsync(int userId, bool active, string? ownerPassword = null)
     {
         _permissions.Demand(RolePermission.UsersArchiveRestore);
         if (userId == _session.Current?.UserId)
@@ -118,7 +118,7 @@ public sealed class StaffUserService : IStaffUserService
             return ServiceResult.Fail("The System Owner is protected.");
         try
         {
-            return await _users.SetActiveAsync(userId, active, Actor) ? ServiceResult.Ok() :
+            return await _users.SetActiveAsync(userId, active, Actor, ownerPassword) ? ServiceResult.Ok() :
                 ServiceResult.Fail("Staff account was not found.");
         }
         catch (InvalidOperationException ex) { return ServiceResult.Fail(ex.Message); }
@@ -126,13 +126,13 @@ public sealed class StaffUserService : IStaffUserService
         catch (DbException) { return ServiceResult.Fail("Unable to change account status."); }
     }
 
-    public async Task<ServiceResult> DeleteAsync(int userId)
+    public async Task<ServiceResult> DeleteAsync(int userId, string? ownerPassword = null)
     {
         _permissions.Demand(RolePermission.UsersDelete);
         if (userId == _session.Current?.UserId) return ServiceResult.Fail("You cannot delete your own account.");
         if ((await _users.GetByIdAsync(userId))?.IsSystemOwner == true)
             return ServiceResult.Fail("The System Owner is protected.");
-        try { return await _users.DeleteAsync(userId, Actor) ? ServiceResult.Ok() : ServiceResult.Fail("Account was not found or is still active. Archive it first."); }
+        try { return await _users.DeleteAsync(userId, Actor, ownerPassword) ? ServiceResult.Ok() : ServiceResult.Fail("Account was not found or is still active. Archive it first."); }
         catch (InvalidOperationException ex) { return ServiceResult.Fail(ex.Message); }
         catch (UnauthorizedAccessException ex) { return ServiceResult.Fail(ex.Message); }
         catch (DbException) { return ServiceResult.Fail("Unable to delete this account. It may be referenced by library records; keep it archived."); }

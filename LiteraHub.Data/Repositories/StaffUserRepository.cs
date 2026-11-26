@@ -9,6 +9,7 @@ namespace LiteraHub.Data.Repositories;
 public sealed class StaffUserRepository : IStaffUserRepository
 {
     private readonly IDbConnectionFactory _factory;
+    private readonly IPasswordHasher _hasher;
     private sealed class StaffState
     {
         public string RoleName { get; set; } = "";
@@ -23,8 +24,8 @@ public sealed class StaffUserRepository : IStaffUserRepository
         WHERE r.Name <> N'Borrower'
         """;
 
-    public StaffUserRepository(IDbConnectionFactory factory) =>
-        _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+    public StaffUserRepository(IDbConnectionFactory factory, IPasswordHasher hasher)
+    { _factory = factory ?? throw new ArgumentNullException(nameof(factory)); _hasher = hasher; }
 
     public async Task<IReadOnlyList<StaffUser>> GetAllAsync()
     {
@@ -57,7 +58,7 @@ public sealed class StaffUserRepository : IStaffUserRepository
         await db.OpenAsync();
         await using var tx = await db.BeginTransactionAsync(IsolationLevel.Serializable);
         var guard = await DelegationGuard.LoadAsync(db, tx, actor, RolePermission.UsersAdd, RolePermission.UsersView);
-        await guard.CheckRoleAsync(null, input.RoleName, roleMutation: false, requireActive: true);
+        await guard.CheckAssignmentAsync(input.RoleName);
         int id = await db.ExecuteScalarAsync<int>("""
             INSERT INTO dbo.Users (Username, PasswordHash, RoleId, MustChangePassword, IsActive, FirstName, MiddleName, LastName, RecoveryPasskeyHash, RecoveryPasskeyCreatedAt)
             OUTPUT INSERTED.UserId
@@ -70,14 +71,14 @@ public sealed class StaffUserRepository : IStaffUserRepository
         return id;
     }
 
-    public async Task<bool> RegeneratePasskeyAsync(int userId, string passkeyHash, UserSession actor)
+    public async Task<bool> RegeneratePasskeyAsync(int userId, string passkeyHash, UserSession actor, string? ownerPassword = null)
     {
         if (userId == actor.UserId) throw new UnauthorizedAccessException("Use Profile & Settings.");
         await using var db = _factory.CreateConnection();
         await db.OpenAsync();
         await using var tx = await db.BeginTransactionAsync(IsolationLevel.Serializable);
         var guard = await DelegationGuard.LoadAsync(db, tx, actor, RolePermission.UsersEdit, RolePermission.UsersView);
-        await guard.CheckStaffAsync(userId, actor.UserId);
+        await guard.CheckStaffAsync(userId, actor.UserId, "RegeneratePasskey", _hasher, ownerPassword);
         int changed = await db.ExecuteAsync("""
             UPDATE u SET RecoveryPasskeyHash=@passkeyHash, RecoveryPasskeyCreatedAt=SYSUTCDATETIME(),
                 RecoveryFailures=0, RecoveryLockedUntil=NULL
@@ -89,19 +90,19 @@ public sealed class StaffUserRepository : IStaffUserRepository
         return changed == 1;
     }
 
-    public Task<bool> UpdateAsync(int userId, StaffUserInput input, UserSession actor) =>
-        ChangeAsync(userId, input, null, actor);
+    public Task<bool> UpdateAsync(int userId, StaffUserInput input, UserSession actor, string? ownerPassword = null) =>
+        ChangeAsync(userId, input, null, actor, ownerPassword);
 
-    public Task<bool> SetActiveAsync(int userId, bool isActive, UserSession actor) =>
-        ChangeAsync(userId, null, isActive, actor);
+    public Task<bool> SetActiveAsync(int userId, bool isActive, UserSession actor, string? ownerPassword = null) =>
+        ChangeAsync(userId, null, isActive, actor, ownerPassword);
 
-    public async Task<bool> DeleteAsync(int userId, UserSession actor)
+    public async Task<bool> DeleteAsync(int userId, UserSession actor, string? ownerPassword = null)
     {
         await using var db = _factory.CreateConnection();
         await db.OpenAsync();
         await using var tx = await db.BeginTransactionAsync(IsolationLevel.Serializable);
         var guard = await DelegationGuard.LoadAsync(db, tx, actor, RolePermission.UsersDelete, RolePermission.UsersView);
-        await guard.CheckStaffAsync(userId, actor.UserId);
+        await guard.CheckStaffAsync(userId, actor.UserId, "DeleteUser", _hasher, ownerPassword);
         // Only archived staff accounts are eligible; foreign keys protect referenced records.
         int deleted = await db.ExecuteAsync("""
             DELETE u FROM dbo.Users u JOIN dbo.Roles r ON r.RoleId = u.RoleId
@@ -112,7 +113,7 @@ public sealed class StaffUserRepository : IStaffUserRepository
     }
 
     // Serializable transaction protects the last active Admin against simultaneous changes.
-    private async Task<bool> ChangeAsync(int userId, StaffUserInput? input, bool? active, UserSession actor)
+    private async Task<bool> ChangeAsync(int userId, StaffUserInput? input, bool? active, UserSession actor, string? ownerPassword = null)
     {
         await using var db = _factory.CreateConnection();
         await db.OpenAsync();
@@ -120,8 +121,8 @@ public sealed class StaffUserRepository : IStaffUserRepository
         try
         {
             var guard = await DelegationGuard.LoadAsync(db, tx, actor, input is null ? RolePermission.UsersArchiveRestore : RolePermission.UsersEdit, RolePermission.UsersView);
-            await guard.CheckStaffAsync(userId, actor.UserId);
-            if (input is not null) await guard.CheckRoleAsync(null, input.RoleName, roleMutation: false, requireActive: true);
+            bool approved = await guard.CheckStaffAsync(userId, actor.UserId, input is not null ? "EditUser" : active == true ? "RestoreUser" : "ArchiveUser", _hasher, ownerPassword);
+            if (input is not null) await guard.CheckAssignmentAsync(input.RoleName, approved);
             var current = await db.QuerySingleOrDefaultAsync<StaffState>("""
                 SELECT r.Name AS RoleName, u.IsActive
                 FROM dbo.Users u WITH (UPDLOCK, HOLDLOCK)
@@ -171,7 +172,7 @@ public sealed class StaffUserRepository : IStaffUserRepository
         }
         catch
         {
-            await tx.RollbackAsync();
+            // Disposal rolls back any unfinished transaction; denied approval may already be committed.
             throw;
         }
     }

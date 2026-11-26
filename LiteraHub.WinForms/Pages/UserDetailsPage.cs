@@ -302,6 +302,12 @@ public sealed class UserDetailsPage : ThemedUserControl
             else
             {
                 ServiceResult result = await _service.UpdateAsync(_user.UserId, input);
+                if (!result.Success && result.Error == "System Owner authorization required.")
+                {
+                    using var approval = new OwnerAuthorizationDialog(_user.Username, "Edit user");
+                    if (approval.ShowDialog(FindForm()) != DialogResult.OK) return;
+                    result = await _service.UpdateAsync(_user.UserId, input, approval.TakePassword());
+                }
                 if (!result.Success) { ThemedMessageDialog.ShowAlert(FindForm(), "Edit User", result.Error ?? "Unable to update this account.", true); return; }
                 _user = await _service.GetByIdAsync(_user.UserId);
                 Restore();
@@ -325,6 +331,12 @@ public sealed class UserDetailsPage : ThemedUserControl
         try
         {
             var result = await _service.RegeneratePasskeyAsync(_user.UserId);
+            if (!result.Success && result.Message == "System Owner authorization required.")
+            {
+                using var approval = new OwnerAuthorizationDialog(_user.Username, "Regenerate recovery passkey");
+                if (approval.ShowDialog(FindForm()) != DialogResult.OK) return;
+                result = await _service.RegeneratePasskeyAsync(_user.UserId, approval.TakePassword());
+            }
             if (!result.Success) { ThemedMessageDialog.ShowAlert(FindForm(), "Recovery passkey", result.Message, true); return; }
             StaffCredentialsDialog.ShowCredentials(FindForm(), _user.Username, null, result.RecoveryPasskey!);
             if (IsDisposed) return;
@@ -347,6 +359,12 @@ public sealed class UserDetailsPage : ThemedUserControl
         try
         {
             ServiceResult result = await _service.SetActiveAsync(_user.UserId, desired);
+            if (!result.Success && result.Error == "System Owner authorization required.")
+            {
+                using var approval = new OwnerAuthorizationDialog(_user.Username, "Change account status");
+                if (approval.ShowDialog(FindForm()) != DialogResult.OK) return;
+                result = await _service.SetActiveAsync(_user.UserId, desired, approval.TakePassword());
+            }
             if (!result.Success) { ThemedMessageDialog.ShowAlert(FindForm(), "Users", result.Error ?? "Unable to change account status.", true); return; }
             _user = await _service.GetByIdAsync(_user.UserId);
             Restore();
@@ -370,6 +388,12 @@ public sealed class UserDetailsPage : ThemedUserControl
         try
         {
             var result = await _service.DeleteAsync(_user.UserId);
+            if (!result.Success && result.Error == "System Owner authorization required.")
+            {
+                using var approval = new OwnerAuthorizationDialog(_user.Username, "Delete user");
+                if (approval.ShowDialog(FindForm()) != DialogResult.OK) return;
+                result = await _service.DeleteAsync(_user.UserId, approval.TakePassword());
+            }
             if (!result.Success) { ThemedMessageDialog.ShowAlert(FindForm(), "Delete User", result.Error ?? "Unable to delete account.", true); return; }
             CatalogActionFeedback.Notify(this, "User deleted successfully.");
             BackRequested?.Invoke(this, EventArgs.Empty);
