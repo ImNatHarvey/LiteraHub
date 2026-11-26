@@ -310,6 +310,13 @@ public sealed class ThemedMessageDialog : Form
         dialog.ShowDialog(owner);
     }
 
+    public static void ShowRecoveryPasskey(IWin32Window? owner, string passkey)
+    {
+        using var dialog = new ThemedMessageDialog("Recovery passkey generated",
+            "Copy and store this passkey securely. It will not be shown again. Generating another passkey invalidates this one. Password recovery becomes available in F5.5.", false, false, "OK", passkey);
+        dialog.ShowDialog(owner);
+    }
+
     private void HandleThemeChanged(
         object? sender,
         EventArgs e)

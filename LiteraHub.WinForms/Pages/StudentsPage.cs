@@ -105,7 +105,7 @@ public sealed class StudentsPage : ThemedUserControl
         _host.Controls.Add(_layout);
         Controls.Add(_host);
         AddColumn("StudentNo", "Student ID", nameof(Student.StudentNo), 14, 110);
-        AddColumn("FullName", "Full name", null, 24, 175);
+        AddColumn("FullName", "Full Name", null, 24, 175);
         AddColumn("Gender", "Gender", nameof(Student.Gender), 10, 85);
         AddColumn("MobileNo", "Mobile", nameof(Student.MobileNo), 14, 120);
         AddColumn("Email", "Email", nameof(Student.Email), 20, 160);

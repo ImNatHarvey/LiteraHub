@@ -1,4 +1,5 @@
-﻿using System.Drawing.Drawing2D;
+﻿using FontAwesome.Sharp;
+using System.Drawing.Drawing2D;
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
 using LiteraHub.Core.Security;
@@ -12,6 +13,7 @@ namespace LiteraHub.WinForms.Pages;
 public sealed class UserDetailsPage : ThemedUserControl
 {
     private readonly IStaffUserService _service;
+    public event EventHandler? ProfileRequested;
     private readonly IPermissionService _permissions;
     private readonly bool _canManageTarget;
     private StaffUser? _user;
@@ -37,6 +39,9 @@ public sealed class UserDetailsPage : ThemedUserControl
     private readonly ThemedFilterDropdown _role;
     private readonly string[] _roleNames;
 
+    private readonly Label[] _nameCaptions = { new() { Text = "First name" }, new() { Text = "Middle name (optional)" }, new() { Text = "Last name" } };
+    private readonly ThemedTextField[] _nameFields = Enumerable.Range(0, 3).Select(_ => new ThemedTextField { MaxLength = 100 }).ToArray();
+    private readonly Label[] _nameViews = Enumerable.Range(0, 3).Select(_ => MakeView()).ToArray();
     private readonly Label _status = new() { Text = "Status" };
     private readonly Label _statusValue = MakeView();
     private readonly Label _passwordHint = new()
@@ -64,6 +69,19 @@ public sealed class UserDetailsPage : ThemedUserControl
         _currentUserId = currentUserId;
         _user = user;
         _editing = user is null;
+        if (IsOwnAccount)
+        {
+            _save.Dispose();
+            _save = new CenteredIconButton
+            {
+                Text = "Go to Profile",
+                IconChar = IconChar.UserAlt,
+                IconSize = 20,
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand,
+                Margin = Padding.Empty
+            };
+        }
         Dock = DockStyle.Fill;
         Padding = new Padding(Space.L);
         _root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -75,17 +93,24 @@ public sealed class UserDetailsPage : ThemedUserControl
         _root.Controls.Add(_footer, 0, 2);
         _surface.Controls.AddRange(new Control[] { _section, _usernameLabel, _username,
             _roleLabel, _role, _status, _statusValue, _passwordHint, _securitySection, _createdLabel, _createdValue, _passwordLabel, _passwordValue, _viewUsername, _viewRole });
+        _surface.Controls.AddRange(_nameCaptions);
+        _surface.Controls.AddRange(_nameFields);
+        _surface.Controls.AddRange(_nameViews);
         _footer.Controls.AddRange(new Control[] { _cancel, _save, _archive, _delete });
         _footer.Configure(_delete, _archive, _save, _cancel, () => _user is null);
         _delete.Visible = false;
         Controls.Add(_root);
         _username.Text = user?.Username ?? "";
+        PopulateNames();
         _role.SelectedIndex = FindRoleIndex(user?.RoleName);
         _statusValue.Text = user is null ? "Active on creation" : (user.IsActive ? "Active" : "Inactive");
         _header.BackRequested += (_, _) => { if (!_busy) BackRequested?.Invoke(this, EventArgs.Empty); };
         _validation.Register(_username, () => IsValidUsername(_username.Text.Trim()),
             "Username is required and must contain 3–50 letters, digits, periods, underscores or hyphens.");
-        _validation.Register(_role, () => _role.SelectedIndex > 0, "Role is required.");
+        _validation.Register(_nameFields[0], () => !string.IsNullOrWhiteSpace(_nameFields[0].Text), "First name is required.");
+        _validation.Register(_nameFields[2], () => !string.IsNullOrWhiteSpace(_nameFields[2].Text), "Last name is required.");
+        foreach (var field in _nameFields) field.TextChanged += (_, _) => RefreshValidationCaptions();
+        _validation.Register(_role, () => IsOwnAccount || _role.SelectedIndex > 0, "Role is required.");
         _username.TextChanged += (_, _) => RefreshValidationCaptions();
         _role.SelectedIndexChanged += (_, _) => RefreshValidationCaptions();
         Disposed += (_, _) => _validation.Dispose();
@@ -97,7 +122,8 @@ public sealed class UserDetailsPage : ThemedUserControl
         };
         _save.Click += async (_, _) =>
         {
-            if (_busy || IsOwnAccount) return;
+            if (_busy) return;
+            if (IsOwnAccount) { ProfileRequested?.Invoke(this, EventArgs.Empty); return; }
             if (!_editing) { SetEditing(true); return; }
             await SaveAsync();
         };
@@ -106,7 +132,7 @@ public sealed class UserDetailsPage : ThemedUserControl
         _delete.Paint += (_, e) => DrawAction(e, _delete, 2);
         _delete.AccessibleName = "Delete User";
         _delete.Text = "";
-        _save.Paint += (_, e) => DrawAction(e, _save, 0);
+        if (!IsOwnAccount) _save.Paint += (_, e) => DrawAction(e, _save, 0);
         _archive.Paint += (_, e) => DrawAction(e, _archive, 1);
         _surface.Resize += (_, _) => Arrange();
         SetEditing(_editing);
@@ -144,9 +170,15 @@ public sealed class UserDetailsPage : ThemedUserControl
 
     private int FindRoleIndex(string? name) => Math.Max(0, Array.FindIndex(_roleNames, 1, n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase)));
 
+    private void PopulateNames()
+    {
+        string?[] names = { _user?.FirstName, _user?.MiddleName, _user?.LastName };
+        for (int i = 0; i < names.Length; i++) _nameFields[i].Text = names[i] ?? "";
+    }
     private void Restore()
     {
         _username.Text = _user?.Username ?? "";
+        PopulateNames();
         _role.SelectedIndex = FindRoleIndex(_user?.RoleName);
         _validationAttempted = false;
         _validation.Clear();
@@ -155,27 +187,36 @@ public sealed class UserDetailsPage : ThemedUserControl
 
     private void SetEditing(bool editing)
     {
+        editing = editing && !IsOwnAccount;
         _editing = editing;
         _username.ReadOnly = false;
         _username.Visible = editing;
         _username.TabStop = editing;
-        _role.Visible = editing;
-        _role.Enabled = editing;
+        _role.Visible = editing && !IsOwnAccount;
+        _role.Enabled = editing && !IsOwnAccount;
         _viewUsername.Text = _username.Text;
         _viewRole.Text = _user?.RoleName ?? "Not specified";
+        for (int i = 0; i < _nameFields.Length; i++)
+        {
+            _nameFields[i].Visible = editing;
+            _nameFields[i].TabStop = editing;
+            _nameViews[i].Text = string.IsNullOrWhiteSpace(_nameFields[i].Text) ? "—" : _nameFields[i].Text;
+            _nameViews[i].Visible = !editing;
+            if (!editing) _nameViews[i].BringToFront();
+        }
         _viewUsername.Visible = !editing;
-        _viewRole.Visible = !editing;
+        _viewRole.Visible = !editing || IsOwnAccount;
         if (!editing) { _viewUsername.BringToFront(); _viewRole.BringToFront(); }
-        _save.Text = "";
-        _save.AccessibleName = editing ? "Save User" : "Edit User";
+        _save.Text = IsOwnAccount ? "Go to Profile" : "";
+        _save.AccessibleName = IsOwnAccount ? "Go to Profile" : editing ? "Save User" : "Edit User";
         _archive.Visible = _user is not null && !IsOwnAccount && _canManageTarget && _permissions.Can(RolePermission.UsersArchiveRestore);
-        _save.Visible = !IsOwnAccount && _canManageTarget && _permissions.Can(_user is null ? RolePermission.UsersAdd : RolePermission.UsersEdit);
+        _save.Visible = IsOwnAccount || !IsOwnAccount && _canManageTarget && _permissions.Can(_user is null ? RolePermission.UsersAdd : RolePermission.UsersEdit);
         _delete.Visible = _user is not null && !IsOwnAccount && _canManageTarget && _permissions.Can(RolePermission.UsersDelete);
         _archive.Text = "";
         _archive.AccessibleName = _user?.IsActive == false ? "Restore User" : "Archive User";
         _cancel.Visible = editing;
-        _passwordHint.Visible = _user is null || IsOwnAccount;
-        _passwordHint.Text = IsOwnAccount ? "This is your signed-in account. Account changes will be available in Profile Settings." : "New accounts receive a secure temporary password. The staff member must change it upon first sign-in.";
+        _passwordHint.Visible = _user is null || (IsOwnAccount && !editing);
+        _passwordHint.Text = IsOwnAccount ? "This is your signed-in account. Manage your personal information and security in Profile & Settings." : "New accounts receive a secure temporary password. The staff member must change it upon first sign-in.";
         _createdValue.Text = _user is null ? "On creation" : _user.CreatedAt.ToString("MMMM d, yyyy");
         _passwordValue.Text = _user is null || _user.MustChangePassword ? "Change required on first sign-in" : "Password configured";
         _statusValue.Text = _user is null ? "Active on creation" : _user.IsActive ? "Active" : "Inactive";
@@ -193,7 +234,7 @@ public sealed class UserDetailsPage : ThemedUserControl
     {
         if (IsDisposed || Disposing) return;
         bool badName = _validationAttempted && _username.HasValidationError;
-        bool badRole = _validationAttempted && _role.SelectedIndex == 0;
+        bool badRole = !IsOwnAccount && _validationAttempted && _role.SelectedIndex == 0;
         _usernameLabel.Text = badName ? (_username.Text.Trim().Length == 0 ? "Username • Required" : "Username • Invalid username") : "Username";
         _roleLabel.Text = badRole ? "Role • Required" : "Role";
         _usernameLabel.ForeColor = badName ? Theme.Colors.Danger : Theme.Colors.Text;
@@ -204,10 +245,17 @@ public sealed class UserDetailsPage : ThemedUserControl
         _role.FlatAppearance.BorderColor = badRole ? Theme.Colors.Danger : Theme.Colors.Border;
         _role.ForeColor = badRole ? Theme.Colors.Danger : Theme.Colors.Text;
         _role.Invalidate();
+        for (int i = 0; i < _nameFields.Length; i++)
+        {
+            bool bad = _validationAttempted && i != 1 && string.IsNullOrWhiteSpace(_nameFields[i].Text);
+            _nameCaptions[i].Text = (i == 0 ? "First name" : i == 1 ? "Middle name (optional)" : "Last name") + (bad ? " • Required" : "");
+            _nameCaptions[i].ForeColor = bad ? Theme.Colors.Danger : Theme.Colors.Text;
+        }
     }
 
     private async Task SaveAsync()
     {
+        if (IsOwnAccount) return;
         string username = _username.Text.Trim();
         _validationAttempted = true;
         var errors = _validation.Validate();
@@ -227,7 +275,7 @@ public sealed class UserDetailsPage : ThemedUserControl
         _header.BackEnabled = false;
         try
         {
-            var input = new StaffUserInput(username, _roleNames[_role.SelectedIndex]);
+            var input = new StaffUserInput(username, _roleNames[_role.SelectedIndex], _nameFields[0].Text, _nameFields[1].Text, _nameFields[2].Text);
             if (_user is null)
             {
                 StaffCreationResult result = await _service.CreateAsync(input);
@@ -308,17 +356,24 @@ public sealed class UserDetailsPage : ThemedUserControl
         _securitySection.SetBounds(right + 4, 16, column - 4, 24);
         _usernameLabel.SetBounds(left + 4, 52, column - 4, 22);
         _username.SetBounds(left, 76, column, 40);
-        _roleLabel.SetBounds(left + 4, 122, column - 4, 22);
-        _role.SetBounds(left, 146, column, 40);
         _viewUsername.Bounds = _username.Bounds;
+        for (int i = 0; i < 3; i++)
+        {
+            int y = 122 + i * 70;
+            _nameCaptions[i].SetBounds(left + 4, y, column - 4, 22);
+            _nameFields[i].SetBounds(left, y + 24, column, 40);
+            _nameViews[i].Bounds = _nameFields[i].Bounds;
+        }
+        _roleLabel.SetBounds(right + 4, 52, column - 4, 22);
+        _role.SetBounds(right, 76, column, 40);
         _viewRole.Bounds = _role.Bounds;
-        _status.SetBounds(left + 4, 192, column, 22);
-        _statusValue.SetBounds(left, 216, column, 40);
-        _createdLabel.SetBounds(right + 4, 52, column, 22);
-        _createdValue.SetBounds(right, 76, column, 40);
-        _passwordLabel.SetBounds(right + 4, 122, column, 22);
-        _passwordValue.SetBounds(right, 146, column, 40);
-        _passwordHint.SetBounds(right + 4, 200, column - 4, 90);
+        _status.SetBounds(right + 4, 122, column - 4, 22);
+        _statusValue.SetBounds(right, 146, column, 40);
+        _createdLabel.SetBounds(right + 4, 192, column - 4, 22);
+        _createdValue.SetBounds(right, 216, column, 40);
+        _passwordLabel.SetBounds(right + 4, 262, column - 4, 22);
+        _passwordValue.SetBounds(right, 286, column, 40);
+        _passwordHint.SetBounds(right + 4, 340, column - 4, 90);
     }
 
     private void DrawAction(PaintEventArgs e, Button button, int kind)
@@ -350,7 +405,8 @@ public sealed class UserDetailsPage : ThemedUserControl
             label.ForeColor = c.Text;
             label.Font = Theme.Body;
         }
-        foreach (var view in new[] { _viewUsername, _viewRole, _statusValue, _createdValue, _passwordValue })
+        foreach (var label in _nameCaptions) { label.Font = Theme.Body; label.ForeColor = c.Text; }
+        foreach (var view in new[] { _viewUsername, _viewRole, _statusValue, _createdValue, _passwordValue }.Concat(_nameViews))
         { view.BackColor = c.SurfaceAlt; view.ForeColor = c.Text; view.Font = Theme.BodyStrong; view.Invalidate(); }
         _role.ApplyTheme();
         RefreshValidationCaptions();
@@ -370,6 +426,8 @@ public sealed class UserDetailsPage : ThemedUserControl
         }
         _save.BackColor = Color.FromArgb(34, 139, 86);
         _save.ForeColor = Color.White;
+        if (_save is CenteredIconButton profileButton)
+            profileButton.IconColor = Color.FromArgb(118, 235, 173);
         _save.FlatAppearance.BorderSize = 0;
         _save.FlatAppearance.MouseOverBackColor = ControlPaint.Light(_save.BackColor, 0.08f);
         _save.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(_save.BackColor, 0.08f);
@@ -383,7 +441,7 @@ public sealed class UserDetailsPage : ThemedUserControl
         _cancel.ForeColor = c.Text;
         _header.ApplyTheme();
         _footer.ArrangeActions();
-        if (IsOwnAccount) { _save.Visible = false; _archive.Visible = false; _delete.Visible = false; }
+        if (IsOwnAccount) { _save.Visible = true; _archive.Visible = false; _delete.Visible = false; }
         _save.Invalidate();
         _archive.Invalidate();
         _delete.Invalidate();

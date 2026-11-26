@@ -129,7 +129,8 @@ public sealed class StaffUserService : IStaffUserService
     }
 
     private static StaffUserInput Normalize(StaffUserInput input) =>
-        new(input.Username.Trim(), input.RoleName.Trim());
+        new(input.Username.Trim(), input.RoleName.Trim(), input.FirstName?.Trim(),
+            string.IsNullOrWhiteSpace(input.MiddleName) ? null : input.MiddleName.Trim(), input.LastName?.Trim());
 
     private static string? Validate(StaffUserInput? input)
     {
@@ -139,6 +140,10 @@ public sealed class StaffUserService : IStaffUserService
             return "Username must be between 3 and 50 characters.";
         if (!input.Username.Trim().All(c => char.IsLetterOrDigit(c) || c is '.' or '_' or '-'))
             return "Username may contain letters, numbers, periods, underscores, and hyphens only.";
+        if (string.IsNullOrWhiteSpace(input.FirstName) || string.IsNullOrWhiteSpace(input.LastName))
+            return "First name and last name are required.";
+        if (input.FirstName.Trim().Length > 100 || input.LastName.Trim().Length > 100 || (input.MiddleName?.Trim().Length ?? 0) > 100)
+            return "Names cannot exceed 100 characters.";
         if (string.IsNullOrWhiteSpace(input.RoleName) || input.RoleName.Trim().Length > 50 ||
             string.Equals(input.RoleName.Trim(), RoleNames.Borrower, StringComparison.OrdinalIgnoreCase))
             return "Select an active staff role.";

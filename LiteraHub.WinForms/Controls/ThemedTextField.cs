@@ -78,6 +78,7 @@ public sealed class ThemedTextField : ThemedUserControl
             if (_hasValidationError == value) return;
             _hasValidationError = value;
             _leadingIconControl.IconColor = value ? Theme.Colors.Danger : Theme.Colors.TextMuted;
+            _eye.IconColor = _leadingIconControl.IconColor;
             Invalidate();
         }
     }
@@ -123,6 +124,22 @@ public sealed class ThemedTextField : ThemedUserControl
         }
     }
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool MaskPassword
+    {
+        get => _input.UseSystemPasswordChar;
+        set { _input.UseSystemPasswordChar = value; _eye.IconChar = value ? IconChar.Eye : IconChar.EyeSlash; _eye.AccessibleName = value ? "Show password" : "Hide password"; }
+    }
+
+    private readonly IconButton _eye = new() { IconChar = IconChar.Eye, IconSize = 16, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Visible = false, AccessibleName = "Show password" };
+    private bool _showPasswordToggle;
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool ShowPasswordToggle
+    {
+        get => _showPasswordToggle;
+        set { _showPasswordToggle = value; if (value) MaskPassword = true; LayoutInput(); }
+    }
+    public void HidePassword() { if (_showPasswordToggle) MaskPassword = true; }
     private bool _readOnly;
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -157,6 +174,9 @@ public sealed class ThemedTextField : ThemedUserControl
         Cursor = Cursors.IBeam;
 
         Controls.Add(_input);
+        Controls.Add(_eye);
+        _eye.FlatAppearance.BorderSize = 0;
+        _eye.Click += (_, _) => { MaskPassword = !MaskPassword; _input.Focus(); };
         Controls.Add(_leadingIconControl);
         _leadingIconControl.Click += (_, _) => { if (!_readOnly) _input.Focus(); };
         Controls.Add(_display);
@@ -373,7 +393,11 @@ public sealed class ThemedTextField : ThemedUserControl
         int left = _leadingIcon.HasValue ? 43 : 12;
         _leadingIconControl.SetBounds(9, 6, 27, Math.Max(1, ClientSize.Height - 10));
         _leadingIconControl.BringToFront();
-        const int right = 12;
+        bool showEye = _showPasswordToggle && !_readOnly && !_multiline;
+        _eye.Visible = showEye;
+        _eye.SetBounds(Math.Max(0, ClientSize.Width - 40), 3, 36, Math.Max(1, ClientSize.Height - 6));
+        if (showEye) _eye.BringToFront();
+        int right = showEye ? 44 : 12;
         const int barWidth = 12;
 
         int reservedWidth =
@@ -441,6 +465,10 @@ public sealed class ThemedTextField : ThemedUserControl
         _input.Font = _readOnly ? Theme.BodyStrong : Theme.Body;
         _leadingIconControl.BackColor = c.Surface;
         _leadingIconControl.IconColor = _hasValidationError ? c.Danger : c.TextMuted;
+        _eye.BackColor = c.Surface;
+        _eye.IconColor = _hasValidationError ? c.Danger : c.TextMuted;
+        _eye.FlatAppearance.MouseOverBackColor = c.Surface;
+        _eye.FlatAppearance.MouseDownBackColor = c.Surface;
         _display.BackColor = c.Surface;
         _display.ForeColor = c.Text;
         _display.Font = Theme.BodyStrong;

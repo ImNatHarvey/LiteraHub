@@ -70,14 +70,19 @@ public sealed class SidebarNav : ThemedUserControl
         _user.Padding = new Padding(Space.M, 0, 0, 0);
         _logout.Dock = DockStyle.Fill;
         _logout.Height = 40;
+        _logout.Margin = new Padding(0, 0, 0, Space.XS);
         _logout.IconChar = AppIcons.Logout;
         _logout.IconSize = 20;
         _logout.Cursor = Cursors.Hand;
         _logout.TextImageRelation = TextImageRelation.ImageBeforeText;
         _logout.Click += (_, _) => LogoutRequested?.Invoke(this, EventArgs.Empty);
 
-        _footer.Controls.Add(_user);
-        _footer.Controls.Add(_logout);
+        _footer.RowCount = 3;
+        _footer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _footer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _footer.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _footer.Controls.Add(_user, 0, 0);
+        _footer.Controls.Add(_logout, 0, 2);
 
         _root.Controls.Add(_brandArea, 0, 0);
         _root.Controls.Add(_items, 0, 1);
@@ -110,7 +115,7 @@ public sealed class SidebarNav : ThemedUserControl
 
         foreach (var (_, existing) in _buttons)
         {
-            _items.Controls.Remove(existing);
+            existing.Parent?.Controls.Remove(existing);
             existing.Dispose();
         }
         _buttons.Clear();
@@ -131,7 +136,8 @@ public sealed class SidebarNav : ThemedUserControl
                 SelectItem(item.Key);
                 ItemSelected?.Invoke(this, item.Key);
             };
-            _items.Controls.Add(button);
+            if (item.Key == "profile") _footer.Controls.Add(button, 0, 1);
+            else _items.Controls.Add(button);
             _buttons.Add((item, button));
         }
 
@@ -163,10 +169,11 @@ public sealed class SidebarNav : ThemedUserControl
             button.ImageAlign = _compact ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft;
             button.TextAlign = ContentAlignment.MiddleLeft;
             button.Padding = _compact ? Padding.Empty : new Padding(6, 0, 0, 0);
-            _tip.SetToolTip(button, _compact ? item.Title : "");
+            _tip.SetToolTip(button, _compact ? item.Title.Replace("&&", "&") : "");
         }
 
         _logout.Text = _compact ? "" : "  Log out";
+        _logout.TextImageRelation = _compact ? TextImageRelation.Overlay : TextImageRelation.ImageBeforeText;
         _logout.ImageAlign = _compact ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft;
         _logout.TextAlign = ContentAlignment.MiddleLeft;
         _logout.Padding = _compact ? Padding.Empty : new Padding(6, 0, 0, 0);

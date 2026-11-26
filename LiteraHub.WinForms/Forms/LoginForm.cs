@@ -277,10 +277,10 @@ public sealed class LoginForm : Form
             _brandLogo.SetBounds(fx + (fw - 94) / 2, startY - 20, 94, 94);
             _welcome.SetBounds(fx, startY + 78, fw, 50);
             _subtitle.SetBounds(fx, startY + 130, fw, 30);
-            _usernameTitle.SetBounds(fx, startY + 185, fw / 2, 22);
+            _usernameTitle.SetBounds(fx, startY + 185, fw, 22);
             _usernameHint.SetBounds(fx + fw / 2, startY + 185, fw / 2, 22);
             _username.SetBounds(fx, startY + 212, fw, 42);
-            _passwordTitle.SetBounds(fx, startY + 278, fw / 2, 22);
+            _passwordTitle.SetBounds(fx, startY + 278, fw, 22);
             _passwordHint.SetBounds(fx + fw / 2, startY + 278, fw / 2, 22);
             _passwordFrame.SetBounds(fx, startY + 305, fw, 42);
             _forgot.SetBounds(fx + fw - 170, startY + 352, 170, 25);
@@ -348,8 +348,8 @@ public sealed class LoginForm : Form
         _username.HasValidationError = badUser;
         _usernameHint.Text = badUser ? (message == "Required" ? "Required" : "Invalid credentials") : "";
         _passwordHint.Text = badPassword ? (message == "Required" ? "Required" : "Invalid credentials") : "";
-        _usernameHint.Visible = badUser;
-        _passwordHint.Visible = badPassword;
+        _usernameHint.Visible = false;
+        _passwordHint.Visible = false;
         UpdateLabels();
         _passwordFrame.Invalidate();
     }
@@ -393,6 +393,8 @@ public sealed class LoginForm : Form
 
     private void UpdateLabels()
     {
+        _usernameTitle.Text = _usernameInvalid ? "Username • " + _usernameHint.Text : "Username";
+        _passwordTitle.Text = _passwordInvalid ? "Password • " + _passwordHint.Text : "Password";
         _usernameTitle.ForeColor = _usernameInvalid ? Theme.Colors.Danger : Theme.Colors.Text;
         _passwordTitle.ForeColor = _passwordInvalid ? Theme.Colors.Danger : Theme.Colors.Text;
         _passwordLeadingIcon.IconColor = _passwordInvalid ? Theme.Colors.Danger : Theme.Colors.TextMuted;

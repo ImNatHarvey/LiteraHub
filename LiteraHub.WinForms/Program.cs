@@ -73,6 +73,7 @@ internal static class Program
 
         var users = new UserRepository(connectionFactory);
         var auth = new AuthService(users, hasher, session);
+        IProfileService profile = new ProfileService(new ProfileRepository(connectionFactory), users, hasher, session);
 
         var categoryRepository =
             new CategoryRepository(connectionFactory);
@@ -110,7 +111,7 @@ internal static class Program
             authors,
             metadata,
             students,
-            staffUsers, roles);
+            staffUsers, roles, profile);
     }
 
     private static void RunSessions(
@@ -122,7 +123,7 @@ internal static class Program
         IAuthorCreationService authors,
         IBookMetadataService metadata,
         IStudentService students,
-        IStaffUserService staffUsers, IRoleService roles)
+        IStaffUserService staffUsers, IRoleService roles, IProfileService profile)
     {
         while (true)
         {
@@ -162,7 +163,7 @@ internal static class Program
                 authors,
                 metadata,
                 students,
-                staffUsers, roles);
+                staffUsers, roles, profile);
 
             shell.ShowDialog();
             auth.Logout();

@@ -11,6 +11,8 @@ internal static class Migrations
         new Migration(3, "Rename Good Condition status to Good", V3()),
         new Migration(4, "Link books to multiple categories", V4()),
         new Migration(5, "Add role permission foundation", V5()),
+        new Migration(6, "Add account recovery passkey storage", V6()),
+        new Migration(7, "Add staff personal names", V7()),
     };
 
     private static string Index(string name, string table, string columns) =>
@@ -383,5 +385,22 @@ internal static class Migrations
             SELECT 1 FROM dbo.RolePermissions rp
             WHERE rp.RoleId = r.RoleId AND rp.PermissionKey = p.PermissionKey);
         """,
+    };
+    private static string[] V6() => new[]
+    {
+        """
+        IF COL_LENGTH(N'dbo.Users', N'RecoveryPasskeyHash') IS NULL
+            ALTER TABLE dbo.Users ADD RecoveryPasskeyHash NVARCHAR(100) NULL;
+        IF COL_LENGTH(N'dbo.Users', N'RecoveryPasskeyCreatedAt') IS NULL
+            ALTER TABLE dbo.Users ADD RecoveryPasskeyCreatedAt DATETIME2(0) NULL;
+        """,
+    };
+    private static string[] V7() => new[]
+    {
+        """
+        IF COL_LENGTH(N'dbo.Users', N'FirstName') IS NULL ALTER TABLE dbo.Users ADD FirstName NVARCHAR(100) NULL;
+        IF COL_LENGTH(N'dbo.Users', N'MiddleName') IS NULL ALTER TABLE dbo.Users ADD MiddleName NVARCHAR(100) NULL;
+        IF COL_LENGTH(N'dbo.Users', N'LastName') IS NULL ALTER TABLE dbo.Users ADD LastName NVARCHAR(100) NULL;
+        """
     };
 }

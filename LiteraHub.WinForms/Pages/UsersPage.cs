@@ -17,13 +17,14 @@ public sealed class UsersPage : ThemedUserControl
     private readonly string _actorRole;
     private readonly int? _currentUserId;
     private readonly IRoleService? _roles;
+    public event EventHandler? ProfileRequested;
     private RolesPage? _rolesPage;
     private readonly CenteredIconButton _manageRoles = new() { Text = "Manage Roles", Dock = DockStyle.Right, Width = 160, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, IconChar = IconChar.ShieldAlt, IconSize = 20, ImageAlign = ContentAlignment.MiddleCenter, TextAlign = ContentAlignment.MiddleCenter, TextImageRelation = TextImageRelation.ImageBeforeText };
     private readonly Panel _host = new() { Dock = DockStyle.Fill };
     private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(Space.L), Margin = Padding.Empty };
     private readonly Label _title = new() { Text = "Users", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
     private readonly TableLayoutPanel _toolbar = new() { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
-    private readonly ThemedSearchBox _search = new() { Dock = DockStyle.Fill, Margin = new Padding(0, 4, 8, 4), Placeholder = "Search username or user ID..." };
+    private readonly ThemedSearchBox _search = new() { Dock = DockStyle.Fill, Margin = new Padding(0, 4, 8, 4), Placeholder = "Search username, full name or user ID..." };
     private readonly ThemedUsersFilterSort _filter = new();
     private readonly CatalogSortButton _sortControl = new();
     private readonly CatalogFilterChips _activeChips = new();
@@ -84,7 +85,8 @@ public sealed class UsersPage : ThemedUserControl
         Controls.Add(_host);
 
         AddColumn("Id", "User ID", nameof(StaffUser.UserId), 14, 90);
-        AddColumn("Username", "Username", nameof(StaffUser.Username), 30, 155);
+        AddColumn("Username", "Username", nameof(StaffUser.Username), 20, 115);
+        AddColumn("FullName", "Full Name", nameof(StaffUser.FullName), 24, 140);
         AddColumn("Role", "Role", nameof(StaffUser.RoleName), 20, 125);
         AddColumn("Created", "Created", nameof(StaffUser.CreatedAt), 19, 125);
         AddColumn("Status", "Status", null, 12, 90);
@@ -314,7 +316,7 @@ public sealed class UsersPage : ThemedUserControl
         _filtered = _all.Where(u =>
             (_filter.RoleIndex == 0 || string.Equals(u.RoleName, _filter.SelectedRoleName, StringComparison.OrdinalIgnoreCase)) &&
             (_filter.StatusIndex == 0 || u.IsActive == (_filter.StatusIndex == 1)) &&
-            (query.Length == 0 || u.Username.Contains(query, StringComparison.OrdinalIgnoreCase) || u.UserId.ToString().Contains(query)))
+            (query.Length == 0 || u.Username.Contains(query, StringComparison.OrdinalIgnoreCase) || u.FullName.Contains(query, StringComparison.OrdinalIgnoreCase) || u.UserId.ToString().Contains(query)))
             .ToList();
         _filtered = (_filter.SortIndex switch
         {
@@ -369,6 +371,7 @@ public sealed class UsersPage : ThemedUserControl
             bool canManageTarget = user is null || manageable.Any(r => string.Equals(r.Name, user.RoleName, StringComparison.OrdinalIgnoreCase));
             if (IsDisposed || Disposing) return;
             _details = new UserDetailsPage(_service, user, _permissions, canManageTarget, _currentUserId, roleNames) { Dock = DockStyle.Fill };
+            _details.ProfileRequested += (_, _) => ProfileRequested?.Invoke(this, EventArgs.Empty);
             _details.BackRequested += async (_, _) =>
             {
                 if (_details is null) return;

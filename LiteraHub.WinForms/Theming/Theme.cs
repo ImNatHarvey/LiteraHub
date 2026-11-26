@@ -172,6 +172,8 @@ public static class Theme
             _ => preset.ToString()
         };
 
+    public static Palette GetPalette(ThemePreset preset) => Palettes[preset];
+
     public static ThemeMode GetMode(ThemePreset preset) =>
         preset is ThemePreset.ClassicLight
             or ThemePreset.SepiaPaper

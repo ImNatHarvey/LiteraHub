@@ -16,7 +16,7 @@ public sealed class StaffUserRepository : IStaffUserRepository
     }
     private const string ListSql = """
         SELECT u.UserId, u.Username, r.Name AS RoleName, u.IsActive,
-               u.MustChangePassword, u.CreatedAt
+               u.MustChangePassword, u.CreatedAt, u.FirstName, u.MiddleName, u.LastName
         FROM dbo.Users u
         INNER JOIN dbo.Roles r ON r.RoleId = u.RoleId
         WHERE r.Name <> N'Borrower'
@@ -58,12 +58,12 @@ public sealed class StaffUserRepository : IStaffUserRepository
         var guard = await DelegationGuard.LoadAsync(db, tx, actor, RolePermission.UsersAdd, RolePermission.UsersView);
         await guard.CheckRoleAsync(null, input.RoleName, roleMutation: false, requireActive: true);
         int id = await db.ExecuteScalarAsync<int>("""
-            INSERT INTO dbo.Users (Username, PasswordHash, RoleId, MustChangePassword, IsActive)
+            INSERT INTO dbo.Users (Username, PasswordHash, RoleId, MustChangePassword, IsActive, FirstName, MiddleName, LastName)
             OUTPUT INSERTED.UserId
-            SELECT @Username, @PasswordHash, RoleId, 1, 1
+            SELECT @Username, @PasswordHash, RoleId, 1, 1, @FirstName, @MiddleName, @LastName
             FROM dbo.Roles WITH (UPDLOCK, HOLDLOCK)
             WHERE Name = @Role AND IsActive = 1 AND Name <> N'Borrower';
-            """, new { input.Username, PasswordHash = passwordHash, Role = input.RoleName }, tx);
+            """, new { input.Username, input.FirstName, input.MiddleName, input.LastName, PasswordHash = passwordHash, Role = input.RoleName }, tx);
         await tx.CommitAsync();
         return id;
     }
@@ -137,11 +137,14 @@ public sealed class StaffUserRepository : IStaffUserRepository
             int updated = await db.ExecuteAsync("""
                 UPDATE dbo.Users
                 SET Username = COALESCE(@Username, Username),
+                    FirstName = CASE WHEN @EditNames = 1 THEN @FirstName ELSE FirstName END,
+                    MiddleName = CASE WHEN @EditNames = 1 THEN @MiddleName ELSE MiddleName END,
+                    LastName = CASE WHEN @EditNames = 1 THEN @LastName ELSE LastName END,
                     RoleId = CASE WHEN @Role IS NULL THEN RoleId ELSE
                         (SELECT RoleId FROM dbo.Roles WHERE Name = @Role AND IsActive = 1 AND Name <> N'Borrower') END,
                     IsActive = @IsActive
                 WHERE UserId = @UserId
-                """, new { UserId = userId, Username = input?.Username, Role = input?.RoleName, IsActive = newActive }, tx);
+                """, new { UserId = userId, Username = input?.Username, Role = input?.RoleName, IsActive = newActive, EditNames = input is not null, FirstName = input?.FirstName, MiddleName = input?.MiddleName, LastName = input?.LastName }, tx);
             await tx.CommitAsync();
             return updated == 1;
         }

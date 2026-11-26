@@ -51,12 +51,14 @@ public sealed class ShellForm : Form
 
         new("users", "Users", AppIcons.Users,
             RolePermission.UsersView,
-            "Staff accounts (Admin only).")
+            "Staff accounts.") ,
+        new("profile", "Profile && Settings", IconChar.UserAlt, null, "Personal account and security.")
     };
 
     private readonly ISessionContext _session;
     private readonly IPermissionService _permissions;
     private readonly IAuthService _auth;
+    private readonly IProfileService _profile;
     private readonly ICategoryService _categories;
     private readonly IBookService _books;
     private readonly IAuthorCreationService _authors;
@@ -81,17 +83,15 @@ public sealed class ShellForm : Form
         RowCount = 2
     };
 
-    // The top bar remains for the Demo/settings controls.
+    // The top bar hosts the reusable window controls.
     // Its duplicate page-title label has been removed.
     private readonly TableLayoutPanel _topBar = new()
     {
         Dock = DockStyle.Fill,
-        ColumnCount = 3,
+        ColumnCount = 2,
         RowCount = 1
     };
 
-    private readonly IconButton _demoButton = new();
-    private readonly ContextMenuStrip _demoMenu = new();
     private readonly ThemedWindowControls _windowControls = new()
     {
         ShowMinimizeButton = true,
@@ -142,8 +142,9 @@ public sealed class ShellForm : Form
         IAuthorCreationService authors,
         IBookMetadataService metadata,
         IStudentService students,
-        IStaffUserService staffUsers, IRoleService roles)
+        IStaffUserService staffUsers, IRoleService roles, IProfileService profile)
     {
+        _profile = profile ?? throw new ArgumentNullException(nameof(profile));
         _session = session ??
             throw new ArgumentNullException(nameof(session));
 
@@ -209,12 +210,9 @@ public sealed class ShellForm : Form
         _main.RowStyles.Add(
             new RowStyle(SizeType.Percent, 100));
 
-        // Flexible empty space on the left, Demo on the right.
+        // Flexible empty space on the left, window controls on the right.
         _topBar.ColumnStyles.Add(
             new ColumnStyle(SizeType.Percent, 100));
-
-        _topBar.ColumnStyles.Add(
-            new ColumnStyle(SizeType.AutoSize));
 
         _topBar.ColumnStyles.Add(
             new ColumnStyle(SizeType.AutoSize));
@@ -222,18 +220,6 @@ public sealed class ShellForm : Form
         _topBar.RowStyles.Add(
             new RowStyle(SizeType.Percent, 100));
 
-        _demoButton.Text = "  Demo";
-        _demoButton.IconChar = AppIcons.Demo;
-        _demoButton.IconSize = 18;
-        _demoButton.Size = new Size(100, 36);
-        _demoButton.Anchor = AnchorStyles.Right;
-        _demoButton.Margin = new Padding(0, 0, Space.L, 0);
-        _demoButton.Cursor = Cursors.Hand;
-        _demoButton.FlatStyle = FlatStyle.Flat;
-        _demoButton.TextImageRelation =
-            TextImageRelation.ImageBeforeText;
-
-        BuildDemoMenu();
 
         var current = session.Current;
 
@@ -249,13 +235,12 @@ public sealed class ShellForm : Form
         _nav.ToggleRequested += (_, _) => ToggleNavigation();
         _nav.LogoutRequested += (_, _) => Logout();
 
-        // No page title: right side has Demo and reusable themed caption buttons.
-        _topBar.Controls.Add(_demoButton, 1, 0);
-        _topBar.Controls.Add(_windowControls, 2, 0);
+        // No page title: right side has reusable themed caption buttons.
+        _topBar.Controls.Add(_windowControls, 1, 0);
         _windowControls.Bind(this);
         _windowControls.MaximizeRequested += (_, _) => ToggleFullscreen();
 
-        // Only unused header space drags; do not intercept Demo or caption buttons.
+        // Only unused header space drags; do not intercept caption buttons.
         _topBar.MouseDown += DragShellFromHeader;
         _topBar.DoubleClick += (_, _) => ToggleFullscreen();
 
@@ -287,64 +272,6 @@ public sealed class ShellForm : Form
 
         if (_pages.Count > 0)
             ShowPage(_pages[0].Key);
-    }
-
-    private void BuildDemoMenu()
-    {
-        var sizeMenu = new ToolStripMenuItem("Window size");
-        var normal = new ToolStripMenuItem("1280 × 720 (Windowed)");
-        var full = new ToolStripMenuItem("Fullscreen (current monitor)");
-        normal.Click += (_, _) => SetFullscreen(false);
-        full.Click += (_, _) => SetFullscreen(true);
-        sizeMenu.DropDownItems.AddRange(new ToolStripItem[] { normal, full });
-        sizeMenu.DropDownOpening += (_, _) =>
-        {
-            normal.Checked = !_isFullscreen;
-            full.Checked = _isFullscreen;
-        };
-
-        var themeMenu = new ToolStripMenuItem("Appearance");
-
-        var themeItems =
-            new Dictionary<ThemePreset, ToolStripMenuItem>();
-
-        foreach (var preset in Theme.AvailablePresets)
-        {
-            var item = new ToolStripMenuItem(
-                Theme.GetDisplayName(preset));
-
-            item.Click += (_, _) =>
-            {
-                Theme.SetPreset(preset);
-
-                if (!ThemePreferences.TrySave(out var error))
-                {
-                    ThemedMessageDialog.ShowAlert(this, "LiteraHub: appearance settings",
-                        "The theme was applied, but could not be saved." + Environment.NewLine + error);
-                }
-            };
-
-            themeItems.Add(preset, item);
-            themeMenu.DropDownItems.Add(item);
-        }
-
-        themeMenu.DropDownOpening += (_, _) =>
-        {
-            foreach (var (preset, item) in themeItems)
-                item.Checked = preset == Theme.Preset;
-        };
-
-        _demoMenu.Items.AddRange(
-            new ToolStripItem[]
-            {
-                sizeMenu,
-                themeMenu
-            });
-
-        _demoButton.Click += (_, _) =>
-            _demoMenu.Show(
-                _demoButton,
-                new Point(0, _demoButton.Height));
     }
 
     // Fullscreen uses actual monitor bounds, including the taskbar area,
@@ -434,7 +361,17 @@ public sealed class ShellForm : Form
 
         Control next;
 
-        if (key == "categories")
+        if (key == "profile")
+        {
+            var profilePage = new ProfilePage(_profile);
+            profilePage.UsernameChanged += (_, _) =>
+            {
+                var account = _session.Current;
+                _nav.SetUser(account?.Username ?? "", account?.RoleName ?? "");
+            };
+            next = profilePage;
+        }
+        else if (key == "categories")
         {
             var categoriesPage = new CategoriesPage(_categories, _books, _permissions);
             categoriesPage.BookRequested += async (_, bookId) =>
@@ -467,8 +404,12 @@ public sealed class ShellForm : Form
         {
             string actorRole = _session.Current?.RoleName ?? "";
             if (_permissions.Can(RolePermission.UsersView))
-                next = new UsersPage(_staffUsers, _permissions, actorRole, _session.Current?.UserId,
+            {
+                var usersPage = new UsersPage(_staffUsers, _permissions, actorRole, _session.Current?.UserId,
                     _permissions.Can(RolePermission.RolesView) ? _roles : null);
+                usersPage.ProfileRequested += (_, _) => ShowPage("profile");
+                next = usersPage;
+            }
             else if (_permissions.Can(RolePermission.RolesView))
                 next = new RolesPage(_roles, _permissions, actorRole, showBack: false);
             else return;
@@ -606,16 +547,6 @@ public sealed class ShellForm : Form
         _topBar.BackColor = c.SurfaceAlt;
         _windowControls.SetSurfaceColor(_topBar.BackColor);
 
-        _demoButton.BackColor = c.Surface;
-        _demoButton.ForeColor = c.Text;
-        _demoButton.IconColor = c.Accent;
-        _demoButton.Font = Theme.Body;
-
-        _demoButton.FlatAppearance.BorderColor = c.Border;
-        _demoButton.FlatAppearance.BorderSize = 1;
-
-        _demoMenu.BackColor = c.Surface;
-        _demoMenu.ForeColor = c.Text;
 
         ResumeLayout(performLayout: true);
     }
@@ -625,7 +556,6 @@ public sealed class ShellForm : Form
         if (disposing)
         {
             Theme.Changed -= OnThemeChanged;
-            _demoMenu.Dispose();
         }
 
         base.Dispose(disposing);

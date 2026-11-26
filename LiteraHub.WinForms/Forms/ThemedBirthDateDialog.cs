@@ -44,19 +44,19 @@ public sealed class ThemedBirthDateDialog : Form
             1);
 
         Text = "Select Birth Date";
-        FormBorderStyle = FormBorderStyle.FixedDialog;
+        FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
 
-        ClientSize = new Size(310, 322);
+        ClientSize = new Size(310, 370);
         Font = Theme.Body;
         BackColor = Theme.Colors.Background;
         ForeColor = Theme.Colors.Text;
 
         // All header controls are exactly 36px high.
-        const int headerY = 12;
+        const int headerY = 60;
         const int headerHeight = 36;
 
         var previous = MakeButton(
@@ -131,14 +131,14 @@ public sealed class ThemedBirthDateDialog : Form
         // Calendar surface remains in its original position.
         _surface = new CalendarSurface(this)
         {
-            Bounds = new Rectangle(12, 54, 286, 205)
+            Bounds = new Rectangle(12, 102, 286, 205)
         };
 
         var clear = MakeButton(
-            "Clear", 12, 273, 130, 36);
+            "Clear", 12, 321, 130, 36);
 
         var select = MakeButton(
-            "Select Date", 150, 273, 148, 36);
+            "Select Date", 150, 321, 148, 36);
 
         select.BackColor = Theme.Colors.Accent;
         select.ForeColor = Theme.Colors.OnAccent;
@@ -223,8 +223,21 @@ public sealed class ThemedBirthDateDialog : Form
             select
         });
 
+        var title = new Label { Text = "Select Birth Date", Font = Theme.Title, ForeColor = Theme.Colors.Text, Bounds = new Rectangle(12, 8, 230, 40), TextAlign = ContentAlignment.MiddleLeft };
+        var close = new ThemedWindowControls { ShowMinimizeButton = false, ShowMaximizeButton = false };
+        close.Bind(this); close.SetSurfaceColor(Theme.Colors.Background);
+        close.Location = new Point(ClientSize.Width - close.Width - 6, 6);
+        Controls.Add(title); Controls.Add(close); close.BringToFront();
+        title.MouseDown += BeginDrag; MouseDown += BeginDrag;
+        KeyPreview = true;
+        KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) { DialogResult = DialogResult.Cancel; Close(); } };
         RefreshMonth();
     }
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool ReleaseCapture();
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+    private void BeginDrag(object? sender, MouseEventArgs e)
+    { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0x00A1, (IntPtr)2, IntPtr.Zero); } }
+
 
     // Custom themed spinner button.
     // The triangle is drawn at a fixed size regardless
