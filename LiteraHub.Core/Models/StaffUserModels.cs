@@ -10,6 +10,8 @@ public sealed class StaffUser
     public string? LastName { get; set; }
     public string FullName => string.Join(" ", new[] { FirstName, MiddleName, LastName }.Where(n => !string.IsNullOrWhiteSpace(n)));
     public string RoleName { get; set; } = "";
+    public bool IsSystemOwner { get; set; }
+    public string DisplayRole => IsSystemOwner ? "System Owner" : RoleName;
     public bool IsActive { get; set; }
     public bool MustChangePassword { get; set; }
     public bool HasRecoveryPasskey { get; set; }

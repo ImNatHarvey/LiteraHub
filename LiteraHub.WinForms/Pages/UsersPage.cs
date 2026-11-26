@@ -87,7 +87,7 @@ public sealed class UsersPage : ThemedUserControl
         AddColumn("Id", "User ID", nameof(StaffUser.UserId), 14, 90);
         AddColumn("Username", "Username", nameof(StaffUser.Username), 20, 115);
         AddColumn("FullName", "Full Name", nameof(StaffUser.FullName), 24, 140);
-        AddColumn("Role", "Role", nameof(StaffUser.RoleName), 20, 125);
+        AddColumn("Role", "Role", nameof(StaffUser.DisplayRole), 20, 125);
         AddColumn("Created", "Created", nameof(StaffUser.CreatedAt), 19, 125);
         AddColumn("Status", "Status", null, 12, 90);
         AddColumn("Actions", "", null, 5, 55);
@@ -291,7 +291,7 @@ public sealed class UsersPage : ThemedUserControl
             if (IsDisposed || Disposing) return;
             _all.Clear();
             _all.AddRange(users);
-            _filter.SetRoleNames(_all.Select(u => u.RoleName));
+            _filter.SetRoleNames(_all.Select(u => u.DisplayRole));
             RefreshChips();
             _loaded = true;
             Filter();
@@ -314,7 +314,7 @@ public sealed class UsersPage : ThemedUserControl
         if (!_loaded || _failed || IsDisposed) return;
         string query = _search.Text.Trim();
         _filtered = _all.Where(u =>
-            (_filter.RoleIndex == 0 || string.Equals(u.RoleName, _filter.SelectedRoleName, StringComparison.OrdinalIgnoreCase)) &&
+            (_filter.RoleIndex == 0 || string.Equals(u.DisplayRole, _filter.SelectedRoleName, StringComparison.OrdinalIgnoreCase)) &&
             (_filter.StatusIndex == 0 || u.IsActive == (_filter.StatusIndex == 1)) &&
             (query.Length == 0 || u.Username.Contains(query, StringComparison.OrdinalIgnoreCase) || u.FullName.Contains(query, StringComparison.OrdinalIgnoreCase) || u.UserId.ToString().Contains(query)))
             .ToList();
@@ -368,7 +368,7 @@ public sealed class UsersPage : ThemedUserControl
             }
             var manageable = await _service.GetManageableRolesAsync();
             var roleNames = manageable.Where(r => r.IsActive).Select(r => r.Name).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToArray();
-            bool canManageTarget = user is null || manageable.Any(r => string.Equals(r.Name, user.RoleName, StringComparison.OrdinalIgnoreCase));
+            bool canManageTarget = user is null || !user.IsSystemOwner && manageable.Any(r => string.Equals(r.Name, user.RoleName, StringComparison.OrdinalIgnoreCase));
             if (IsDisposed || Disposing) return;
             _details = new UserDetailsPage(_service, user, _permissions, canManageTarget, _currentUserId, roleNames) { Dock = DockStyle.Fill };
             _details.ProfileRequested += (_, _) => ProfileRequested?.Invoke(this, EventArgs.Empty);

@@ -136,13 +136,31 @@ public static class DatabaseBootstrapper
         await using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync();
 
-        var userCount = await conn.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Users");
-        if (userCount > 0) return;
-
-        var adminRoleId = await conn.ExecuteScalarAsync<int>("SELECT RoleId FROM dbo.Roles WHERE Name = N'Admin'");
-        await conn.ExecuteAsync(
-            "INSERT INTO dbo.Users (Username, PasswordHash, RoleId, MustChangePassword) VALUES (@Username, @Hash, @RoleId, 1)",
-            new { Username = AdminUsername, Hash = hasher.Hash(AdminTempPassword), RoleId = adminRoleId });
+        await using var tx = await conn.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        var userCount = await conn.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM dbo.Users WITH (UPDLOCK, HOLDLOCK)", transaction: tx);
+        if (userCount == 0)
+        {
+            var adminRoleId = await conn.ExecuteScalarAsync<int>(
+                "SELECT RoleId FROM dbo.Roles WHERE Name=N'Admin' AND IsActive=1 AND IsSystem=1", transaction: tx);
+            var ownerId = await conn.ExecuteScalarAsync<int>("""
+                INSERT dbo.Users (Username,PasswordHash,RoleId,MustChangePassword,IsSystemOwner)
+                OUTPUT INSERTED.UserId VALUES (@Username,@Hash,@RoleId,1,1);
+                """, new { Username = AdminUsername, Hash = hasher.Hash(AdminTempPassword), RoleId = adminRoleId }, tx);
+            await conn.ExecuteAsync("""
+                INSERT dbo.SystemOwnerAnchor(SingletonId,UserId,IsSystemOwner,RoleId,IsActive)
+                VALUES (1,@ownerId,1,@adminRoleId,1);
+                """, new { ownerId, adminRoleId }, tx);
+        }
+        int validOwner = await conn.ExecuteScalarAsync<int>("""
+            SELECT COUNT(*) FROM dbo.SystemOwnerAnchor a JOIN dbo.Users u ON u.UserId=a.UserId
+            JOIN dbo.Roles r ON r.RoleId=u.RoleId
+            WHERE a.SingletonId=1 AND u.IsSystemOwner=1 AND u.IsActive=1
+                AND r.Name=N'Admin' AND r.IsActive=1 AND r.IsSystem=1;
+            """, transaction: tx);
+        if (validOwner != 1)
+            throw new DatabaseBootstrapException("System Owner integrity check failed. Restore a verified database backup.");
+        await tx.CommitAsync();
     }
 
     private static async Task<BootstrapSummary> GetSummaryAsync(string connectionString)

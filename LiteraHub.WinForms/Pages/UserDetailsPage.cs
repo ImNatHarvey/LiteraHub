@@ -64,7 +64,7 @@ public sealed class UserDetailsPage : ThemedUserControl
     {
         _service = service;
         _permissions = permissions;
-        _canManageTarget = canManageTarget;
+        _canManageTarget = canManageTarget && user?.IsSystemOwner != true;
         _roleNames = new[] { "Select Role" }.Concat((roleNames ?? new[] { "Admin", "Librarian" })
             .Where(n => !string.Equals(n, "Borrower", StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)).ToArray();
@@ -129,6 +129,7 @@ public sealed class UserDetailsPage : ThemedUserControl
         {
             if (_busy) return;
             if (IsOwnAccount) { ProfileRequested?.Invoke(this, EventArgs.Empty); return; }
+            if (!_canManageTarget) return;
             if (!_editing) { SetEditing(true); return; }
             await SaveAsync();
         };
@@ -192,7 +193,7 @@ public sealed class UserDetailsPage : ThemedUserControl
 
     private void SetEditing(bool editing)
     {
-        editing = editing && !IsOwnAccount;
+        editing = editing && !IsOwnAccount && _canManageTarget;
         _editing = editing;
         _username.ReadOnly = false;
         _username.Visible = editing;
@@ -200,7 +201,7 @@ public sealed class UserDetailsPage : ThemedUserControl
         _role.Visible = editing && !IsOwnAccount;
         _role.Enabled = editing && !IsOwnAccount;
         _viewUsername.Text = _username.Text;
-        _viewRole.Text = _user?.RoleName ?? "Not specified";
+        _viewRole.Text = _user?.DisplayRole ?? "Not specified";
         for (int i = 0; i < _nameFields.Length; i++)
         {
             _nameFields[i].Visible = editing;
@@ -224,13 +225,13 @@ public sealed class UserDetailsPage : ThemedUserControl
         _recoveryValue.Text = _user?.HasRecoveryPasskey == true ? "Configured" : "Not configured";
         _regenerate.Visible = _user is { IsActive: true, RoleIsActive: true } && !editing && !IsOwnAccount && _canManageTarget && _permissions.Can(RolePermission.UsersEdit);
         _regenerate.Text = _user?.HasRecoveryPasskey == true ? "Regenerate Recovery Passkey" : "Generate Recovery Passkey";
-        _passwordHint.Visible = _user is null || (IsOwnAccount && !editing);
-        _passwordHint.Text = IsOwnAccount ? "This is your signed-in account. Manage your personal information and security in Profile & Settings." : "New accounts receive a secure temporary password. The staff member must change it upon first sign-in.";
+        _passwordHint.Visible = _user is null || (IsOwnAccount && !editing) || _user?.IsSystemOwner == true;
+        _passwordHint.Text = IsOwnAccount ? "This is your signed-in account. Manage your personal information and security in Profile & Settings." : _user?.IsSystemOwner == true ? "This protected System Owner account can only be managed by its owner through Profile & Settings." : "New accounts receive a secure temporary password. The staff member must change it upon first sign-in.";
         _createdValue.Text = _user is null ? "On creation" : _user.CreatedAt.ToString("MMMM d, yyyy");
         _passwordValue.Text = _user is null || _user.MustChangePassword ? "Change required on first sign-in" : "Password configured";
         _statusValue.Text = _user is null ? "Active on creation" : _user.IsActive ? "Active" : "Inactive";
         _header.HeadingText = _user is null ? "Add User" : editing ? "Edit User" : "User Details";
-        _header.SubtitleText = _user is null ? "Create a staff account." : $"User ID: {_user.UserId} · {_user.RoleName}";
+        _header.SubtitleText = _user is null ? "Create a staff account." : $"User ID: {_user.UserId} · {_user.DisplayRole}";
         _footer.ArrangeActions();
         ApplyTheme();
     }
@@ -333,7 +334,7 @@ public sealed class UserDetailsPage : ThemedUserControl
 
     private async Task ChangeStatusAsync()
     {
-        if (_busy || _user is null || IsOwnAccount) return;
+        if (_busy || _user is null || IsOwnAccount || !_canManageTarget) return;
         bool desired = !_user.IsActive;
         string action = desired ? "Restore" : "Archive";
         if (!ThemedMessageDialog.Confirm(FindForm(), action + " account",
@@ -358,7 +359,7 @@ public sealed class UserDetailsPage : ThemedUserControl
 
     private async Task DeleteAsync()
     {
-        if (_busy || _user is null || IsOwnAccount) return;
+        if (_busy || _user is null || IsOwnAccount || !_canManageTarget) return;
         if (_user.IsActive) { ThemedMessageDialog.ShowAlert(FindForm(), "Delete User", "Archive this account before permanently deleting it.", true); return; }
         if (!ThemedMessageDialog.Confirm(FindForm(), "Delete User", $"Permanently delete '{_user.Username}'? This cannot be undone.", true, "Delete")) return;
         _busy = true;

@@ -14,6 +14,7 @@ internal static class Migrations
         new Migration(6, "Add account recovery passkey storage", V6()),
         new Migration(7, "Add staff personal names", V7()),
         new Migration(8, "Recovery limits and audit", V8()),
+        new Migration(9, "Protect the original system owner", V9()),
     };
 
     private static string Index(string name, string table, string columns) =>
@@ -412,6 +413,44 @@ internal static class Migrations
             AuditId BIGINT IDENTITY PRIMARY KEY, UserId INT NULL, ActorUserId INT NULL,
             EventType NVARCHAR(40) NOT NULL, CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
         );
+        """
+    };
+    private static string[] V9() => new[]
+    {
+        """
+        ALTER TABLE dbo.Users ADD IsSystemOwner BIT NOT NULL
+            CONSTRAINT DF_Users_IsSystemOwner DEFAULT 0;
+        """,
+        """
+        IF EXISTS (SELECT 1 FROM dbo.Users)
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM dbo.Users u JOIN dbo.Roles r ON r.RoleId=u.RoleId
+                WHERE u.UserId=1 AND u.IsActive=1 AND r.Name=N'Admin' AND r.IsActive=1 AND r.IsSystem=1)
+                THROW 51001, 'Original bootstrap account is missing or not an active Admin. Restore a verified backup before upgrading.', 1;
+            UPDATE dbo.Users SET IsSystemOwner=1 WHERE UserId=1;
+        END;
+        CREATE UNIQUE INDEX UX_Users_OneSystemOwner ON dbo.Users(IsSystemOwner) WHERE IsSystemOwner=1;
+        ALTER TABLE dbo.Users ADD CONSTRAINT UQ_Users_OwnerIdentity UNIQUE (UserId, IsSystemOwner, RoleId, IsActive);
+        CREATE TABLE dbo.SystemOwnerAnchor (
+            SingletonId INT NOT NULL CONSTRAINT PK_SystemOwnerAnchor PRIMARY KEY CHECK (SingletonId=1),
+            UserId INT NOT NULL,
+            IsSystemOwner BIT NOT NULL CHECK (IsSystemOwner=1),
+            RoleId INT NOT NULL,
+            IsActive BIT NOT NULL CHECK (IsActive=1),
+            CONSTRAINT FK_SystemOwnerAnchor_Users FOREIGN KEY (UserId,IsSystemOwner,RoleId,IsActive)
+                REFERENCES dbo.Users(UserId,IsSystemOwner,RoleId,IsActive)
+        );
+        INSERT dbo.SystemOwnerAnchor(SingletonId,UserId,IsSystemOwner,RoleId,IsActive)
+        SELECT 1,UserId,IsSystemOwner,RoleId,IsActive FROM dbo.Users WHERE IsSystemOwner=1;
+        """,
+        """
+        CREATE TRIGGER dbo.TR_SystemOwnerAnchor_Immutable ON dbo.SystemOwnerAnchor
+        AFTER UPDATE, DELETE AS
+        BEGIN
+            SET NOCOUNT ON;
+            IF EXISTS (SELECT 1 FROM deleted)
+                THROW 51002, 'The system owner anchor cannot be modified or removed.', 1;
+        END;
         """
     };
 }

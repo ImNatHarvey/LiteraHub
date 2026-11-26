@@ -15,7 +15,7 @@ public sealed class StaffUserRepository : IStaffUserRepository
         public bool IsActive { get; set; }
     }
     private const string ListSql = """
-        SELECT u.UserId, u.Username, r.Name AS RoleName, u.IsActive,
+        SELECT u.UserId, u.Username, r.Name AS RoleName, u.IsActive, u.IsSystemOwner,
                u.MustChangePassword, u.CreatedAt, u.FirstName, u.MiddleName, u.LastName,
                r.IsActive AS RoleIsActive, CAST(CASE WHEN u.RecoveryPasskeyHash IS NULL THEN 0 ELSE 1 END AS BIT) AS HasRecoveryPasskey
         FROM dbo.Users u

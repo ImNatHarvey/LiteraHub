@@ -72,6 +72,8 @@ public sealed class StaffUserService : IStaffUserService
     {
         _permissions.Demand(RolePermission.UsersEdit);
         if (userId == Actor.UserId) return StaffCreationResult.Fail("Use Profile & Settings for your own account.");
+        if ((await _users.GetByIdAsync(userId))?.IsSystemOwner == true)
+            return StaffCreationResult.Fail("The System Owner is protected.");
         try
         {
             string key = GeneratePasskey();
@@ -95,6 +97,8 @@ public sealed class StaffUserService : IStaffUserService
         var normalized = Normalize(input);
         if (await _users.UsernameExistsAsync(normalized.Username, userId))
             return ServiceResult.Fail("Username is already in use.");
+        if ((await _users.GetByIdAsync(userId))?.IsSystemOwner == true)
+            return ServiceResult.Fail("The System Owner is protected.");
         try
         {
             return await _users.UpdateAsync(userId, normalized, Actor) ? ServiceResult.Ok() :
@@ -110,6 +114,8 @@ public sealed class StaffUserService : IStaffUserService
         _permissions.Demand(RolePermission.UsersArchiveRestore);
         if (userId == _session.Current?.UserId)
             return ServiceResult.Fail("You cannot archive your own signed-in account.");
+        if ((await _users.GetByIdAsync(userId))?.IsSystemOwner == true)
+            return ServiceResult.Fail("The System Owner is protected.");
         try
         {
             return await _users.SetActiveAsync(userId, active, Actor) ? ServiceResult.Ok() :
@@ -124,6 +130,8 @@ public sealed class StaffUserService : IStaffUserService
     {
         _permissions.Demand(RolePermission.UsersDelete);
         if (userId == _session.Current?.UserId) return ServiceResult.Fail("You cannot delete your own account.");
+        if ((await _users.GetByIdAsync(userId))?.IsSystemOwner == true)
+            return ServiceResult.Fail("The System Owner is protected.");
         try { return await _users.DeleteAsync(userId, Actor) ? ServiceResult.Ok() : ServiceResult.Fail("Account was not found or is still active. Archive it first."); }
         catch (InvalidOperationException ex) { return ServiceResult.Fail(ex.Message); }
         catch (UnauthorizedAccessException ex) { return ServiceResult.Fail(ex.Message); }

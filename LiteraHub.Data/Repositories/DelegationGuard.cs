@@ -66,6 +66,8 @@ internal sealed class DelegationGuard
     public async Task CheckStaffAsync(int targetId, int actorId)
     {
         if (targetId == actorId) throw new InvalidOperationException("You cannot manage your own account here.");
+        if (await _db.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Users WITH (UPDLOCK, HOLDLOCK) WHERE UserId=@targetId AND IsSystemOwner=1", new { targetId }, _tx) > 0)
+            throw new InvalidOperationException("The System Owner is protected. Only the owner can manage personal information through Profile & Settings.");
         var roleId = await _db.QuerySingleOrDefaultAsync<int?>("""
             SELECT RoleId FROM dbo.Users WITH (UPDLOCK, HOLDLOCK) WHERE UserId = @targetId;
             """, new { targetId }, _tx);
