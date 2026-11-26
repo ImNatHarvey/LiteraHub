@@ -40,3 +40,16 @@ public enum RolePermission
     ReportsExport,
     ActivityLogView,
 }
+
+
+/// <summary>Raised when a granular role permission is not granted.</summary>
+public sealed class RolePermissionDeniedException : UnauthorizedAccessException
+{
+    public RolePermissionDeniedException(RolePermission permission)
+        : base($"You do not have permission to do this ({permission}).")
+    {
+        Permission = permission;
+    }
+
+    public RolePermission Permission { get; }
+}

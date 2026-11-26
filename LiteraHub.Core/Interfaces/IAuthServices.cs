@@ -20,6 +20,14 @@ public interface IPermissionService
     void Demand(Permission permission);
 
     IReadOnlyList<Permission> GrantedPermissions();
+
+    // Granular permissions never imply broader legacy grants.
+    bool Can(RolePermission permission);
+
+    // Throws RolePermissionDeniedException when access is not granted.
+    void Demand(RolePermission permission);
+
+    IReadOnlyList<RolePermission> GrantedRolePermissions();
 }
 
 public interface IAuthService
