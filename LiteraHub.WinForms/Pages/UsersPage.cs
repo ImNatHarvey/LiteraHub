@@ -15,7 +15,7 @@ public sealed class UsersPage : ThemedUserControl
     private readonly int? _currentUserId;
     private readonly IRoleService? _roles;
     private RolesPage? _rolesPage;
-    private readonly IconButton _manageRoles = new() { Text = "Manage Roles", Dock = DockStyle.Right, Width = 160, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, IconChar = IconChar.ShieldAlt, IconSize = 20, ImageAlign = ContentAlignment.MiddleCenter, TextAlign = ContentAlignment.MiddleCenter, TextImageRelation = TextImageRelation.ImageBeforeText };
+    private readonly CenteredIconButton _manageRoles = new() { Text = "Manage Roles", Dock = DockStyle.Right, Width = 160, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, IconChar = IconChar.ShieldAlt, IconSize = 20, ImageAlign = ContentAlignment.MiddleCenter, TextAlign = ContentAlignment.MiddleCenter, TextImageRelation = TextImageRelation.ImageBeforeText };
     private readonly Panel _host = new() { Dock = DockStyle.Fill };
     private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(Space.L), Margin = Padding.Empty };
     private readonly Label _title = new() { Text = "Users", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
