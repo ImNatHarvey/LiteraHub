@@ -1,4 +1,5 @@
-﻿using System;
+﻿using FontAwesome.Sharp;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -21,18 +22,11 @@ public sealed class AssociatedBooksGallery : ThemedUserControl
     private const int TitleHeight = 42;
     private const int AccentSpine = 7;
 
-    private readonly TableLayoutPanel _layout = new()
-    {
-        Dock = DockStyle.Fill,
-        ColumnCount = 1,
-        RowCount = 2,
-        Margin = Padding.Empty,
-        Padding = Padding.Empty
-    };
+    private readonly ThemedSectionCard _section;
     private readonly Label _heading = new()
     {
-        Dock = DockStyle.Fill,
         TextAlign = ContentAlignment.MiddleLeft,
+        UseMnemonic = false,
         Text = "Associated Books"
     };
     private readonly FlowLayoutPanel _gallery = new()
@@ -71,16 +65,26 @@ public sealed class AssociatedBooksGallery : ThemedUserControl
     {
         Dock = DockStyle.Fill;
         Margin = Padding.Empty;
-        _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        _layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-        _layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        _layout.Controls.Add(_heading, 0, 0);
+        _section = new ThemedSectionCard(_heading, IconChar.Book);
+        _section.Dock = DockStyle.Fill;
+        _scroll.Dock = DockStyle.None;
+        _scroll.UseSurfaceBackground();
         _scroll.SetContent(_gallery);
-        _layout.Controls.Add(_scroll, 0, 1);
-        Controls.Add(_layout);
+        _section.AddFields(_scroll);
+        Controls.Add(_section);
+        Resize += (_, _) => ArrangeSection();
+        ArrangeSection();
         _scroll.Resize += (_, _) => ArrangeCards();
         _gallery.MouseWheel += (_, e) => ScrollByWheel(e.Delta);
         RefreshAppearance();
+    }
+
+    private void ArrangeSection()
+    {
+        int pad = Width >= 760 ? 20 : 16;
+        int top = _section.ArrangeHeading(Math.Max(1, Width), pad);
+        _scroll.SetBounds(pad, top, Math.Max(1, Width - 2 * pad), Math.Max(1, Height - top - pad));
+        ArrangeCards();
     }
 
     public void ShowBeforeSave() => ShowMessage("Associated Books (available after saving)", "");
@@ -173,12 +177,14 @@ public sealed class AssociatedBooksGallery : ThemedUserControl
             int cardWidth = Math.Max(125, (viewportWidth - columns * Gap) / columns);
             if (MaximumCardWidth > 0)
                 cardWidth = Math.Min(MaximumCardWidth, cardWidth);
+            // Keep covers readable rather than stretching them to fill an entire fullscreen row.
+            cardWidth = Math.Min(cardWidth, 183);
+            columns = Math.Max(1, viewportWidth / (cardWidth + Gap));
             int rows = (Math.Max(1, _bookCount) + columns - 1) / columns;
-            int visibleRows = Math.Max(1, viewportHeight / PreferredRowHeight);
-            int rowHeight = Math.Max(PreferredRowHeight, viewportHeight / visibleRows + 1);
-            int cardHeight = rowHeight - Gap;
+            int cardHeight = Math.Min(241, PreferredRowHeight - Gap);
             if (MaximumCardHeight > 0)
                 cardHeight = Math.Min(MaximumCardHeight, cardHeight);
+            int rowHeight = cardHeight + Gap;
             int frameHeight = cardHeight - TitleHeight;
 
             _gallery.SuspendLayout();
@@ -205,7 +211,7 @@ public sealed class AssociatedBooksGallery : ThemedUserControl
 
                 _gallery.Height = _bookCount == 0
                     ? Math.Min(64, Math.Max(1, viewportHeight - 4))
-                    : rows * rowHeight + 1;
+                    : rows * rowHeight;
 
             }
             finally { _gallery.ResumeLayout(true); }
@@ -275,12 +281,12 @@ public sealed class AssociatedBooksGallery : ThemedUserControl
     private void RefreshAppearance()
     {
         var c = Theme.Colors;
-        _layout.BackColor = c.Background;
-        _heading.BackColor = c.Background;
+        BackColor = c.Surface;
+        _heading.BackColor = c.Surface;
         _heading.ForeColor = c.Text;
         _heading.Font = Theme.BodyStrong;
-        _gallery.BackColor = c.Background;
-        _scroll.BackColor = c.Background;
+        _gallery.BackColor = c.Surface;
+        _scroll.BackColor = c.Surface;
         foreach (Control child in _gallery.Controls)
         {
             if (child is not Panel card)

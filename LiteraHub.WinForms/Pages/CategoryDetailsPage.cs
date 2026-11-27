@@ -1,4 +1,5 @@
-﻿using System;
+﻿using FontAwesome.Sharp;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -27,15 +28,11 @@ public sealed class CategoryDetailsPage : ThemedUserControl
     private bool _loaded;
     private bool _loadingCovers;
 
-    private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(0, 0, 0, 16), Margin = Padding.Empty };
-    private readonly DetailsPageHeader _header = new();
-    private readonly Panel _infoPanel = new()
-    {
-        Dock = DockStyle.Fill,
-        Margin = Padding.Empty,
-        Padding = new Padding(16)
-    };
-    private readonly TableLayoutPanel _info = new() { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
+    private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3, Margin = Padding.Empty, Padding = Padding.Empty };
+    private readonly DetailsPageHeader _header = new() { AlignBackToRightEdge = true };
+    private readonly ThemedSectionCard _infoPanel = new(new Label { Text = "Category Information", UseMnemonic = false, TextAlign = ContentAlignment.MiddleLeft }, IconChar.Tags);
+    private readonly TableLayoutPanel _info = new() { ColumnCount = 1, RowCount = 3, Margin = Padding.Empty, Padding = Padding.Empty };
+    private readonly ResponsiveDetailsPair _pair = new();
     private readonly Dictionary<string, (Label Caption, Label Value, Control Edit)> _fields = new();
     private readonly ThemedTextField _name = new() { MaxLength = 100 };
     private readonly ThemedTextField _description = new() { MaxLength = 500, Multiline = true };
@@ -70,31 +67,33 @@ public sealed class CategoryDetailsPage : ThemedUserControl
         _editing = category is null;
         Dock = DockStyle.Fill;
         _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        foreach (var height in new[] { 56f, 42f, 104f, 0f, 52f })
-            _layout.RowStyles.Add(height == 0 ? new RowStyle(SizeType.Percent, 100) : new RowStyle(SizeType.Absolute, height));
+        _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Space.L));
+        _layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 98));
+        _layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        _layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
         _layout.Controls.Add(_header, 0, 0);
-        _layout.SetRowSpan(_header, 2);
-        _layout.Controls.Add(_infoPanel, 0, 2);
-
-        _info.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
-        _info.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
-        _info.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34f));
-        // Each field gets a compact, fixed height instead of stretching vertically.
-        _info.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
-        _infoPanel.Controls.Add(_info);
+        _layout.Controls.Add(_pair, 0, 1);
+        _layout.SetColumnSpan(_pair, 2);
+        _info.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (int i = 0; i < 3; i++)
+            _info.RowStyles.Add(new RowStyle(SizeType.Absolute, i == 2 ? 190 : 72));
+        _infoPanel.AddFields(_info);
+        _infoPanel.Resize += (_, _) => ArrangeInformation();
+        _pair.LayoutUpdated += (_, _) => ArrangeInformation();
         AddField("ID", "Category ID", _id, 0, 0);
         AddField("Name", "Category Name", _name, 1, 0);
         AddField("Description", "Description", _description, 2, 0);
 
         _associatedBooks.BookRequested += (_, bookId) =>
             BookRequested?.Invoke(this, bookId);
-        _layout.Controls.Add(_associatedBooks, 0, 3);
+        _pair.Configure(_infoPanel, _associatedBooks, 400, 310, true, Space.L);
+        ArrangeInformation();
         _actions.Controls.AddRange(new Control[] { _delete, _archive, _primary, _cancel });
         _actions.Configure(_delete, _archive, _primary, _cancel, () => _category is null);
         _primary.Paint += (_, e) => PaintActionIcon(e, _primary, 0);
         _archive.Paint += (_, e) => PaintActionIcon(e, _archive, 1);
         _delete.Paint += (_, e) => PaintActionIcon(e, _delete, 2);
-        _layout.Controls.Add(_actions, 0, 4);
+        _layout.Controls.Add(_actions, 0, 2);
         Controls.Add(_layout);
         _header.BackRequested += (_, _) => { if (!_busy) BackRequested?.Invoke(this, EventArgs.Empty); };
         _cancel.Click += (_, _) => { if (_busy) return; _editing = false; _validation.Clear(); _validationAttempted = false; Populate(); UpdateMode(); RefreshValidationCaption(); };
@@ -114,15 +113,13 @@ public sealed class CategoryDetailsPage : ThemedUserControl
         PositionFooterActions();
     }
 
-    // Match Student Details: 19px caption, 8px spacing, 40px input,
-    // and a 72px field row. A Panel prevents TableLayoutPanel from
-    // stretching the visible input to consume unused vertical space.
+    // Fixed-height input fields; the Category description can use its multiline row.
     private void AddField(string key, string caption, Control editor, int col, int row)
     {
         var cell = new Panel
         {
             Dock = DockStyle.Fill,
-            Margin = new Padding(0, 0, 12, 0),
+            Margin = Padding.Empty,
             Padding = Padding.Empty
         };
         var label = new Label
@@ -134,8 +131,8 @@ public sealed class CategoryDetailsPage : ThemedUserControl
         var value = new Label
         {
             Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(12, 0, 0, 0)
+            TextAlign = key == "Description" ? ContentAlignment.TopLeft : ContentAlignment.MiddleLeft,
+            Padding = key == "Description" ? new Padding(12, 8, 8, 8) : new Padding(12, 0, 0, 0)
         };
         var area = new Panel { Margin = Padding.Empty, Padding = Padding.Empty };
         editor.Dock = DockStyle.Fill;
@@ -147,12 +144,20 @@ public sealed class CategoryDetailsPage : ThemedUserControl
         void PositionField()
         {
             label.SetBounds(0, 0, Math.Max(1, cell.ClientSize.Width), 19);
-            area.SetBounds(0, 27, Math.Max(1, cell.ClientSize.Width), 40);
+            area.SetBounds(0, 23, Math.Max(1, cell.ClientSize.Width), key == "Description" ? Math.Max(40, cell.ClientSize.Height - 28) : 40);
         }
         cell.Resize += (_, _) => PositionField();
-        _info.Controls.Add(cell, col, row);
+        _info.Controls.Add(cell, 0, col);
         _fields[key] = (label, value, editor);
         PositionField();
+    }
+
+    private void ArrangeInformation()
+    {
+        if (_infoPanel.Width <= 0) return;
+        int pad = _pair.ContentPadding;
+        int top = _infoPanel.ArrangeHeading(_infoPanel.Width, pad);
+        _info.SetBounds(pad, top, Math.Max(1, _infoPanel.Width - 2 * pad), 334);
     }
 
     private void Populate()

@@ -29,9 +29,11 @@ public sealed class UserDetailsPage : ThemedUserControl
     private readonly Label _recoveryLabel = new() { Text = "Recovery passkey" };
     private readonly Label _recoveryValue = MakeView();
     private readonly CenteredIconButton _regenerate = new() { Text = "Regenerate Recovery Passkey", IconChar = IconChar.Key, IconSize = 18, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand };
-    private readonly TableLayoutPanel _root = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Margin = Padding.Empty, Padding = Padding.Empty };
+    private readonly TableLayoutPanel _root = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3, Margin = Padding.Empty, Padding = Padding.Empty };
     private readonly DetailsPageHeader _header = new() { Dock = DockStyle.Fill };
-    private readonly Panel _surface = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
+    private readonly ResponsiveDetailsPair _pair = new();
+    private readonly ThemedSectionCard _accountCard;
+    private readonly ThemedSectionCard _securityCard;
     private readonly DetailsActionFooter _footer = new() { Dock = DockStyle.Fill, UseStudentSizing = true };
     private readonly Label _section = new() { Text = "Account Information" };
     private readonly Label _usernameLabel = new() { Text = "Username" };
@@ -86,21 +88,28 @@ public sealed class UserDetailsPage : ThemedUserControl
             };
         }
         Dock = DockStyle.Fill;
-        Padding = new Padding(Space.L);
+        Padding = new Padding(Space.L, Space.L, 0, Space.L);
+        _header.AlignBackToRightEdge = true;
         _root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Space.L));
         _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 98));
         _root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
         _root.Controls.Add(_header, 0, 0);
-        _root.Controls.Add(_surface, 0, 1);
+        _root.Controls.Add(_pair, 0, 1);
+        _root.SetColumnSpan(_pair, 2);
         _root.Controls.Add(_footer, 0, 2);
-        _surface.Controls.AddRange(new Control[] { _section, _usernameLabel, _username,
-            _roleLabel, _role, _status, _statusValue, _passwordHint, _securitySection, _createdLabel, _createdValue, _passwordLabel, _passwordValue, _viewUsername, _viewRole });
-        _surface.Controls.AddRange(new Control[] { _recoveryLabel, _recoveryValue, _regenerate });
+        _section.TextAlign = _securitySection.TextAlign = ContentAlignment.MiddleLeft;
+        _accountCard = new ThemedSectionCard(_section, IconChar.UserAlt);
+        _securityCard = new ThemedSectionCard(_securitySection, IconChar.Lock);
+        _accountCard.AddFields(_usernameLabel, _username, _viewUsername, _roleLabel, _role, _viewRole);
+        _accountCard.AddFields(_nameCaptions);
+        _accountCard.AddFields(_nameFields);
+        _accountCard.AddFields(_nameViews);
+        _securityCard.AddFields(_status, _statusValue, _createdLabel, _createdValue,
+            _passwordLabel, _passwordValue, _passwordHint, _recoveryLabel, _recoveryValue, _regenerate);
         _regenerate.Click += async (_, _) => await RegenerateAsync();
-        _surface.Controls.AddRange(_nameCaptions);
-        _surface.Controls.AddRange(_nameFields);
-        _surface.Controls.AddRange(_nameViews);
+        _pair.Configure(_accountCard, _securityCard, 420, 420, false, Space.L);
         _footer.Controls.AddRange(new Control[] { _cancel, _save, _archive, _delete });
         _footer.Configure(_delete, _archive, _save, _cancel, () => _user is null);
         _delete.Visible = false;
@@ -140,7 +149,7 @@ public sealed class UserDetailsPage : ThemedUserControl
         _delete.Text = "";
         if (!IsOwnAccount) _save.Paint += (_, e) => DrawAction(e, _save, 0);
         _archive.Paint += (_, e) => DrawAction(e, _archive, 1);
-        _surface.Resize += (_, _) => Arrange();
+        _pair.LayoutUpdated += (_, _) => Arrange();
         SetEditing(_editing);
         ApplyTheme();
         Arrange();
@@ -404,36 +413,29 @@ public sealed class UserDetailsPage : ThemedUserControl
 
     private void Arrange()
     {
-        if (_surface.Width < 1) return;
-        int left = 16;
-        int gap = 24;
-        int column = Math.Max(1, (_surface.ClientSize.Width - 2 * left - gap) / 2);
-        int right = left + column + gap;
-        _section.SetBounds(left + 4, 16, column - 4, 24);
-        _securitySection.SetBounds(right + 4, 16, column - 4, 24);
-        _usernameLabel.SetBounds(left + 4, 52, column - 4, 22);
-        _username.SetBounds(left, 76, column, 40);
-        _viewUsername.Bounds = _username.Bounds;
-        for (int i = 0; i < 3; i++)
+        int pad = _pair.ContentPadding;
+        int leftWidth = Math.Max(1, _accountCard.Width - 2 * pad);
+        int rightWidth = Math.Max(1, _securityCard.Width - 2 * pad);
+        int a = _accountCard.ArrangeHeading(_accountCard.Width, pad);
+        int b = _securityCard.ArrangeHeading(_securityCard.Width, pad);
+        void Field(Label caption, Control control, Label? view, int width, ref int y)
         {
-            int y = 122 + i * 70;
-            _nameCaptions[i].SetBounds(left + 4, y, column - 4, 22);
-            _nameFields[i].SetBounds(left, y + 24, column, 40);
-            _nameViews[i].Bounds = _nameFields[i].Bounds;
+            caption.SetBounds(pad + 4, y, Math.Max(1, width - 4), 19);
+            control.SetBounds(pad, y + 23, width, 40);
+            if (view is not null) view.Bounds = control.Bounds;
+            y += 67;
         }
-        _roleLabel.SetBounds(right + 4, 52, column - 4, 22);
-        _role.SetBounds(right, 76, column, 40);
-        _viewRole.Bounds = _role.Bounds;
-        _status.SetBounds(right + 4, 122, column - 4, 22);
-        _statusValue.SetBounds(right, 146, column, 40);
-        _createdLabel.SetBounds(right + 4, 192, column - 4, 22);
-        _createdValue.SetBounds(right, 216, column, 40);
-        _passwordLabel.SetBounds(right + 4, 262, column - 4, 22);
-        _passwordValue.SetBounds(right, 286, column, 40);
-        _passwordHint.SetBounds(right + 4, 340, column - 4, 90);
-        _recoveryLabel.SetBounds(right + 4, 332, column - 4, 22);
-        _recoveryValue.SetBounds(right, 356, column, 40);
-        _regenerate.SetBounds(right, 404, column, 40);
+        Field(_usernameLabel, _username, _viewUsername, leftWidth, ref a);
+        for (int i = 0; i < 3; i++)
+            Field(_nameCaptions[i], _nameFields[i], _nameViews[i], leftWidth, ref a);
+        Field(_roleLabel, _role, _viewRole, leftWidth, ref a);
+        Field(_status, _statusValue, null, rightWidth, ref b);
+        Field(_createdLabel, _createdValue, null, rightWidth, ref b);
+        Field(_passwordLabel, _passwordValue, null, rightWidth, ref b);
+        Field(_recoveryLabel, _recoveryValue, null, rightWidth, ref b);
+        _regenerate.SetBounds(pad, b, rightWidth, 40);
+        // Hint and recovery controls are mutually exclusive in the existing mode rules.
+        _passwordHint.SetBounds(pad + 4, b - 67, Math.Max(1, rightWidth - 4), 100);
     }
 
     private void DrawAction(PaintEventArgs e, Button button, int kind)
@@ -455,7 +457,8 @@ public sealed class UserDetailsPage : ThemedUserControl
         var c = Theme.Colors;
         BackColor = c.Background;
         _root.BackColor = c.Background;
-        _surface.BackColor = c.Surface;
+        _accountCard.BackColor = c.Surface;
+        _securityCard.BackColor = c.Surface;
         _section.ForeColor = c.Text;
         _section.Font = Theme.BodyStrong;
         _securitySection.ForeColor = c.Text;

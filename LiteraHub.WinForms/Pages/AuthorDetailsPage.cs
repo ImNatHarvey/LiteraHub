@@ -1,4 +1,5 @@
-﻿using System;
+﻿using FontAwesome.Sharp;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -27,15 +28,11 @@ public sealed class AuthorDetailsPage : ThemedUserControl
     private bool _loaded;
     private bool _loadingCovers;
 
-    private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(0, 0, 0, 16), Margin = Padding.Empty };
-    private readonly DetailsPageHeader _header = new();
-    private readonly Panel _infoPanel = new()
-    {
-        Dock = DockStyle.Fill,
-        Margin = Padding.Empty,
-        Padding = new Padding(16)
-    };
-    private readonly TableLayoutPanel _info = new() { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 2, Margin = Padding.Empty, Padding = Padding.Empty };
+    private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3, Margin = Padding.Empty, Padding = Padding.Empty };
+    private readonly DetailsPageHeader _header = new() { AlignBackToRightEdge = true };
+    private readonly ThemedSectionCard _infoPanel = new(new Label { Text = "Author Information", UseMnemonic = false, TextAlign = ContentAlignment.MiddleLeft }, IconChar.UserAlt);
+    private readonly TableLayoutPanel _info = new() { ColumnCount = 1, RowCount = 6, Margin = Padding.Empty, Padding = Padding.Empty };
+    private readonly ResponsiveDetailsPair _pair = new();
     private readonly Dictionary<string, (Label Caption, Label Value, Control Edit)> _fields = new();
     private readonly ThemedTextField _first = new() { MaxLength = 100 };
     private readonly ThemedTextField _middle = new() { MaxLength = 100 };
@@ -68,18 +65,19 @@ public sealed class AuthorDetailsPage : ThemedUserControl
         _editing = author is null;
         Dock = DockStyle.Fill;
         _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        foreach (var h in new[] { 56f, 42f, 176f, 0f, 52f })
-            _layout.RowStyles.Add(h == 0 ? new RowStyle(SizeType.Percent, 100) : new RowStyle(SizeType.Absolute, h));
+        _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Space.L));
+        _layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 98));
+        _layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        _layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
         _layout.Controls.Add(_header, 0, 0);
-        _layout.SetRowSpan(_header, 2);
-        _layout.Controls.Add(_infoPanel, 0, 2);
-
-        _info.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
-        _info.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
-        _info.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34f));
-        _info.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
-        _info.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
-        _infoPanel.Controls.Add(_info);
+        _layout.Controls.Add(_pair, 0, 1);
+        _layout.SetColumnSpan(_pair, 2);
+        _info.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (int i = 0; i < 6; i++)
+            _info.RowStyles.Add(new RowStyle(SizeType.Absolute, 65));
+        _infoPanel.AddFields(_info);
+        _infoPanel.Resize += (_, _) => ArrangeInformation();
+        _pair.LayoutUpdated += (_, _) => ArrangeInformation();
         AddField("ID", "Author ID", _id, 0, 0);
         AddField("First", "First Name", _first, 1, 0);
         AddField("Middle", "Middle Name (optional)", _middle, 2, 0);
@@ -95,13 +93,14 @@ public sealed class AuthorDetailsPage : ThemedUserControl
 
         _associatedBooks.BookRequested += (_, bookId) =>
             BookRequested?.Invoke(this, bookId);
-        _layout.Controls.Add(_associatedBooks, 0, 3);
+        _pair.Configure(_infoPanel, _associatedBooks, 460, 310, true, Space.L);
+        ArrangeInformation();
         _actions.Controls.AddRange(new Control[] { _delete, _archive, _primary, _cancel });
         _actions.Configure(_delete, _archive, _primary, _cancel, () => _author is null);
         _primary.Paint += (_, e) => PaintActionIcon(e, _primary, 0);
         _archive.Paint += (_, e) => PaintActionIcon(e, _archive, 1);
         _delete.Paint += (_, e) => PaintActionIcon(e, _delete, 2);
-        _layout.Controls.Add(_actions, 0, 4);
+        _layout.Controls.Add(_actions, 0, 2);
         Controls.Add(_layout);
         _tips.SetToolTip(_calendar, "Choose birth date");
         _header.BackRequested += (_, _) => { if (!_busy) BackRequested?.Invoke(this, EventArgs.Empty); };
@@ -129,15 +128,13 @@ public sealed class AuthorDetailsPage : ThemedUserControl
         PositionFooterActions();
     }
 
-    // Match Student Details: 19px caption, 8px spacing, 40px input,
-    // and a 72px field row. A Panel prevents TableLayoutPanel from
-    // stretching the visible input to consume unused vertical space.
+    // Fixed-height input fields; the Category description can use its multiline row.
     private void AddField(string key, string caption, Control editor, int col, int row)
     {
         var cell = new Panel
         {
             Dock = DockStyle.Fill,
-            Margin = new Padding(0, 0, 12, 0),
+            Margin = Padding.Empty,
             Padding = Padding.Empty
         };
         var label = new Label
@@ -162,12 +159,20 @@ public sealed class AuthorDetailsPage : ThemedUserControl
         void PositionField()
         {
             label.SetBounds(0, 0, Math.Max(1, cell.ClientSize.Width), 19);
-            area.SetBounds(0, 27, Math.Max(1, cell.ClientSize.Width), 40);
+            area.SetBounds(0, 23, Math.Max(1, cell.ClientSize.Width), 40);
         }
         cell.Resize += (_, _) => PositionField();
-        _info.Controls.Add(cell, col, row);
+        _info.Controls.Add(cell, 0, row * 3 + col);
         _fields[key] = (label, value, editor);
         PositionField();
+    }
+
+    private void ArrangeInformation()
+    {
+        if (_infoPanel.Width <= 0) return;
+        int pad = _pair.ContentPadding;
+        int top = _infoPanel.ArrangeHeading(_infoPanel.Width, pad);
+        _info.SetBounds(pad, top, Math.Max(1, _infoPanel.Width - 2 * pad), 390);
     }
 
     private void Populate()
