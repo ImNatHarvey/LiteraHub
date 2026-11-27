@@ -12,6 +12,12 @@ public sealed class Student
     public string Municipality { get; set; } = string.Empty;
     public string CityProvince { get; set; } = string.Empty;
     public string ZipCode { get; set; } = string.Empty;
+    public string? RegionCode { get; set; }
+    public string? ProvinceCode { get; set; }
+    public string? CityMunicipalityCode { get; set; }
+    public string? BarangayCode { get; set; }
+    public string? RegionName { get; set; }
+    public string? BarangayName { get; set; }
     public DateTime BirthDate { get; set; }
     public string Gender { get; set; } = string.Empty;
     public string MobileNo { get; set; } = string.Empty;
@@ -36,4 +42,12 @@ public sealed record StudentInput(
     string Gender,
     string MobileNo,
     string? LandlineNo,
-    string Email);
+    string Email)
+{
+    public string? RegionCode { get; init; }
+    public string? ProvinceCode { get; init; }
+    public string? CityMunicipalityCode { get; init; }
+    public string? BarangayCode { get; init; }
+    public string? RegionName { get; init; }
+    public string? BarangayName { get; init; }
+}

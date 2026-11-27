@@ -417,7 +417,12 @@ public sealed class StudentsPage : ThemedUserControl
     }
 
     private static string FullName(Student s) => string.Join(" ", new[] { s.FirstName, s.MiddleName, s.LastName }.Where(x => !string.IsNullOrWhiteSpace(x)));
-    private static string Address(Student s) => string.Join(", ", new[] { s.HouseNo, s.Street, s.Municipality, s.CityProvince, s.ZipCode }.Where(x => !string.IsNullOrWhiteSpace(x)));
+    private static string Address(Student s) => string.Join(", ", new[]
+    {
+        s.HouseNo, s.Street, s.BarangayName, s.Municipality, s.CityProvince,
+        string.Equals(s.RegionName, s.CityProvince, StringComparison.OrdinalIgnoreCase) ? null : s.RegionName,
+        s.ZipCode
+    }.Where(x => !string.IsNullOrWhiteSpace(x)));
 
     private void UpdateResponsive()
     {

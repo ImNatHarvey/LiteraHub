@@ -11,6 +11,7 @@ public sealed class StudentRepository : IStudentRepository
     private const string SelectSql = """
         SELECT StudentId, StudentNo, FirstName, MiddleName, LastName,
                HouseNo, Street, Municipality, CityProvince, ZipCode,
+               RegionCode, ProvinceCode, CityMunicipalityCode, BarangayCode, RegionName, BarangayName,
                BirthDate, Gender, MobileNo, LandlineNo, Email,
                IsActive, CreatedAt
         FROM dbo.Students
@@ -57,11 +58,13 @@ public sealed class StudentRepository : IStudentRepository
             INSERT INTO dbo.Students
                 (StudentNo, FirstName, MiddleName, LastName, HouseNo, Street,
                  Municipality, CityProvince, ZipCode, BirthDate, Gender,
+                 RegionCode, ProvinceCode, CityMunicipalityCode, BarangayCode, RegionName, BarangayName,
                  MobileNo, LandlineNo, Email)
             OUTPUT INSERTED.StudentId
             VALUES
                 (@StudentNo, @FirstName, @MiddleName, @LastName, @HouseNo, @Street,
                  @Municipality, @CityProvince, @ZipCode, @BirthDate, @Gender,
+                 @RegionCode, @ProvinceCode, @CityMunicipalityCode, @BarangayCode, @RegionName, @BarangayName,
                  @MobileNo, @LandlineNo, @Email);
             """;
         return await conn.QuerySingleAsync<int>(sql, input);
@@ -86,10 +89,26 @@ public sealed class StudentRepository : IStudentRepository
         return await conn.ExecuteAsync(sql, new
         {
             StudentId = studentId,
-            input.StudentNo, input.FirstName, input.MiddleName, input.LastName,
-            input.HouseNo, input.Street, input.Municipality, input.CityProvince,
-            input.ZipCode, input.BirthDate, input.Gender, input.MobileNo,
-            input.LandlineNo, input.Email
+            input.StudentNo,
+            input.FirstName,
+            input.MiddleName,
+            input.LastName,
+            input.HouseNo,
+            input.Street,
+            input.Municipality,
+            input.CityProvince,
+            input.ZipCode,
+            input.BirthDate,
+            input.Gender,
+            input.MobileNo,
+            input.LandlineNo,
+            input.Email,
+            input.RegionCode,
+            input.ProvinceCode,
+            input.CityMunicipalityCode,
+            input.BarangayCode,
+            input.RegionName,
+            input.BarangayName
         }) > 0;
     }
 
@@ -118,7 +137,8 @@ public sealed class StudentRepository : IStudentRepository
             """;
         return await conn.ExecuteAsync(sql, new
         {
-            StudentId = studentId, IsActive = isActive
+            StudentId = studentId,
+            IsActive = isActive
         }) > 0;
     }
 }

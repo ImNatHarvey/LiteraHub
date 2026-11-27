@@ -34,6 +34,8 @@ public sealed class StudentService : IStudentService
     public async Task<ServiceResult> CreateAsync(StudentInput input)
     {
         _permissions.Demand(RolePermission.StudentsAdd);
+        var address = PrepareAddress(input, null, out input);
+        if (!address.Success) return address;
         var validation = Validate(input);
         if (!validation.Success) return validation;
         var normalized = Normalize(input);
@@ -54,11 +56,13 @@ public sealed class StudentService : IStudentService
     {
         _permissions.Demand(RolePermission.StudentsEdit);
         if (studentId <= 0) return ServiceResult.Fail("Invalid student record ID.");
+        var existing = await _repository.GetByIdAsync(studentId);
+        if (existing is null) return ServiceResult.Fail("Student not found.");
+        var address = PrepareAddress(input, existing, out input);
+        if (!address.Success) return address;
         var validation = Validate(input);
         if (!validation.Success) return validation;
         var normalized = Normalize(input);
-        if (await _repository.GetByIdAsync(studentId) is null)
-            return ServiceResult.Fail("Student not found.");
         var duplicate = await _repository.GetByStudentNoAsync(normalized.StudentNo);
         if (duplicate is not null && duplicate.StudentId != studentId)
             return ServiceResult.Fail("Student ID number already exists.");
@@ -108,6 +112,40 @@ public sealed class StudentService : IStudentService
         catch (DbException)
         {
             return ServiceResult.Fail("Unable to delete student. The record may be in use by other records.");
+        }
+    }
+
+    private static ServiceResult PrepareAddress(StudentInput input, Student? existing, out StudentInput prepared)
+    {
+        prepared = input;
+        if (input is null) return ServiceResult.Fail("Student data is required.");
+        bool legacy = input.RegionCode is null && input.ProvinceCode is null && input.CityMunicipalityCode is null && input.BarangayCode is null;
+        if (legacy)
+        {
+            if (existing is null || existing.RegionCode is not null || existing.CityMunicipalityCode is not null || existing.BarangayCode is not null)
+                return ServiceResult.Fail("Select a complete PSGC address.");
+            if (!string.Equals(input.Municipality, existing.Municipality, StringComparison.Ordinal) ||
+                !string.Equals(input.CityProvince, existing.CityProvince, StringComparison.Ordinal))
+                return ServiceResult.Fail("Use the PSGC selectors to update the geographic portion of this legacy address.");
+            prepared = input with { RegionName = null, BarangayName = null };
+            return ServiceResult.Ok();
+        }
+        try
+        {
+            if (!PsgcCatalog.Instance.TryResolve(input.RegionCode, input.ProvinceCode, input.CityMunicipalityCode, input.BarangayCode, out var selected) || selected is null)
+                return ServiceResult.Fail("Select a valid region, province (if applicable), city or municipality, and barangay.");
+            prepared = input with
+            {
+                Municipality = selected.Locality.Name,
+                CityProvince = selected.Province?.Name ?? selected.Region.Name,
+                RegionName = selected.Region.Name,
+                BarangayName = selected.Barangay.Name
+            };
+            return ServiceResult.Ok();
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or System.Text.Json.JsonException or ArgumentException)
+        {
+            return ServiceResult.Fail("The offline PSGC dataset could not be loaded. Contact the administrator.");
         }
     }
 
@@ -165,8 +203,8 @@ public sealed class StudentService : IStudentService
             LastName = input.LastName.Trim(),
             HouseNo = input.HouseNo.Trim(),
             Street = input.Street.Trim(),
-            Municipality = input.Municipality.Trim(),
-            CityProvince = input.CityProvince.Trim(),
+            Municipality = input.RegionCode is null ? input.Municipality : input.Municipality.Trim(),
+            CityProvince = input.RegionCode is null ? input.CityProvince : input.CityProvince.Trim(),
             ZipCode = input.ZipCode.Trim(),
             BirthDate = input.BirthDate.Date,
             Gender = input.Gender.Trim(),

@@ -9,6 +9,10 @@
     <File Path="docs/SCHEMA.md" />
     <File Path="docs/SESSION_HANDOFF.md" />
   </Folder>
+  <Folder Name="/tools/" />
+  <Folder Name="/tools/psgc/">
+    <File Path="../../../../Downloads/convert_psgc.py" />
+  </Folder>
   <Project Path="LiteraHub.Core/LiteraHub.Core.csproj" />
   <Project Path="LiteraHub.Data/LiteraHub.Data.csproj" />
   <Project Path="LiteraHub.Services/LiteraHub.Services.csproj" />

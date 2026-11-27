@@ -16,6 +16,7 @@ internal static class Migrations
         new Migration(8, "Recovery limits and audit", V8()),
         new Migration(9, "Protect the original system owner", V9()),
         new Migration(10, "Owner authorization limits and audit", V10()),
+        new Migration(11, "Add structured PSGC student addresses", V11()),
     };
 
     private static string Index(string name, string table, string columns) =>
@@ -470,6 +471,23 @@ internal static class Migrations
             Outcome NVARCHAR(30) NOT NULL,
             CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
         );
+        """
+    };
+    private static string[] V11() => new[]
+    {
+        """
+        ALTER TABLE dbo.Students ADD
+            RegionCode VARCHAR(10) NULL, ProvinceCode VARCHAR(10) NULL,
+            CityMunicipalityCode VARCHAR(10) NULL, BarangayCode VARCHAR(10) NULL,
+            RegionName NVARCHAR(100) NULL, BarangayName NVARCHAR(100) NULL;
+        """,
+        """
+        ALTER TABLE dbo.Students ADD CONSTRAINT CK_Students_PsgcAddress CHECK (
+            (RegionCode IS NULL AND ProvinceCode IS NULL AND CityMunicipalityCode IS NULL AND BarangayCode IS NULL AND RegionName IS NULL AND BarangayName IS NULL)
+            OR (RegionCode IS NOT NULL AND CityMunicipalityCode IS NOT NULL AND BarangayCode IS NOT NULL AND RegionName IS NOT NULL AND BarangayName IS NOT NULL
+                AND LEN(RegionCode) = 10 AND LEN(CityMunicipalityCode) = 10 AND LEN(BarangayCode) = 10
+                AND RegionCode NOT LIKE '%[^0-9]%' AND CityMunicipalityCode NOT LIKE '%[^0-9]%' AND BarangayCode NOT LIKE '%[^0-9]%'
+                AND (ProvinceCode IS NULL OR (LEN(ProvinceCode) = 10 AND ProvinceCode NOT LIKE '%[^0-9]%'))));
         """
     };
 }

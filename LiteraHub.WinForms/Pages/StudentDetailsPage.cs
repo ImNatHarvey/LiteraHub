@@ -13,6 +13,7 @@ using System.Windows.Forms;
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Security;
 using LiteraHub.Core.Models;
+using LiteraHub.Services.Students;
 using LiteraHub.WinForms.Controls;
 using LiteraHub.WinForms.Forms;
 using LiteraHub.WinForms.Theming;
@@ -40,6 +41,15 @@ public sealed class StudentDetailsPage : ThemedUserControl
     private readonly Dictionary<string, (Label Caption, Control Control)> _fields = new();
     private readonly Label _studentHeading = new() { Text = "Student Information" };
     private readonly Label _addressHeading = new() { Text = "Address" };
+    private const string NoProvince = "no-province";
+    private readonly ThemedPsgcPicker _region = new("Select region");
+    private readonly ThemedPsgcPicker _province = new("Select province");
+    private readonly ThemedPsgcPicker _city = new("Select city / municipality");
+    private readonly ThemedPsgcPicker _barangay = new("Select barangay");
+    private readonly Button _upgradeAddress = new() { Text = "Select PSGC address", FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand };
+    private readonly Label _addressPreview = new() { AutoSize = false, UseMnemonic = false, TextAlign = ContentAlignment.TopLeft, Visible = false };
+    private PsgcCatalog? _psgc;
+    private bool _usePsgc;
     private readonly Label _contactHeading = new() { Text = "Personal & Contact", UseMnemonic = false };
     private readonly Button _birthDate = new() { FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, TextAlign = ContentAlignment.MiddleLeft };
     private readonly ThemedFilterDropdown _gender = new(new[] { "Select Gender", "Male", "Female", "Other", "Prefer not to say" })
@@ -102,6 +112,28 @@ public sealed class StudentDetailsPage : ThemedUserControl
         AddInput("Email", "Email address", 150, student?.Email);
         AddSpecial("BirthDate", "Birthdate", _birthDate);
         AddSpecial("Gender", "Gender", _gender);
+        AddGeographicField("PsgcRegion", "Region", _region);
+        AddGeographicField("PsgcProvince", "Province", _province);
+        AddGeographicField("PsgcCity", "City / municipality", _city);
+        AddGeographicField("PsgcBarangay", "Barangay", _barangay);
+        _usePsgc = student is null || student.RegionCode is not null;
+        try { _psgc = PsgcCatalog.Instance; }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or System.Text.Json.JsonException or ArgumentException or InvalidOperationException) { _psgc = null; }
+        InitializeGeography(student);
+        _region.SelectionChanged += (_, _) => { LoadProvinces(); SyncAddress(); };
+        _province.SelectionChanged += (_, _) => { LoadCities(); SyncAddress(); };
+        _city.SelectionChanged += (_, _) => { LoadBarangays(); SyncAddress(); };
+        _barangay.SelectionChanged += (_, _) => SyncAddress();
+        _upgradeAddress.Click += (_, _) =>
+        {
+            if (!_editing || _busy || _psgc is null) return;
+            _usePsgc = true;
+            InitializeGeography(null);
+            SyncAddress();
+            SetEditing(true);
+        };
+        foreach (var key in new[] { "HouseNo", "Street", "ZipCode" })
+            _inputs[key].TextChanged += (_, _) => UpdateAddressPreview();
         foreach (var view in new[] { _viewBirthDate, _viewGender })
         {
             view.Paint += (_, e) =>
@@ -125,12 +157,13 @@ public sealed class StudentDetailsPage : ThemedUserControl
             var card = key switch
             {
                 "StudentNo" or "FirstName" or "MiddleName" or "LastName" => _studentCard,
-                "HouseNo" or "Street" or "Municipality" or "CityProvince" or "ZipCode" => _addressCard,
+                "HouseNo" or "Street" or "Municipality" or "CityProvince" or "ZipCode" or "PsgcRegion" or "PsgcProvince" or "PsgcCity" or "PsgcBarangay" => _addressCard,
                 _ => _contactCard
             };
             card.AddFields(field.Caption, field.Control);
             if (_viewInputs.TryGetValue(key, out var view)) card.AddFields(view);
         }
+        _addressCard.AddFields(_upgradeAddress, _addressPreview);
         _surface.Controls.AddRange(new Control[] { _studentCard, _addressCard, _contactCard });
         _actionFooter.Controls.AddRange(new Control[] { _delete, _archive, _save, _cancel });
         _actionFooter.Configure(_delete, _archive, _save, _cancel, () => false);
@@ -226,6 +259,103 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _surface.Controls.Add(field);
     }
 
+    private void AddGeographicField(string key, string caption, ThemedPsgcPicker picker)
+    {
+        AddSpecial(key, caption, picker);
+        var view = new Label
+        {
+            AutoSize = false,
+            UseMnemonic = false,
+            AutoEllipsis = true,
+            TabStop = false,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(12, 0, 8, 0)
+        };
+        view.Paint += (_, e) => { using var pen = new Pen(Theme.Colors.Border); e.Graphics.DrawRectangle(pen, 0, 0, Math.Max(0, view.Width - 1), Math.Max(0, view.Height - 1)); };
+        _viewInputs.Add(key, view);
+        _surface.Controls.Add(view);
+    }
+
+    private string? ProvinceCode => _province.SelectedCode == NoProvince ? null : _province.SelectedCode;
+    private void InitializeGeography(Student? student)
+    {
+        _region.SetOptions(_psgc?.Regions.Select(x => new ThemedPsgcPicker.Option(x.Code, x.Name)) ?? [], student?.RegionCode);
+        LoadProvinces(student?.RegionCode is null ? null : student.ProvinceCode ?? NoProvince, student?.CityMunicipalityCode, student?.BarangayCode);
+    }
+    private void LoadProvinces(string? selected = null, string? city = null, string? barangay = null)
+    {
+        var options = (_psgc?.Provinces(_region.SelectedCode) ?? []).Select(x => new ThemedPsgcPicker.Option(x.Code, x.Name)).ToList();
+        if ((_psgc?.Localities(_region.SelectedCode, null).Count ?? 0) > 0)
+            options.Add(new ThemedPsgcPicker.Option(NoProvince, "Not applicable / Independent area"));
+        if (options.Count == 1 && options[0].Code == NoProvince) selected = NoProvince;
+        _province.SetOptions(options, selected);
+        if (options.Count == 1 && options[0].Code == NoProvince) _province.Enabled = false;
+        LoadCities(city, barangay);
+    }
+    private void LoadCities(string? selected = null, string? barangay = null)
+    {
+        _city.SetOptions(_province.SelectedCode is null ? [] : (_psgc?.Localities(_region.SelectedCode, ProvinceCode) ?? []).Select(x => new ThemedPsgcPicker.Option(x.Code, x.Name)), selected);
+        LoadBarangays(barangay);
+    }
+    private void LoadBarangays(string? selected = null) => _barangay.SetOptions((_psgc?.Barangays(_city.SelectedCode) ?? []).Select(x => new ThemedPsgcPicker.Option(x.Code, _psgc!.BarangayCaption(x))), selected);
+    private bool CompleteGeography() => _province.SelectedCode is not null && _psgc is not null && _psgc.TryResolve(_region.SelectedCode, ProvinceCode, _city.SelectedCode, _barangay.SelectedCode, out _);
+    private void SyncAddress()
+    {
+        if (_usePsgc)
+        {
+            _inputs["Municipality"].Text = _city.SelectedName;
+            _inputs["CityProvince"].Text = _province.SelectedCode == NoProvince ? _region.SelectedName : _province.SelectedName;
+        }
+        foreach (var picker in new[] { _region, _province, _city, _barangay }) _toolTip.SetToolTip(picker, picker.SelectedName);
+        UpdateAddressPreview();
+        RefreshValidationCaptions();
+    }
+    private void UpdateAddressPreview()
+    {
+        // Only reserve space for a real dataset failure, not an address summary.
+        _addressPreview.Visible = _usePsgc && _psgc is null;
+        _addressPreview.Text = _addressPreview.Visible
+            ? "Offline PSGC data is unavailable. Existing records are preserved."
+            : string.Empty;
+        _toolTip.SetToolTip(_addressPreview, _addressPreview.Text);
+        if (IsHandleCreated && _addressCard is not null) ArrangeForm();
+    }
+    private void UpdateGeographicVisibility()
+    {
+        foreach (var (key, picker) in new[] { ("PsgcRegion", _region), ("PsgcProvince", _province), ("PsgcCity", _city), ("PsgcBarangay", _barangay) })
+        {
+            _fields[key].Caption.Visible = _usePsgc;
+            picker.Visible = _usePsgc && _editing;
+            picker.TabStop = picker.Visible;
+            var view = _viewInputs[key];
+            view.Visible = _usePsgc && !_editing;
+            view.Text = key switch
+            {
+                "PsgcRegion" => _original?.RegionName ?? "",
+                "PsgcProvince" => _original?.ProvinceCode is null ? "Not applicable" : _original?.CityProvince ?? "",
+                "PsgcCity" => _original?.Municipality ?? "",
+                _ => _original?.BarangayName ?? ""
+            };
+            _toolTip.SetToolTip(view, view.Text);
+        }
+        foreach (var key in new[] { "Municipality", "CityProvince" })
+        {
+            _fields[key].Caption.Visible = !_usePsgc;
+            _inputs[key].Visible = false;
+            _inputs[key].TabStop = false;
+            _viewInputs[key].Visible = !_usePsgc;
+            _viewInputs[key].Text = _inputs[key].Text;
+        }
+        string[] addressTabOrder = _usePsgc
+            ? new[] { "PsgcRegion", "PsgcProvince", "PsgcCity", "PsgcBarangay", "HouseNo", "ZipCode", "Street" }
+            : new[] { "HouseNo", "Street", "Municipality", "CityProvince", "ZipCode" };
+        for (int i = 0; i < addressTabOrder.Length; i++) _fields[addressTabOrder[i]].Control.TabIndex = i;
+        _upgradeAddress.TabIndex = addressTabOrder.Length;
+        _upgradeAddress.Visible = _editing && !_usePsgc;
+        _upgradeAddress.Enabled = _psgc is not null;
+        UpdateAddressPreview();
+    }
+
     private void ArrangeForm()
     {
         if (_arranging || IsDisposed || Disposing || _scroll.ClientSize.Width <= 0 || _scroll.ClientSize.Height <= 0) return;
@@ -251,17 +381,18 @@ public sealed class StudentDetailsPage : ThemedUserControl
                 int a = _studentCard.ArrangeHeading(studentWidth, pad);
                 int b = _addressCard.ArrangeHeading(addressWidth, pad);
                 int c = _contactCard.ArrangeHeading(contactWidth, pad);
-                void Field(string key, ref int top)
+                void Field(string key, ref int top, int xOffset = 0, int? fieldWidth = null, bool compactAddress = false)
                 {
                     var field = _fields[key];
-                    field.Caption.SetBounds(pad, top, w, 19);
-                    field.Control.SetBounds(pad, top + 24, w, 40);
+                    int fw = fieldWidth ?? w;
+                    field.Caption.SetBounds(pad + xOffset, top, fw, compactAddress ? 16 : 19);
+                    field.Control.SetBounds(pad + xOffset, top + (compactAddress ? 18 : 24), fw, 40);
                     if (_viewInputs.TryGetValue(key, out var view))
                     {
                         view.Bounds = field.Control.Bounds;
-                        if (!_editing || key == "StudentNo") view.BringToFront();
+                        if (!_editing || key == "StudentNo" || key == "Municipality" || key == "CityProvince") view.BringToFront();
                     }
-                    top += step;
+                    top += compactAddress ? 60 : step;
                 }
                 int desiredAvatar = width >= 1300 ? 148 : width >= 1150 ? 120 : 78;
                 int maxAvatar = viewport - a - pad - 4 * step - 8;
@@ -270,7 +401,36 @@ public sealed class StudentDetailsPage : ThemedUserControl
                 a += avatarSize + 6;
                 foreach (var key in new[] { "StudentNo", "FirstName", "MiddleName", "LastName" }) Field(key, ref a);
                 w = Math.Max(1, addressWidth - 2 * pad);
-                foreach (var key in new[] { "HouseNo", "Street", "Municipality", "CityProvince", "ZipCode" }) Field(key, ref b);
+                if (_usePsgc)
+                {
+                    bool denseAddress = viewport < 600;
+                    foreach (var key in new[] { "PsgcRegion", "PsgcProvince", "PsgcCity", "PsgcBarangay" })
+                        Field(key, ref b, compactAddress: denseAddress);
+                    if (w >= 250)
+                    {
+                        const int fieldGap = 10;
+                        int leftWidth = (w - fieldGap) / 2;
+                        int sameRow = b;
+                        Field("HouseNo", ref sameRow, 0, leftWidth, denseAddress);
+                        Field("ZipCode", ref b, leftWidth + fieldGap, w - leftWidth - fieldGap, denseAddress);
+                        Field("Street", ref b, compactAddress: denseAddress);
+                    }
+                    else
+                    {
+                        foreach (var key in new[] { "HouseNo", "Street", "ZipCode" })
+                            Field(key, ref b, compactAddress: denseAddress);
+                    }
+                }
+                else
+                {
+                    foreach (var key in new[] { "HouseNo", "Street", "Municipality", "CityProvince", "ZipCode" }) Field(key, ref b);
+                }
+                if (!_usePsgc && _editing) { _upgradeAddress.SetBounds(pad, b, w, 36); b += 44; }
+                if (_usePsgc && _psgc is null)
+                {
+                    _addressPreview.SetBounds(pad, b, w, Math.Max(42, TextRenderer.MeasureText(_addressPreview.Text, _addressPreview.Font, new Size(Math.Max(w, 30), 10000), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl | TextFormatFlags.NoPrefix).Height + 4));
+                    b += _addressPreview.Height;
+                }
                 w = Math.Max(1, contactWidth - 2 * pad);
                 foreach (var key in new[] { "BirthDate", "Gender", "MobileNo", "LandlineNo", "Email" }) Field(key, ref c);
                 _viewBirthDate.Bounds = _birthDate.Bounds;
@@ -394,6 +554,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
             _viewGender.BringToFront();
         }
 
+        UpdateGeographicVisibility();
         _avatar.Editable = editing;
         _toolTip.SetToolTip(_avatar, editing ? "Change student photo" : null);
         _save.AccessibleName = editing ? "Save Student" : "Edit Student";
@@ -436,6 +597,8 @@ public sealed class StudentDetailsPage : ThemedUserControl
             ["LandlineNo"] = _original.LandlineNo,
             ["Email"] = _original.Email
         }) _inputs[key].Text = value ?? "";
+        _usePsgc = _original.RegionCode is not null;
+        InitializeGeography(_original);
         _selectedBirthDate = _original.BirthDate.Date;
         UpdateBirthDateCaption();
         _gender.SelectedIndex = GenderIndex(_original.Gender);
@@ -450,7 +613,13 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _inputs["Municipality"].Text, _inputs["CityProvince"].Text, _inputs["ZipCode"].Text,
         _selectedBirthDate!.Value.Date,
         _gender.SelectedIndex == 0 ? "" : new[] { "", "Male", "Female", "Other", "Prefer not to say" }[_gender.SelectedIndex],
-        _inputs["MobileNo"].Text, _inputs["LandlineNo"].Text, _inputs["Email"].Text);
+        _inputs["MobileNo"].Text, _inputs["LandlineNo"].Text, _inputs["Email"].Text)
+    {
+        RegionCode = _usePsgc ? _region.SelectedCode : null,
+        ProvinceCode = _usePsgc ? ProvinceCode : null,
+        CityMunicipalityCode = _usePsgc ? _city.SelectedCode : null,
+        BarangayCode = _usePsgc ? _barangay.SelectedCode : null
+    };
 
     private void ConfigureValidation()
     {
@@ -467,10 +636,14 @@ public sealed class StudentDetailsPage : ThemedUserControl
             "House number is required.");
         RegisterText("Street", () => !string.IsNullOrWhiteSpace(_inputs["Street"].Text),
             "Street is required.");
-        RegisterText("Municipality", () => !string.IsNullOrWhiteSpace(_inputs["Municipality"].Text),
+        RegisterText("Municipality", () => _usePsgc || !string.IsNullOrWhiteSpace(_inputs["Municipality"].Text),
             "Municipality is required.");
-        RegisterText("CityProvince", () => !string.IsNullOrWhiteSpace(_inputs["CityProvince"].Text),
+        RegisterText("CityProvince", () => _usePsgc || !string.IsNullOrWhiteSpace(_inputs["CityProvince"].Text),
             "City/province is required.");
+        _validation.Register(_region, () => !_usePsgc || _region.SelectedCode is not null, "Select a region.");
+        _validation.Register(_province, () => !_usePsgc || _province.SelectedCode is not null, "Select a province or independent area.");
+        _validation.Register(_city, () => !_usePsgc || _city.SelectedCode is not null, "Select a city or municipality.");
+        _validation.Register(_barangay, () => !_usePsgc || CompleteGeography(), "Select a valid barangay and complete geographic hierarchy.");
         RegisterText("ZipCode", () => !string.IsNullOrWhiteSpace(_inputs["ZipCode"].Text),
             "ZIP code is required.");
 
@@ -532,6 +705,10 @@ public sealed class StudentDetailsPage : ThemedUserControl
                             _selectedBirthDate.Value.Date > DateTime.Today;
         UpdateValidationCaption("BirthDate", "Birthdate", birthInvalid, "Invalid date");
         UpdateValidationCaption("Gender", "Gender", _gender.SelectedIndex == 0, "Required");
+        UpdateValidationCaption("PsgcRegion", "Region", _usePsgc && _region.SelectedCode is null, "Required");
+        UpdateValidationCaption("PsgcProvince", "Province", _usePsgc && _province.SelectedCode is null, "Required");
+        UpdateValidationCaption("PsgcCity", "City / municipality", _usePsgc && _city.SelectedCode is null, "Required");
+        UpdateValidationCaption("PsgcBarangay", "Barangay", _usePsgc && !CompleteGeography(), "Required");
     }
 
     private void UpdateValidationCaption(string key, string name, bool invalid, string warning)
@@ -558,6 +735,10 @@ public sealed class StudentDetailsPage : ThemedUserControl
                 "Municipality" => "Municipality",
                 "CityProvince" => "City / province",
                 "ZipCode" => "ZIP code",
+                "PsgcRegion" => "Region",
+                "PsgcProvince" => "Province",
+                "PsgcCity" => "City / municipality",
+                "PsgcBarangay" => "Barangay",
                 "BirthDate" => "Birthdate",
                 "Gender" => "Gender",
                 "MobileNo" => "Mobile number",
@@ -739,6 +920,15 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _birthDate.FlatAppearance.BorderSize = 1;
         _birthDate.FlatAppearance.MouseOverBackColor = c.AccentSoft;
         _gender.ApplyTheme();
+        foreach (var picker in new[] { _region, _province, _city, _barangay }) picker.ApplyTheme();
+        _addressPreview.BackColor = c.Surface;
+        _addressPreview.ForeColor = c.TextMuted;
+        _addressPreview.Font = Theme.Body;
+        _upgradeAddress.BackColor = c.SurfaceAlt;
+        _upgradeAddress.ForeColor = c.Text;
+        _upgradeAddress.Font = Theme.Body;
+        _upgradeAddress.FlatAppearance.BorderColor = c.Border;
+        _upgradeAddress.FlatAppearance.MouseOverBackColor = c.AccentSoft;
         foreach (var button in new[] { _cancel, _archive })
         {
             button.BackColor = c.SurfaceAlt;
