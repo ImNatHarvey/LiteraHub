@@ -11,8 +11,9 @@ public sealed class ProfilePage : ThemedUserControl
     private readonly ScrollHost _surface = new() { Dock = DockStyle.Fill };
     private readonly Label _title = new() { Text = "Profile & Settings", UseMnemonic = false, Dock = DockStyle.Top, Height = 46, TextAlign = ContentAlignment.MiddleLeft };
     private readonly Label _subtitle = new() { Text = "Manage your personal account and security.", Dock = DockStyle.Top, Height = 28 };
-    private readonly TableLayoutPanel _grid = new() { Dock = DockStyle.None, ColumnCount = 2, RowCount = 1, Height = 548, Padding = new Padding(16, 12, 16, 12) };
-    private readonly FlowLayoutPanel _left = Column(), _right = Column();
+    private readonly Panel _grid = new() { Height = 548 };
+    private readonly List<(ThemedSectionCard Card, Control[] Fields)> _sections = new();
+    private bool _arranging;
     private readonly Label[] _identity = Enumerable.Range(0, 5).Select(_ => ViewValue()).ToArray();
     private readonly Label _keyStatus = Caption("Recovery passkey status", 42);
     private readonly ThemedTextField _current = Secret(), _next = Secret(), _confirm = Secret(), _keyPassword = Secret();
@@ -27,28 +28,24 @@ public sealed class ProfilePage : ThemedUserControl
     public ProfilePage(IProfileService service)
     {
         _service = service;
-        Padding = new Padding(Space.L);
-        _grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        _grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        _grid.Controls.Add(_left, 0, 0); _grid.Controls.Add(_right, 1, 0);
-        _surface.UseSurfaceBackground();
+        Padding = new Padding(Space.L, Space.L, 0, Space.L);
+        _surface.ReservedRightGutter = Space.L;
         _surface.SetContent(_grid);
         Controls.Add(_surface); Controls.Add(_subtitle); Controls.Add(_title);
-        _left.Controls.Add(Heading("Account Information"));
+        var identityFields = new List<Control>();
         string[] names = { "Username", "Full Name", "Assigned role", "Account ID / Status", "Created" };
         for (int i = 0; i < names.Length; i++)
         {
-            _left.Controls.Add(Caption(names[i])); _left.Controls.Add(_identity[i]);
-            if (i == 0) _left.Controls.Add(_editUsername);
-            if (i == 1) _left.Controls.Add(_editName);
+            identityFields.Add(Caption(names[i])); identityFields.Add(_identity[i]);
+            if (i == 0) identityFields.Add(_editUsername);
+            if (i == 1) identityFields.Add(_editName);
         }
-        _left.Controls.AddRange(new Control[] { Heading("Appearance"), _theme });
-        _right.Controls.AddRange(new Control[] { Heading("Change Password"), FieldCaption(_current, "Current password"), _current, FieldCaption(_next, "New password"), _next, FieldCaption(_confirm, "Confirm new password"), _confirm, _save, Heading("Recovery Passkey"), _keyStatus, FieldCaption(_keyPassword, "Confirm current password"), _keyPassword, _generate });
-        _grid.Height = 548;
+        AddSection("Account Information", IconChar.UserAlt, identityFields.ToArray());
+        AddSection("Appearance", IconChar.Palette, _theme);
+        AddSection("Change Password", IconChar.Lock, FieldCaption(_current, "Current password"), _current, FieldCaption(_next, "New password"), _next, FieldCaption(_confirm, "Confirm new password"), _confirm, _save);
+        AddSection("Recovery Passkey", IconChar.Key, _keyStatus, FieldCaption(_keyPassword, "Confirm current password"), _keyPassword, _generate);
         _surface.Resize += (_, _) => ResizeContent();
-        _grid.Resize += (_, _) => { ResizeColumn(_left); ResizeColumn(_right); };
-        _surface.RefreshMetrics();
-        _left.Resize += (_, _) => ResizeColumn(_left); _right.Resize += (_, _) => ResizeColumn(_right);
+        _grid.Resize += (_, _) => ResizeContent();
         _editUsername.Click += async (_, _) =>
         {
             if (_busy || !_ready) return;
@@ -88,21 +85,72 @@ public sealed class ProfilePage : ThemedUserControl
             field.TextChanged += (_, _) => SetError(field, "");
         WireWheel(_grid);
         SetBusy(false);
-        Load += async (_, _) => { ResizeContent(); ResizeColumn(_left); ResizeColumn(_right); await RefreshProfileAsync(); };
+        Load += async (_, _) => { ResizeContent(); await RefreshProfileAsync(); };
     }
-    private static FlowLayoutPanel Column() => new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = new Padding(0, 0, 8, 0), AutoScroll = false };
+    private void AddSection(string title, IconChar icon, params Control[] fields)
+    {
+        var heading = Heading(title);
+        var card = new ThemedSectionCard(heading, icon);
+        card.AddFields(fields);
+        _sections.Add((card, fields));
+        _grid.Controls.Add(card);
+    }
     private static Label Caption(string text, int height = 22) => new() { Text = text, UseMnemonic = false, Height = height, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 0, 0, 1) };
     private static Label Heading(string text) { var label = Caption(text, 24); label.Tag = "heading"; return label; }
     private static ThemedTextField Secret() => new() { ShowPasswordToggle = true, Height = 36, MaxLength = 72, Margin = new Padding(0, 0, 0, 3) };
     private static CenteredIconButton Action(string text, IconChar icon) => new() { Text = text, IconChar = icon, IconSize = 18, Height = 40, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Margin = new Padding(0, 3, 0, 3) };
-    private static void ResizeColumn(FlowLayoutPanel column)
-    { foreach (Control control in column.Controls) control.Width = Math.Max(80, column.ClientSize.Width - control.Margin.Horizontal); }
     private void ResizeContent()
     {
-        if (_surface.ClientSize.Height <= 0) return;
-        _grid.Height = Math.Clamp(_surface.ClientSize.Height, 548, 600);
-        _surface.RefreshMetrics();
-
+        if (_arranging || _sections.Count != 4 || _surface.ClientSize.Width <= Space.L) return;
+        _arranging = true;
+        try
+        {
+            int w = Math.Max(1, _surface.ClientSize.Width - Space.L);
+            var layout = new ResponsiveSectionLayout(w);
+            int gap = layout.Gap, pad = layout.Padding;
+            // Three independent columns: account, password, appearance/recovery.
+            // Retain a narrower fallback for high DPI or smaller content hosts.
+            int columns = w >= 3 * 280 + 2 * gap ? 3 : w >= 2 * 280 + gap ? 2 : 1;
+            int usable = w - (columns - 1) * gap;
+            int ColumnX(int c) => c * gap + usable * c / columns;
+            int ColumnWidth(int c) => usable * (c + 1) / columns - usable * c / columns;
+            int[][] order = columns == 3
+                ? new[] { new[] { 0 }, new[] { 2 }, new[] { 1, 3 } }
+                : columns == 2
+                    ? new[] { new[] { 0, 2 }, new[] { 1, 3 } }
+                    : new[] { new[] { 0, 1, 2, 3 } };
+            int end = 0;
+            for (int c = 0; c < columns; c++)
+            {
+                int width = ColumnWidth(c);
+                int inner = Math.Max(1, width - 2 * pad);
+                int top = 0;
+                foreach (int i in order[c])
+                {
+                    var section = _sections[i];
+                    int y = section.Card.ArrangeHeading(width, pad);
+                    foreach (Control field in section.Fields)
+                    {
+                        int height = field.Height;
+                        if (field == _keyStatus)
+                            height = Math.Max(42, TextRenderer.MeasureText(field.Text, Theme.Body,
+                                new Size(inner, int.MaxValue), TextFormatFlags.WordBreak).Height + 8);
+                        else if (field is Label label && _captions.Values.Any(entry => entry.Caption == label))
+                            height = Math.Max(22, TextRenderer.MeasureText(label.Text, Theme.Body,
+                                new Size(inner, int.MaxValue), TextFormatFlags.WordBreak).Height + 2);
+                        field.SetBounds(pad, y + field.Margin.Top, inner, height);
+                        y += height + field.Margin.Vertical;
+                    }
+                    int cardHeight = y + pad;
+                    section.Card.SetBounds(ColumnX(c), top, width, cardHeight);
+                    top += cardHeight + gap;
+                }
+                end = Math.Max(end, top - gap);
+            }
+            _grid.Height = Math.Max(1, end + 2);
+            _surface.RefreshMetrics();
+        }
+        finally { _arranging = false; }
     }
     private static Label ViewValue()
     {
@@ -126,6 +174,7 @@ public sealed class ProfilePage : ThemedUserControl
         field.HasValidationError = error.Length > 0;
         entry.Caption.Text = entry.Name + (error.Length > 0 ? " • " + error : "");
         entry.Caption.ForeColor = error.Length > 0 ? Theme.Colors.Danger : Theme.Colors.Text;
+        ResizeContent();
     }
     private void WireWheel(Control control)
     {
@@ -152,7 +201,7 @@ public sealed class ProfilePage : ThemedUserControl
             _generate.Text = _hasKey ? "Regenerate Passkey" : "Generate Passkey";
         }
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); if (!IsDisposed) { _ready = false; _identity[0].Text = "Unable to load account information."; } }
-        finally { if (!IsDisposed) SetBusy(_busy); }
+        finally { if (!IsDisposed) { SetBusy(_busy); ResizeContent(); } }
     }
     private bool Required(ThemedTextField field) { bool valid = !string.IsNullOrEmpty(field.Text); SetError(field, valid ? "" : "Required"); return valid; }
     private void Alert(string text) => ThemedMessageDialog.ShowAlert(FindForm(), "Profile & Settings", text, true);
@@ -208,13 +257,13 @@ public sealed class ProfilePage : ThemedUserControl
     {
         base.ApplyTheme(); var c = Theme.Colors;
         _title.Font = Theme.Title; _title.ForeColor = c.Text; _subtitle.Font = Theme.Body; _subtitle.ForeColor = c.TextMuted;
-        _grid.BackColor = _left.BackColor = _right.BackColor = c.Surface;
-        foreach (var label in _left.Controls.OfType<Label>().Concat(_right.Controls.OfType<Label>()))
+        _grid.BackColor = c.Background;
+        foreach (var label in _sections.SelectMany(section => section.Fields).OfType<Label>())
         { label.ForeColor = c.Text; label.Font = Equals(label.Tag, "heading") || Equals(label.Tag, "value") ? Theme.BodyStrong : Theme.Body; if (Equals(label.Tag, "value")) { label.BackColor = c.SurfaceAlt; label.Invalidate(); } }
         foreach (var b in new[] { _save, _generate, _theme, _editUsername, _editName })
         { b.Font = Theme.BodyStrong; b.BackColor = c.Accent; b.ForeColor = b.IconColor = c.OnAccent; b.FlatAppearance.BorderSize = 0; b.FlatAppearance.MouseOverBackColor = ControlPaint.Light(c.Accent, .08f); b.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(c.Accent, .08f); }
         _theme.Text = Theme.GetDisplayName(Theme.Preset) + " · Change Theme";
         foreach (var field in _captions.Keys.ToArray()) SetError(field, _captions[field].Error);
-        ResizeColumn(_left); ResizeColumn(_right);
+        ResizeContent();
     }
 }

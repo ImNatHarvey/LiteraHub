@@ -18,13 +18,14 @@ public sealed class RoleDetailsPage : ThemedUserControl
     private readonly RoleDefinition? _role;
     private readonly HashSet<RolePermission> _original;
     private readonly Dictionary<RolePermission, CheckBox> _checks = new();
-    private readonly List<(Panel Panel, Label Heading, CheckBox[] Checks)> _groups = new();
+    private readonly List<(ThemedSectionCard Panel, Label Heading, CheckBox[] Checks)> _groups = new();
     private readonly TableLayoutPanel _root = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
     private readonly DetailsPageHeader _header = new() { Dock = DockStyle.Fill };
     private readonly DetailsActionFooter _footer = new() { Dock = DockStyle.Fill, UseStudentSizing = true };
     private readonly ScrollHost _scroll = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
     private readonly Panel _content = new();
-    private readonly Panel _info = new();
+    private readonly ThemedSectionCard _info;
+    private readonly ThemedSectionCard _descriptionCard;
     private readonly Label _infoHeading = new() { Text = "Role Information" };
     private readonly Label _nameLabel = new() { Text = "Role name" };
     private readonly Label _descriptionLabel = new() { Text = "Description" };
@@ -54,16 +55,27 @@ public sealed class RoleDetailsPage : ThemedUserControl
         bool admin = string.Equals(actorRole, RoleNames.Admin, StringComparison.OrdinalIgnoreCase);
         _canManageTarget = role is null || admin || (!role.IsSystem &&
             !string.Equals(role.Name, actorRole, StringComparison.OrdinalIgnoreCase) && _original.IsSubsetOf(_grantable));
-        Dock = DockStyle.Fill; Padding = new Padding(Space.L);
+        Dock = DockStyle.Fill; Padding = new Padding(Space.L, Space.L, 0, Space.L);
+        _header.AlignBackToRightEdge = true;
+        _root.ColumnCount = 2;
         _root.Margin = Padding.Empty; _root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Space.L));
         _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 98));
         _root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         _root.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
         _root.Controls.Add(_header, 0, 0); _root.Controls.Add(_scroll, 0, 1); _root.Controls.Add(_footer, 0, 2);
+        _root.SetColumnSpan(_scroll, 2);
         Controls.Add(_root);
+        _scroll.ReservedRightGutter = Space.L;
         _scroll.SetContent(_content);
-        _content.Controls.AddRange(new Control[] { _info, _permissionHeading, _all, _clear, _count });
-        _info.Controls.AddRange(new Control[] { _infoHeading, _nameLabel, _descriptionLabel, _name, _description, _viewName, _viewDescription, _type, _notice });
+        _infoHeading.TextAlign = ContentAlignment.MiddleLeft;
+        _descriptionLabel.TextAlign = ContentAlignment.MiddleLeft;
+        _info = new ThemedSectionCard(_infoHeading, IconChar.LayerGroup);
+        _descriptionCard = new ThemedSectionCard(_descriptionLabel, IconChar.FileAlt);
+        _viewDescription.TextAlign = ContentAlignment.TopLeft;
+        _content.Controls.AddRange(new Control[] { _info, _descriptionCard, _permissionHeading, _all, _clear, _count });
+        _info.AddFields(_nameLabel, _name, _viewName, _type, _notice);
+        _descriptionCard.AddFields(_description, _viewDescription);
         _footer.Controls.AddRange(new Control[] { _cancel, _primary, _archive, _delete });
         _footer.Configure(_delete, _archive, _primary, _cancel, () => _role is null);
         _primary.Paint += (_, e) => PaintActionIcon(e, _primary, 0);
@@ -71,8 +83,8 @@ public sealed class RoleDetailsPage : ThemedUserControl
         _delete.Paint += (_, e) => PaintActionIcon(e, _delete, 2);
         foreach (var group in new[] { ("Books", "Books"), ("Authors", "Authors"), ("Categories", "Categories"), ("Students", "Students"), ("Users", "Users"), ("Roles", "Roles & Permissions"), ("BorrowReturn", "Borrow & Return"), ("Reports", "Reports"), ("ActivityLog", "Activity Log") })
         {
-            var panel = new Panel(); var heading = new Label { Text = group.Item2, UseMnemonic = false };
-            panel.Controls.Add(heading); var boxes = new List<CheckBox>();
+            var heading = new Label { Text = group.Item2, UseMnemonic = false, TextAlign = ContentAlignment.MiddleLeft };
+            var panel = new ThemedSectionCard(heading, IconChar.Lock); var boxes = new List<CheckBox>();
             foreach (var permission in Enum.GetValues<RolePermission>().Where(p => p.ToString().StartsWith(group.Item1, StringComparison.Ordinal)))
             {
                 var suffix = permission.ToString()[group.Item1.Length..];
@@ -91,6 +103,7 @@ public sealed class RoleDetailsPage : ThemedUserControl
         _archive.Click += async (_, _) => await ChangeStatusAsync();
         _delete.Click += async (_, _) => await DeleteAsync();
         _content.Resize += (_, _) => Arrange();
+        _scroll.Resize += (_, _) => Arrange();
         Disposed += (_, _) => _validation.Dispose();
         Restore(); SetEditing(role is null); ApplyTheme(); Arrange();
     }
@@ -217,29 +230,47 @@ public sealed class RoleDetailsPage : ThemedUserControl
         _arranging = true;
         try
         {
-            int w = Math.Max(1, _content.Width - 8); int x = 0; int gap = 12; int col = Math.Max(1, (w - 3 * gap) / 2);
-            _info.SetBounds(x, 12, w, 194); _infoHeading.SetBounds(gap, 8, w - 24, 26);
-            _nameLabel.SetBounds(gap, 40, col, 24); _name.SetBounds(gap, 66, col, 40); _viewName.Bounds = _name.Bounds;
-            _descriptionLabel.SetBounds(gap * 2 + col, 40, col, 24); _description.SetBounds(gap * 2 + col, 66, col, 116); _viewDescription.Bounds = _description.Bounds;
-            _type.SetBounds(gap, 110, col, 30); _notice.SetBounds(gap, 150, col, 34);
-            _permissionHeading.SetBounds(x, 216, Math.Max(1, w - 254), 48);
-            _all.SetBounds(x + w - 248, 216, 128, 48); _clear.SetBounds(x + w - 112, 216, 112, 48);
-            _count.SetBounds(x, 264, w, 28);
-            int columns = w >= 620 ? 2 : 1; int groupWidth = Math.Max(1, (w - (columns - 1) * gap) / columns); int y = 296;
+            int w = Math.Max(1, _scroll.ClientSize.Width - Space.L);
+            var layout = new ResponsiveSectionLayout(w);
+            int gap = layout.Gap, pad = layout.Padding;
+            bool stacked = w < 650;
+            int first = stacked ? w : (w - gap) / 2;
+            int second = stacked ? w : w - gap - first;
+            int topHeight = pad * 2 + 164;
+            _info.SetBounds(0, 0, first, topHeight);
+            _descriptionCard.SetBounds(stacked ? 0 : first + gap, stacked ? topHeight + gap : 0, second, topHeight);
+            int fy = _info.ArrangeHeading(first, pad);
+            int fw = Math.Max(1, first - 2 * pad);
+            _nameLabel.SetBounds(pad, fy, fw, 22);
+            _name.SetBounds(pad, fy + 24, fw, 40); _viewName.Bounds = _name.Bounds;
+            _type.SetBounds(pad, fy + 68, fw, 28);
+            _notice.SetBounds(pad, fy + 98, fw, 34);
+            int dy = _descriptionCard.ArrangeHeading(second, pad);
+            _description.SetBounds(pad, dy, Math.Max(1, second - 2 * pad), topHeight - dy - pad);
+            _viewDescription.Bounds = _description.Bounds;
+            int toolbarY = (stacked ? topHeight * 2 + gap : topHeight) + gap;
+            _permissionHeading.SetBounds(0, toolbarY, Math.Max(1, w - 254), 48);
+            _all.SetBounds(w - 248, toolbarY, 128, 48); _clear.SetBounds(w - 112, toolbarY, 112, 48);
+            _count.SetBounds(0, toolbarY + 48, w, 28);
+            int columns = w >= 1200 ? 3 : w >= 660 ? 2 : 1;
+            int usable = w - (columns - 1) * gap;
+            int y = toolbarY + 80;
             for (int i = 0; i < _groups.Count; i += columns)
             {
-                int height = 40;
-                foreach (var group in _groups.Skip(i).Take(columns)) height = Math.Max(height, 54 + ((group.Checks.Length + 1) / 2) * 34);
+                int height = pad * 2 + 32;
+                foreach (var group in _groups.Skip(i).Take(columns)) height = Math.Max(height, pad * 2 + 32 + ((group.Checks.Length + 1) / 2) * 34);
                 for (int j = 0; j < columns && i + j < _groups.Count; j++)
                 {
-                    var group = _groups[i + j]; group.Panel.SetBounds(x + j * (groupWidth + gap), y, groupWidth, height);
-                    group.Heading.SetBounds(12, 12, groupWidth - 24, 32);
-                    int cw = Math.Max(1, (groupWidth - 24) / 2);
-                    for (int k = 0; k < group.Checks.Length; k++) group.Checks[k].SetBounds(12 + (k % 2) * cw, 48 + k / 2 * 34, cw, 32);
+                    int gx = j * gap + j * usable / columns;
+                    int gw = (j + 1) * usable / columns - j * usable / columns;
+                    var group = _groups[i + j]; group.Panel.SetBounds(gx, y, gw, height);
+                    int gy = group.Panel.ArrangeHeading(gw, pad);
+                    int cw = Math.Max(1, (gw - 2 * pad) / 2);
+                    for (int k = 0; k < group.Checks.Length; k++) group.Checks[k].SetBounds(pad + (k % 2) * cw, gy + k / 2 * 34, cw, 32);
                 }
                 y += height + gap;
             }
-            _content.Height = y + 4; _scroll.RefreshMetrics();
+            _content.Height = Math.Max(1, y - gap + 2); _scroll.RefreshMetrics();
         }
         finally { _arranging = false; }
     }
@@ -248,9 +279,9 @@ public sealed class RoleDetailsPage : ThemedUserControl
         base.ApplyTheme(); var c = Theme.Colors;
         _root.BackColor = _footer.BackColor = c.Background; _content.BackColor = c.Background; _info.BackColor = c.Surface;
         foreach (var label in new[] { _infoHeading, _nameLabel, _descriptionLabel, _type, _notice, _permissionHeading, _count }) { label.ForeColor = c.Text; label.Font = Theme.Body; }
-        _infoHeading.Font = _permissionHeading.Font = Theme.BodyStrong; _notice.ForeColor = _count.ForeColor = c.TextMuted;
+        _infoHeading.Font = _descriptionLabel.Font = _permissionHeading.Font = Theme.BodyStrong; _notice.ForeColor = _count.ForeColor = c.TextMuted;
         foreach (var label in new[] { _viewName, _viewDescription }) { label.BackColor = c.SurfaceAlt; label.ForeColor = c.Text; label.Font = Theme.BodyStrong; label.Invalidate(); }
-        foreach (var group in _groups) { group.Panel.BackColor = c.SurfaceAlt; group.Heading.ForeColor = c.Text; group.Heading.Font = Theme.BodyStrong; foreach (var box in group.Checks) { box.BackColor = c.SurfaceAlt; box.ForeColor = c.Text; box.Font = Theme.Body; box.Invalidate(); } }
+        foreach (var group in _groups) { group.Panel.BackColor = c.Surface; group.Heading.ForeColor = c.Text; group.Heading.Font = Theme.BodyStrong; foreach (var box in group.Checks) { box.BackColor = c.Surface; box.ForeColor = c.Text; box.Font = Theme.Body; box.Invalidate(); } }
         foreach (var button in new Button[] { _primary, _archive, _delete, _cancel, _all, _clear })
         {
             button.Font = Theme.BodyStrong; button.BackColor = c.Surface; button.ForeColor = c.Text;
