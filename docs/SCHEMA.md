@@ -1,6 +1,6 @@
 # LiteraHub — Database Schema and Inventory Rules
 
-**Updated:** 2026-11-26  
+**Updated:** 2026-11-27  
 **Authoritative source:** `LiteraHub.Data/Bootstrap/Migrations.cs` and live SQL Server schema.
 
 > This is documentation, **not a migration**. Do not modify already-applied migrations in place. New fields/audit tables require new versioned migrations after examining current database constraints.
@@ -75,14 +75,24 @@ Status is constrained to `Borrowed`/`Returned`; `ReturnDate` may be null. The in
 | V8 | Users.RecoveryFailures INT default 0, RecoveryLockedUntil DATETIME2 NULL; RecoveryAudit |
 | V9 | Users.IsSystemOwner BIT default 0; filtered unique index UX_Users_OneSystemOwner; composite UQ_Users_OwnerIdentity; SystemOwnerAnchor composite FK; immutable anchor trigger |
 | V10 | OwnerAuthorizationState singleton and OwnerAuthorizationAudit |
+| V11 | Structured PSGC student address fields and consistency constraint |
 
 Users retain UserId, Username, PasswordHash, RoleId, nullable StudentId, MustChangePassword, IsActive and CreatedAt. RecoveryAudit: AuditId, nullable UserId and ActorUserId, EventType, CreatedAt. OwnerAuthorizationState: SingletonId, Failures, LockedUntil. OwnerAuthorizationAudit: AuditId, ActorUserId, TargetUserId, OwnerUserId, RequestedAction, Outcome, CreatedAt. Audit identifiers are historical records, not necessarily live user references.
 
-V9 existing database upgrade identifies UserId 1 only if active with active system Admin role; otherwise fails closed. During actual upgrade the original account was inactive and was explicitly restored after read-only verification; migration then passed user testing. Fresh installation seeds owner after migrations. Never silently promote another account or reset the database. Owner anchor protects identity, role and active state; app checks protect other personal/security fields. V10 checks permissions and approval within the account mutation transaction; failed attempts commit before mutation. Five failures/15 minutes for recovery and owner authorization. Hash secrets only, never log plaintext. Source: F5.6.1 Migrations.cs and DelegationGuard.cs. Verify live schema and final pushed source before F6.
+V9 existing database upgrade identifies UserId 1 only if active with active system Admin role; otherwise fails closed. During actual upgrade the original account was inactive and was explicitly restored after read-only verification; migration then passed user testing. Fresh installation seeds owner after migrations. Never silently promote another account or reset the database. Owner anchor protects identity, role and active state; app checks protect other personal/security fields. V10 checks permissions and approval within the account mutation transaction; failed attempts commit before mutation. Five failures/15 minutes for recovery and owner authorization. Hash secrets only, never log plaintext. Source: F5.6.1 Migrations.cs and DelegationGuard.cs. Verify live schema before any further migrations.
 
-## Proposed PSGC change impact — not yet migrated
+## PSGC address persistence — V11 (pushed)
 
-The current Student schema has **no separately verified columns** for PSGC Region/Province/City/Barangay codes. Offline PSGC is intended first as a selection/validation dataset; storing full hierarchical codes would require a planned migration and backwards-compatible import/mapping. Always store official codes as strings, handle independent cities/NCR, and keep ZIP independent (PSGC is not a postal-code authority). Existing free-text addresses must not be deleted or overwritten by snapshot upgrades.
+| Column | SQL type |
+|---|---|
+| RegionCode | VARCHAR(10) NULL |
+| ProvinceCode | VARCHAR(10) NULL |
+| CityMunicipalityCode | VARCHAR(10) NULL |
+| BarangayCode | VARCHAR(10) NULL |
+| RegionName | NVARCHAR(100) NULL |
+| BarangayName | NVARCHAR(100) NULL |
+
+`CK_Students_PsgcAddress` allows fully legacy null structured fields or complete structured addresses (province optional), with ten-digit code format checks. Service validates hierarchy against embedded PSA catalog. Existing Municipality and CityProvince names remain; province-free addresses store region name in CityProvince. ZIP is independent. Existing migrations remain immutable. Next migration version is V12 if needed, after checking current source.
 
 ## Migration checklist
 

@@ -1,9 +1,9 @@
 # LiteraHub — File Map and Responsibilities
 
-**Updated:** 2026-11-26  
+**Updated:** 2026-11-27  
 **Repository:** https://github.com/ImNatHarvey/LiteraHub
 
-## Four-project solution
+## Application projects and test project
 
 ```text
 LiteraHub.slnx
@@ -16,7 +16,10 @@ LiteraHub.WinForms/       # WinForms program, pages, controls, themes, assets
   Pages/                  # four catalog pages and detail editors
   Controls/               # themed and shared UI components
   Theming/                # palettes, preferences
- docs/                    # eight maintained Markdown documents
+LiteraHub.Tests/          # F7.0.1 test project (pending acceptance)
+.github/workflows/        # build.yml
+tools/psgc/               # converter
+docs/                     # eight maintained Markdown documents
 ```
 
 ## Important exact source paths
@@ -68,7 +71,20 @@ LiteraHub.WinForms/       # WinForms program, pages, controls, themes, assets
 | `LiteraHub.Data/Repositories/ProfileRepository.cs`, `RecoveryRepository.cs`, `StaffUserRepository.cs`, `DelegationGuard.cs`, `RoleRepository.cs` | Transactional security persistence and enforcement |
 | `LiteraHub.Data/Bootstrap/Migrations.cs`, `DatabaseBootstrapper.cs` | Automatic schema upgrades and seed |
 
-F6 planned: local versioned PSGC data and reusable searchable address selectors; exact paths and persistence to be decided after inspecting Student code. F7–F9 remain pending.
+## F5.7–F7.0.1 source map
+
+| Path | Responsibility |
+|---|---|
+| `LiteraHub.WinForms/Controls/ThemedSectionCard.cs`, `ResponsiveSectionLayout.cs`, `ResponsiveDetailsPair.cs` | Responsive detail cards |
+| `LiteraHub.WinForms/Controls/ModuleSummaryCard.cs`, `ModuleSummaryCardStrip.cs`, `CatalogToolbarExtras.cs` | Summary metrics and list toolbar layout |
+| `LiteraHub.WinForms/Controls/ThemedPsgcPicker.cs` | Searchable geographic picker |
+| `LiteraHub.Services/Students/PsgcCatalog.cs` | Embedded immutable geographic catalog |
+| `LiteraHub.Services/Resources/PSGC/psgc.json`, `SOURCE.md` | Offline data and attribution |
+| `tools/psgc/convert_psgc.py` | Reproducible dataset conversion |
+| `LiteraHub.Tests/LiteraHub.Tests.csproj`, `PasswordPolicyTests.cs`, `PsgcCatalogTests.cs` | Initial automated tests (pending acceptance) |
+| `.github/workflows/build.yml` | Windows CI restore/build/test (pending acceptance) |
+
+F7.0.2–F9 remain pending.
 
 ## Docs to maintain
 

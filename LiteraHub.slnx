@@ -17,4 +17,5 @@
   <Project Path="LiteraHub.Data/LiteraHub.Data.csproj" />
   <Project Path="LiteraHub.Services/LiteraHub.Services.csproj" />
   <Project Path="LiteraHub.WinForms/LiteraHub.WinForms.csproj" />
+  <Project Path="LiteraHub.Tests/LiteraHub.Tests.csproj" />
 </Solution>

@@ -1,6 +1,6 @@
 # LiteraHub — Architecture and Decisions Log
 
-**Updated:** 2026-11-26
+**Updated:** 2026-11-27
 
 ## Foundation and boundaries
 
@@ -8,7 +8,7 @@
 - Core owns interfaces/models/security contracts; Services owns business rules and permissions; Data owns SQL/migrations; WinForms owns presentation; `Program.cs` composes dependencies manually.
 - Staff Admin/Librarian accounts are distinct from Student borrower records. Borrower portal is outside the required MVP.
 - Soft archive is the default; hard-delete requires permission, dependency safeguards, and database referential integrity.
-- Developer-approved desktop targets are **1280×720 and 1920×1080**, with sidebar expanded/collapsed independently. Portrait 390×844 is retired from acceptance testing.
+- Developer-approved desktop targets are **1280×720 and maximized actual display size**, with sidebar expanded/collapsed independently. Portrait 390×844 is retired from acceptance testing.
 - Nine existing theme presets remain supported; no unexpected horizontal scrollbars, native-white artifacts, inaccessible focus, or clipped dialogs.
 
 ## Refactor status
@@ -32,19 +32,24 @@ The owner is an account identity, not an assignable role. The underlying Admin r
 
 Use shared composition, theme-aware dialogs, and no native white caption bars. The compact shell is 1280×720; maximize fills the available display rather than forcing fixed 1920×1080. Preserve all nine themes.
 
-## PSGC address selection — proposed design, not implemented
+## F5.7–F5.8 — Responsive cards (completed)
 
-- Prefer a **versioned, locally bundled, read-only JSON dataset** converted from the Philippine Statistics Authority PSGC publication, rather than an online API call on every dropdown selection.
-- PSA reference: https://psa.gov.ph/classification/psgc/ ; PSA API: https://psa.gov.ph/classifications-api/psgc . As of this planning checkpoint, 3Q 2026 / 30 September 2026 is the latest verified publication; validate the exact source file and license/attribution before packaging.
-- Order: Region → Province (if applicable) → City/Municipality → Barangay. Handle NCR, independent cities and BARMM/other special geography without assuming every city has a province.
-- Store PSGC codes as strings (retain leading zeros); display names from versioned snapshot; normalize text for search but do not guess official codes. Existing Student service requires `HouseNo`, `Street`, `Municipality`, `CityProvince`, `ZipCode`. PSGC does **not** automatically supply reliable ZIP codes; keep ZIP editable/validated separately.
-- Decide how to persist province, region and barangay without destroying current addresses before migration. Preserve ability to view/edit older free-text student records. Dataset upgrades must not silently reassign saved addresses.
+- F5.7: reusable `ThemedSectionCard`, `ResponsiveSectionLayout`, `ResponsiveDetailsPair`; responsive Book, Student, Author, Category, User and Role details; expandable galleries; three-column Profile & Settings; avatar hover-to-edit. Outer card borders align with actions.
+- F5.8: reusable `ModuleSummaryCard` and `ModuleSummaryCardStrip` for Books, Authors, Categories, Students, Users and Roles. Metrics use loaded records, meaningful cards integrate with existing filters, and shared `CatalogToolbarExtras` restores toolbar height and spacing. Circulation metrics deferred until actual loans exist.
+- Compact 1280×720 and maximized actual display size; independent sidebar state; nine themes. Existing CRUD, permissions and database retained.
+
+## F6 — PSGC offline address integration (completed)
+
+- PSA 2026-Q3 dataset embedded in Services under `LiteraHub.PSGC.Data`: 18 regions, 82 provinces, 1,642 cities/municipalities, 14 Manila districts and 42,010 barangays. See `LiteraHub.Services/Resources/PSGC/SOURCE.md` for attribution and conversion details.
+- Searchable cascading Region → Province (where applicable) → City/Municipality → Barangay; independent cities, NCR and province-free localities supported. ZIP remains manual.
+- V11 adds nullable structured address codes and names; legacy addresses are preserved until deliberately converted. Final UI removes ordinary address preview and legacy captions while preserving conversion and error handling.
+- Converter is tracked at `tools/psgc/convert_psgc.py`; solution reference is repository-relative.
 
 ## Inventory and next modules
 
 - `AvailableCopies=0` is valid with positive Total. Do not infer active loans from `Total - Available`.
 - Loan policy previously recorded as 7 days, max 3 active loans, no fines, damaged books not borrowable; verify seeded settings and current policy before implementing.
-- Next order: Login foundation/carousel → secure reset → offline PSGC → Borrow & Return → Reports → final academic acceptance.
+- Next order: F7.0.1 tests/CI → F7.0.2 security → F7.0.3 audit → F7.1 circulation → F7.2 library configuration → F8 operational modules → F9 release.
 
 ## Source, testing and commits
 
