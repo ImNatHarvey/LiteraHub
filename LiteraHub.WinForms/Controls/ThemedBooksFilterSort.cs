@@ -38,8 +38,24 @@ public sealed class ThemedBooksFilterSort : IconButton
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    public void SetStatusIndex(int index)
+    {
+        if (index is < 0 or > 2) throw new ArgumentOutOfRangeException(nameof(index));
+        if (StatusIndex == index) return;
+        StatusIndex = index;
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public void ClearStatus() { StatusIndex = 0; SelectionChanged?.Invoke(this, EventArgs.Empty); }
     public void ClearCondition() { ConditionIndex = 0; SelectionChanged?.Invoke(this, EventArgs.Empty); }
+    public void SetAvailabilityIndex(int index)
+    {
+        if (index is < 0 or > 2) throw new ArgumentOutOfRangeException(nameof(index));
+        if (AvailabilityIndex == index) return;
+        AvailabilityIndex = index;
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public void ClearAvailability() { AvailabilityIndex = 0; SelectionChanged?.Invoke(this, EventArgs.Empty); }
     public void RemoveCategory(string name)
     {

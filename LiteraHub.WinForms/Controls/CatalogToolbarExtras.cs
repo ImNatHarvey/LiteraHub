@@ -338,13 +338,14 @@ public static class CatalogToolbarChrome
 
             if (status.Parent == root)
             {
+                var position = root.GetPositionFromControl(status);
                 root.Controls.Remove(status);
                 var holder = new CatalogStatusHost(status);
                 status.Dock = DockStyle.Fill;
                 status.Margin = Padding.Empty;
                 holder.Controls.Add(status, 0, 0);
                 holder.Controls.Add(chips, 0, 1);
-                root.Controls.Add(holder, 0, 2);
+                root.Controls.Add(holder, position.Column, position.Row);
                 chips.Tag = holder;
                 holder.ApplyPalette();
             }
@@ -364,8 +365,15 @@ public static class CatalogToolbarChrome
         var items = filters.ToArray();
         bool hasFilters = items.Length > 0;
         chips.Visible = hasFilters;
-        if (root.RowStyles.Count > 2)
-            root.RowStyles[2].Height = hasFilters ? 61 : 36;
+        if (chips.Tag is CatalogStatusHost holder && holder.Parent == root)
+        {
+            int row = root.GetPositionFromControl(holder).Row;
+            if (row >= 0 && row < root.RowStyles.Count)
+            {
+                root.RowStyles[row].SizeType = SizeType.Absolute;
+                root.RowStyles[row].Height = hasFilters ? 61 : 36;
+            }
+        }
         chips.Set(items, clear);
     }
 }

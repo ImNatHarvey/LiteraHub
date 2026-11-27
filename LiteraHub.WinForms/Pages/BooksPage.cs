@@ -17,6 +17,7 @@ namespace LiteraHub.WinForms.Pages;
 
 public sealed class BooksPage : ThemedUserControl
 {
+    private readonly ModuleSummaryCardStrip _moduleCards = new();
     private readonly IBookService _books;
     private readonly IPermissionService _permissions;
 
@@ -35,7 +36,7 @@ public sealed class BooksPage : ThemedUserControl
     {
         Dock = DockStyle.Fill,
         ColumnCount = 1,
-        RowCount = 5,
+        RowCount = 6,
         Margin = Padding.Empty,
         Padding = Padding.Empty
     };
@@ -407,10 +408,13 @@ public sealed class BooksPage : ThemedUserControl
         _pagination.Controls.Add(_pageControls, 1, 0);
 
         _layout.Controls.Add(_heading, 0, 0);
-        _layout.Controls.Add(_toolbar, 0, 1);
-        _layout.Controls.Add(_status, 0, 2);
-        _layout.Controls.Add(_loading, 0, 3);
-        _layout.Controls.Add(_pagination, 0, 4);
+        _layout.RowStyles.Insert(1, new RowStyle(SizeType.Absolute, ModuleSummaryCardStrip.PreferredRowHeight));
+        ConfigureSummaryCards();
+        _layout.Controls.Add(_moduleCards, 0, 1);
+        _layout.Controls.Add(_toolbar, 0, 2);
+        _layout.Controls.Add(_status, 0, 3);
+        _layout.Controls.Add(_loading, 0, 4);
+        _layout.Controls.Add(_pagination, 0, 5);
 
         _host.Controls.Add(_layout);
         Controls.Add(_host);
@@ -832,6 +836,7 @@ public sealed class BooksPage : ThemedUserControl
             return;
 
         _loadingData = true;
+        _moduleCards.SetLoading();
         _loadFailed = false;
 
         _emptyState.Visible = false;
@@ -850,6 +855,7 @@ public sealed class BooksPage : ThemedUserControl
                 return;
 
             _allBooks = books.ToList();
+            UpdateSummaryCards();
             _filter.SetCategories(_allBooks
                 .SelectMany(b => b.CategoryNames.Count > 0 ? b.CategoryNames.AsEnumerable() : new[] { b.CategoryName })
                 .Where(n => !string.IsNullOrWhiteSpace(n))
@@ -863,6 +869,7 @@ public sealed class BooksPage : ThemedUserControl
                 return;
 
             _loadFailed = true;
+            _moduleCards.SetUnavailable();
             System.Diagnostics.Debug.WriteLine("Books load failed: " + ex);
             _status.Text = "Unable to load books. Please retry.";
         }
@@ -1200,5 +1207,31 @@ public sealed class BooksPage : ThemedUserControl
         }
 
         base.Dispose(disposing);
+    }
+
+    private void ConfigureSummaryCards()
+    {
+        _moduleCards.Add("Total Book Titles", FontAwesome.Sharp.IconChar.Book, CanManage ? (Action)(() => { _filter.SetStatusIndex(0); _filter.SetAvailabilityIndex(0); }) : null);
+        _moduleCards.Add("Available Copies", FontAwesome.Sharp.IconChar.Book, CanManage ? (Action)(() => _filter.SetAvailabilityIndex(_filter.AvailabilityIndex == 1 ? 0 : 1)) : null);
+        _moduleCards.Add("Active Titles", FontAwesome.Sharp.IconChar.CheckCircle, CanManage ? (Action)(() => _filter.SetStatusIndex(_filter.StatusIndex == 1 ? 0 : 1)) : null);
+        _moduleCards.Add("Out-of-Stock Titles", FontAwesome.Sharp.IconChar.Archive, CanManage ? (Action)(() => _filter.SetAvailabilityIndex(_filter.AvailabilityIndex == 2 ? 0 : 2)) : null);
+        _filter.SelectionChanged += (_, _) => SyncSummarySelection();
+    }
+
+    private void UpdateSummaryCards()
+    {
+        _moduleCards.SetValues(_allBooks.Count, _allBooks.Sum(x => (long)x.AvailableCopies), _allBooks.Count(x => x.IsActive), _allBooks.Count(x => x.AvailableCopies == 0));
+        SyncSummarySelection();
+    }
+
+    private void SyncSummarySelection()
+    {
+        if (!CanManage) { _moduleCards.SetSelected(); return; }
+        var selected = new List<int>();
+        if (_filter.StatusIndex == 0 && _filter.AvailabilityIndex == 0) selected.Add(0);
+        if (_filter.StatusIndex == 1) selected.Add(2);
+        if (_filter.AvailabilityIndex == 1) selected.Add(1);
+        if (_filter.AvailabilityIndex == 2) selected.Add(3);
+        _moduleCards.SetSelected(selected.ToArray());
     }
 }

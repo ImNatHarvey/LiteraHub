@@ -11,12 +11,13 @@ namespace LiteraHub.WinForms.Pages;
 /// <summary>Admin-only role directory using the shared catalog grid, empty states and themed selectors.</summary>
 public sealed class RolesPage : ThemedUserControl
 {
+    private readonly ModuleSummaryCardStrip _moduleCards = new();
     private readonly IRoleService _service;
     private readonly IPermissionService _permissions;
     private readonly string _actorRole;
 
     private readonly Panel _host = new() { Dock = DockStyle.Fill };
-    private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(Space.L), Margin = Padding.Empty };
+    private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(Space.L), Margin = Padding.Empty };
     public event EventHandler? BackRequested;
     private readonly DetailsPageHeader.DetailsBackButton _back = new() { Text = "Back to Users", Dock = DockStyle.Right, Width = 160 };
     private readonly Label _title = new() { Text = "Roles & Permissions", UseMnemonic = false, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
@@ -64,11 +65,14 @@ public sealed class RolesPage : ThemedUserControl
         heading.Controls.Add(_title); heading.Controls.Add(_back); _back.BringToFront();
         _layout.Controls.Add(heading, 0, 0);
         _back.Click += (_, _) => { if (!_busy) BackRequested?.Invoke(this, EventArgs.Empty); };
-        _layout.Controls.Add(_toolbar, 0, 1);
-        _layout.Controls.Add(_summary, 0, 2);
+        _layout.RowStyles.Insert(1, new RowStyle(SizeType.Absolute, ModuleSummaryCardStrip.PreferredRowHeight));
+        ConfigureSummaryCards();
+        _layout.Controls.Add(_moduleCards, 0, 1);
+        _layout.Controls.Add(_toolbar, 0, 2);
+        _layout.Controls.Add(_summary, 0, 3);
         _results.Controls.Add(_grid);
         _results.Controls.Add(_empty);
-        _layout.Controls.Add(_results, 0, 3);
+        _layout.Controls.Add(_results, 0, 4);
         _pagination.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         _pagination.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300));
         _pagination.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -76,7 +80,7 @@ public sealed class RolesPage : ThemedUserControl
         foreach (Control c in _pageButtons.Controls) c.Margin = new Padding(4, 8, 0, 0);
         _pagination.Controls.Add(_count, 0, 0);
         _pagination.Controls.Add(_pageButtons, 1, 0);
-        _layout.Controls.Add(_pagination, 0, 4);
+        _layout.Controls.Add(_pagination, 0, 5);
         _host.Controls.Add(_layout);
         Controls.Add(_host);
 
@@ -262,6 +266,7 @@ public sealed class RolesPage : ThemedUserControl
     {
         if (_busy) return;
         _busy = true;
+        _moduleCards.SetLoading();
         _failed = false;
         _add.Enabled = false;
         _empty.Visible = false;
@@ -272,6 +277,7 @@ public sealed class RolesPage : ThemedUserControl
             if (IsDisposed || Disposing) return;
             _all.Clear();
             _all.AddRange(users);
+            UpdateSummaryCards();
             _loaded = true;
             Filter();
         }
@@ -280,6 +286,7 @@ public sealed class RolesPage : ThemedUserControl
             if (IsDisposed || Disposing) return;
             System.Diagnostics.Debug.WriteLine(ex);
             _failed = true;
+            _moduleCards.SetUnavailable();
             _summary.Text = "Unable to load roles.";
             _empty.Configure(CatalogEmptyKind.LoadFailed, false, "role", "roles");
             _empty.Visible = true;
@@ -410,5 +417,25 @@ public sealed class RolesPage : ThemedUserControl
         _grid.CellBorderStyle = DataGridViewCellBorderStyle.None;
         _grid.ClearRowSelection();
         _grid.Invalidate();
+    }
+
+    private void ConfigureSummaryCards()
+    {
+        _moduleCards.Add("Total Roles", FontAwesome.Sharp.IconChar.ShieldAlt, () => _filter.SetStatusIndex(0));
+        _moduleCards.Add("Active", FontAwesome.Sharp.IconChar.CheckCircle, () => _filter.SetStatusIndex(_filter.StatusIndex == 1 ? 0 : 1));
+        _moduleCards.Add("Archived", FontAwesome.Sharp.IconChar.Archive, () => _filter.SetStatusIndex(_filter.StatusIndex == 2 ? 0 : 2));
+        _moduleCards.Add("Custom Roles", FontAwesome.Sharp.IconChar.ShieldAlt);
+        _filter.SelectionChanged += (_, _) => SyncSummarySelection();
+    }
+
+    private void UpdateSummaryCards()
+    {
+        _moduleCards.SetValues(_all.Count, _all.Count(x => x.IsActive), _all.Count(x => !x.IsActive), _all.Count(x => !x.IsSystem));
+        SyncSummarySelection();
+    }
+
+    private void SyncSummarySelection()
+    {
+        _moduleCards.SetSelected(_filter.StatusIndex);
     }
 }

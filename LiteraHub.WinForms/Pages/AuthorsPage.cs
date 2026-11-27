@@ -17,6 +17,7 @@ namespace LiteraHub.WinForms.Pages;
 
 public sealed class AuthorsPage : ThemedUserControl
 {
+    private readonly ModuleSummaryCardStrip _moduleCards = new();
     private readonly IBookService _books;
     private readonly IAuthorCreationService _creation;
     private readonly IPermissionService _permissions;
@@ -29,7 +30,7 @@ public sealed class AuthorsPage : ThemedUserControl
     {
         Dock = DockStyle.Fill,
         ColumnCount = 1,
-        RowCount = 5,
+        RowCount = 6,
         Margin = Padding.Empty
     };
 
@@ -523,10 +524,13 @@ public sealed class AuthorsPage : ThemedUserControl
         _pagination.Controls.Add(_pageControls, 1, 0);
 
         _layout.Controls.Add(_heading, 0, 0);
-        _layout.Controls.Add(_toolbar, 0, 1);
-        _layout.Controls.Add(_status, 0, 2);
-        _layout.Controls.Add(_loading, 0, 3);
-        _layout.Controls.Add(_pagination, 0, 4);
+        _layout.RowStyles.Insert(1, new RowStyle(SizeType.Absolute, ModuleSummaryCardStrip.PreferredRowHeight));
+        ConfigureSummaryCards();
+        _layout.Controls.Add(_moduleCards, 0, 1);
+        _layout.Controls.Add(_toolbar, 0, 2);
+        _layout.Controls.Add(_status, 0, 3);
+        _layout.Controls.Add(_loading, 0, 4);
+        _layout.Controls.Add(_pagination, 0, 5);
 
         _host.Controls.Add(_layout);
         Controls.Add(_host);
@@ -790,6 +794,7 @@ public sealed class AuthorsPage : ThemedUserControl
             return;
 
         _loadingData = true;
+        _moduleCards.SetLoading();
         _loadFailed = false;
         _emptyState.Visible = false;
         _add.Enabled = false;
@@ -808,12 +813,14 @@ public sealed class AuthorsPage : ThemedUserControl
                 .ToArray();
 
             _hasLoadedData = true;
+            UpdateSummaryCards();
             RenderRows();
         }
         catch (Exception ex)
         {
             if (IsDisposed || Disposing) return;
             _loadFailed = true;
+            _moduleCards.SetUnavailable();
             System.Diagnostics.Debug.WriteLine("Authors load failed: " + ex);
             _status.Text = "Unable to load authors. Please retry.";
         }
@@ -1159,5 +1166,25 @@ public sealed class AuthorsPage : ThemedUserControl
 
         _grid.ApplyTheme();
         _grid.ClearRowSelection();
+    }
+
+    private void ConfigureSummaryCards()
+    {
+        _moduleCards.Add("Total Authors", FontAwesome.Sharp.IconChar.Users, CanManage ? (Action)(() => { if (CanManage) _filter.SetStatusIndex(0); }) : null);
+        _moduleCards.Add("Active", FontAwesome.Sharp.IconChar.CheckCircle, CanManage ? (Action)(() => _filter.SetStatusIndex(_filter.StatusIndex == 1 ? 0 : 1)) : null);
+        _moduleCards.Add("Archived", FontAwesome.Sharp.IconChar.Archive, CanManage ? (Action)(() => _filter.SetStatusIndex(_filter.StatusIndex == 2 ? 0 : 2)) : null);
+        _filter.SelectionChanged += (_, _) => SyncSummarySelection();
+    }
+
+    private void UpdateSummaryCards()
+    {
+        _moduleCards.SetValues(_authors.Length, _authors.Count(x => x.IsActive), _authors.Count(x => !x.IsActive));
+        SyncSummarySelection();
+    }
+
+    private void SyncSummarySelection()
+    {
+        if (!CanManage) { _moduleCards.SetSelected(); return; }
+        _moduleCards.SetSelected(_filter.StatusIndex);
     }
 }

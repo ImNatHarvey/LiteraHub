@@ -12,10 +12,11 @@ namespace LiteraHub.WinForms.Pages;
 /// <summary>Student directory, styled and navigated consistently with Books.</summary>
 public sealed class StudentsPage : ThemedUserControl
 {
+    private readonly ModuleSummaryCardStrip _moduleCards = new();
     private readonly IStudentService _service;
     private readonly IPermissionService _permissions;
     private readonly Panel _host = new() { Dock = DockStyle.Fill };
-    private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(Space.L), Margin = Padding.Empty };
+    private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(Space.L), Margin = Padding.Empty };
     private readonly TableLayoutPanel _toolbar = new() { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
     private readonly Label _heading = new() { Text = "Students", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
     private readonly ThemedSearchBox _search = new() { Dock = DockStyle.Fill, Margin = new Padding(0, 4, 8, 4), Placeholder = "Search student ID, name, email or address..." };
@@ -72,8 +73,11 @@ public sealed class StudentsPage : ThemedUserControl
         _pagination.Controls.Add(_pageInfo, 0, 0);
         _pagination.Controls.Add(_pageControls, 1, 0);
         _layout.Controls.Add(_heading, 0, 0);
-        _layout.Controls.Add(_toolbar, 0, 1);
-        _layout.Controls.Add(_status, 0, 2);
+        _layout.RowStyles.Insert(1, new RowStyle(SizeType.Absolute, ModuleSummaryCardStrip.PreferredRowHeight));
+        ConfigureSummaryCards();
+        _layout.Controls.Add(_moduleCards, 0, 1);
+        _layout.Controls.Add(_toolbar, 0, 2);
+        _layout.Controls.Add(_status, 0, 3);
         _resultsHost.Controls.Add(_grid);
         _resultsHost.Controls.Add(_emptyState);
         _emptyState.BringToFront();
@@ -100,8 +104,8 @@ public sealed class StudentsPage : ThemedUserControl
                 _filter.ClearFilters();
             }
         };
-        _layout.Controls.Add(_resultsHost, 0, 3);
-        _layout.Controls.Add(_pagination, 0, 4);
+        _layout.Controls.Add(_resultsHost, 0, 4);
+        _layout.Controls.Add(_pagination, 0, 5);
         _host.Controls.Add(_layout);
         Controls.Add(_host);
         AddColumn("StudentNo", "Student ID", nameof(Student.StudentNo), 14, 110);
@@ -199,6 +203,7 @@ public sealed class StudentsPage : ThemedUserControl
     {
         if (_loading) return;
         _loading = true;
+        _moduleCards.SetLoading();
         _loadFailed = false;
         _emptyState.Visible = false;
         _add.Enabled = false;
@@ -209,6 +214,7 @@ public sealed class StudentsPage : ThemedUserControl
             if (IsDisposed || Disposing) return;
             _all.Clear();
             _all.AddRange(students);
+            UpdateSummaryCards();
             _hasLoadedData = true;
             Filter();
         }
@@ -216,6 +222,7 @@ public sealed class StudentsPage : ThemedUserControl
         {
             if (IsDisposed || Disposing) return;
             _loadFailed = true;
+            _moduleCards.SetUnavailable();
             System.Diagnostics.Debug.WriteLine("Students load failed: " + ex);
             _status.Text = "Unable to load students. Please retry.";
         }
@@ -500,5 +507,24 @@ public sealed class StudentsPage : ThemedUserControl
         _grid.CellBorderStyle = DataGridViewCellBorderStyle.None;
         _grid.ClearRowSelection();
         _grid.Invalidate();
+    }
+
+    private void ConfigureSummaryCards()
+    {
+        _moduleCards.Add("Total Students", FontAwesome.Sharp.IconChar.GraduationCap, () => _filter.SetStatusIndex(0));
+        _moduleCards.Add("Active", FontAwesome.Sharp.IconChar.CheckCircle, () => _filter.SetStatusIndex(_filter.StatusIndex == 1 ? 0 : 1));
+        _moduleCards.Add("Archived", FontAwesome.Sharp.IconChar.Archive, () => _filter.SetStatusIndex(_filter.StatusIndex == 2 ? 0 : 2));
+        _filter.SelectionChanged += (_, _) => SyncSummarySelection();
+    }
+
+    private void UpdateSummaryCards()
+    {
+        _moduleCards.SetValues(_all.Count, _all.Count(x => x.IsActive), _all.Count(x => !x.IsActive));
+        SyncSummarySelection();
+    }
+
+    private void SyncSummarySelection()
+    {
+        _moduleCards.SetSelected(_filter.StatusIndex);
     }
 }

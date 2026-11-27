@@ -12,6 +12,7 @@ namespace LiteraHub.WinForms.Pages;
 /// <summary>Admin-only staff directory using the shared catalog grid, empty states and themed selectors.</summary>
 public sealed class UsersPage : ThemedUserControl
 {
+    private readonly ModuleSummaryCardStrip _moduleCards = new();
     private readonly IStaffUserService _service;
     private readonly IPermissionService _permissions;
     private readonly string _actorRole;
@@ -21,7 +22,7 @@ public sealed class UsersPage : ThemedUserControl
     private RolesPage? _rolesPage;
     private readonly CenteredIconButton _manageRoles = new() { Text = "Manage Roles", Dock = DockStyle.Right, Width = 160, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, IconChar = IconChar.ShieldAlt, IconSize = 20, ImageAlign = ContentAlignment.MiddleCenter, TextAlign = ContentAlignment.MiddleCenter, TextImageRelation = TextImageRelation.ImageBeforeText };
     private readonly Panel _host = new() { Dock = DockStyle.Fill };
-    private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(Space.L), Margin = Padding.Empty };
+    private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(Space.L), Margin = Padding.Empty };
     private readonly Label _title = new() { Text = "Users", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
     private readonly TableLayoutPanel _toolbar = new() { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
     private readonly ThemedSearchBox _search = new() { Dock = DockStyle.Fill, Margin = new Padding(0, 4, 8, 4), Placeholder = "Search username, full name or user ID..." };
@@ -68,11 +69,14 @@ public sealed class UsersPage : ThemedUserControl
         _layout.Controls.Add(heading, 0, 0);
         _manageRoles.Visible = _roles is not null && _permissions.Can(RolePermission.RolesView);
         _manageRoles.Click += (_, _) => OpenRoles();
-        _layout.Controls.Add(_toolbar, 0, 1);
-        _layout.Controls.Add(_summary, 0, 2);
+        _layout.RowStyles.Insert(1, new RowStyle(SizeType.Absolute, ModuleSummaryCardStrip.PreferredRowHeight));
+        ConfigureSummaryCards();
+        _layout.Controls.Add(_moduleCards, 0, 1);
+        _layout.Controls.Add(_toolbar, 0, 2);
+        _layout.Controls.Add(_summary, 0, 3);
         _results.Controls.Add(_grid);
         _results.Controls.Add(_empty);
-        _layout.Controls.Add(_results, 0, 3);
+        _layout.Controls.Add(_results, 0, 4);
         _pagination.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         _pagination.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300));
         _pagination.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -80,7 +84,7 @@ public sealed class UsersPage : ThemedUserControl
         foreach (Control c in _pageButtons.Controls) c.Margin = new Padding(4, 8, 0, 0);
         _pagination.Controls.Add(_count, 0, 0);
         _pagination.Controls.Add(_pageButtons, 1, 0);
-        _layout.Controls.Add(_pagination, 0, 4);
+        _layout.Controls.Add(_pagination, 0, 5);
         _host.Controls.Add(_layout);
         Controls.Add(_host);
 
@@ -281,6 +285,7 @@ public sealed class UsersPage : ThemedUserControl
     {
         if (_busy) return;
         _busy = true;
+        _moduleCards.SetLoading();
         _failed = false;
         _add.Enabled = false;
         _empty.Visible = false;
@@ -291,6 +296,7 @@ public sealed class UsersPage : ThemedUserControl
             if (IsDisposed || Disposing) return;
             _all.Clear();
             _all.AddRange(users);
+            UpdateSummaryCards();
             _filter.SetRoleNames(_all.Select(u => u.DisplayRole));
             RefreshChips();
             _loaded = true;
@@ -301,6 +307,7 @@ public sealed class UsersPage : ThemedUserControl
             if (IsDisposed || Disposing) return;
             System.Diagnostics.Debug.WriteLine(ex);
             _failed = true;
+            _moduleCards.SetUnavailable();
             _summary.Text = "Unable to load staff accounts.";
             _empty.Configure(CatalogEmptyKind.LoadFailed, false, "user", "users");
             _empty.Visible = true;
@@ -435,5 +442,25 @@ public sealed class UsersPage : ThemedUserControl
         _grid.CellBorderStyle = DataGridViewCellBorderStyle.None;
         _grid.ClearRowSelection();
         _grid.Invalidate();
+    }
+
+    private void ConfigureSummaryCards()
+    {
+        _moduleCards.Add("Total Accounts", FontAwesome.Sharp.IconChar.Users, () => _filter.SetStatusIndex(0));
+        _moduleCards.Add("Active", FontAwesome.Sharp.IconChar.CheckCircle, () => _filter.SetStatusIndex(_filter.StatusIndex == 1 ? 0 : 1));
+        _moduleCards.Add("Archived", FontAwesome.Sharp.IconChar.Archive, () => _filter.SetStatusIndex(_filter.StatusIndex == 2 ? 0 : 2));
+        _moduleCards.Add("Password Change Required", FontAwesome.Sharp.IconChar.Key);
+        _filter.SelectionChanged += (_, _) => SyncSummarySelection();
+    }
+
+    private void UpdateSummaryCards()
+    {
+        _moduleCards.SetValues(_all.Count, _all.Count(x => x.IsActive), _all.Count(x => !x.IsActive), _all.Count(x => x.MustChangePassword));
+        SyncSummarySelection();
+    }
+
+    private void SyncSummarySelection()
+    {
+        _moduleCards.SetSelected(_filter.StatusIndex);
     }
 }

@@ -17,6 +17,7 @@ namespace LiteraHub.WinForms.Pages;
 
 public sealed class CategoriesPage : ThemedUserControl
 {
+    private readonly ModuleSummaryCardStrip _moduleCards = new();
     private readonly ICategoryService _categories;
     private readonly IBookService _books;
     private readonly Panel _host = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
@@ -28,7 +29,7 @@ public sealed class CategoriesPage : ThemedUserControl
     {
         Dock = DockStyle.Fill,
         ColumnCount = 1,
-        RowCount = 5,
+        RowCount = 6,
         Margin = Padding.Empty,
         Padding = Padding.Empty
     };
@@ -403,10 +404,13 @@ public sealed class CategoriesPage : ThemedUserControl
         _pagination.Controls.Add(_pageControls, 1, 0);
 
         _layout.Controls.Add(_heading, 0, 0);
-        _layout.Controls.Add(_toolbar, 0, 1);
-        _layout.Controls.Add(_status, 0, 2);
-        _layout.Controls.Add(_loading, 0, 3);
-        _layout.Controls.Add(_pagination, 0, 4);
+        _layout.RowStyles.Insert(1, new RowStyle(SizeType.Absolute, ModuleSummaryCardStrip.PreferredRowHeight));
+        ConfigureSummaryCards();
+        _layout.Controls.Add(_moduleCards, 0, 1);
+        _layout.Controls.Add(_toolbar, 0, 2);
+        _layout.Controls.Add(_status, 0, 3);
+        _layout.Controls.Add(_loading, 0, 4);
+        _layout.Controls.Add(_pagination, 0, 5);
 
         _host.Controls.Add(_layout);
         Controls.Add(_host);
@@ -867,6 +871,7 @@ public sealed class CategoriesPage : ThemedUserControl
             return;
 
         _loadingData = true;
+        _moduleCards.SetLoading();
         _loadFailed = false;
         _emptyState.Visible = false;
 
@@ -885,6 +890,7 @@ public sealed class CategoriesPage : ThemedUserControl
                 return;
 
             _allCategories = categories.ToList();
+            UpdateSummaryCards();
 
             _hasLoadedData = true;
         }
@@ -894,6 +900,7 @@ public sealed class CategoriesPage : ThemedUserControl
                 return;
 
             _loadFailed = true;
+            _moduleCards.SetUnavailable();
             System.Diagnostics.Debug.WriteLine("Categories load failed: " + ex);
             _status.Text = "Unable to load categories. Please retry.";
         }
@@ -1039,5 +1046,25 @@ public sealed class CategoriesPage : ThemedUserControl
         }
 
         base.Dispose(disposing);
+    }
+
+    private void ConfigureSummaryCards()
+    {
+        _moduleCards.Add("Total Categories", FontAwesome.Sharp.IconChar.Tags, CanManage ? (Action)(() => { if (CanManage) _filterSort.SetStatusIndex(0); }) : null);
+        _moduleCards.Add("Active", FontAwesome.Sharp.IconChar.CheckCircle, CanManage ? (Action)(() => _filterSort.SetStatusIndex(_filterSort.StatusIndex == 1 ? 0 : 1)) : null);
+        _moduleCards.Add("Archived", FontAwesome.Sharp.IconChar.Archive, CanManage ? (Action)(() => _filterSort.SetStatusIndex(_filterSort.StatusIndex == 2 ? 0 : 2)) : null);
+        _filterSort.SelectionChanged += (_, _) => SyncSummarySelection();
+    }
+
+    private void UpdateSummaryCards()
+    {
+        _moduleCards.SetValues(_allCategories.Count, _allCategories.Count(x => x.IsActive), _allCategories.Count(x => !x.IsActive));
+        SyncSummarySelection();
+    }
+
+    private void SyncSummarySelection()
+    {
+        if (!CanManage) { _moduleCards.SetSelected(); return; }
+        _moduleCards.SetSelected(_filterSort.StatusIndex);
     }
 }

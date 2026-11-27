@@ -40,6 +40,14 @@ public sealed class ThemedCatalogFilterSort : IconButton
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    public void SetStatusIndex(int index)
+    {
+        if (index is < 0 or > 2) throw new ArgumentOutOfRangeException(nameof(index));
+        if (StatusIndex == index) return;
+        StatusIndex = index;
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public void ClearStatus() { StatusIndex = 0; SelectionChanged?.Invoke(this, EventArgs.Empty); }
     public void ClearExtra() { ExtraIndex = 0; SelectionChanged?.Invoke(this, EventArgs.Empty); }
     public string[] SortOptions => EnableIdSort

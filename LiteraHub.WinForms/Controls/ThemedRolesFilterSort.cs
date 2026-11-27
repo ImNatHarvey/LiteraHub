@@ -32,6 +32,14 @@ public sealed class ThemedRolesFilterSort : IconButton
     }
 
     public void ClearRole() { RoleIndex = 0; SelectionChanged?.Invoke(this, EventArgs.Empty); }
+    public void SetStatusIndex(int index)
+    {
+        if (index is < 0 or > 2) throw new ArgumentOutOfRangeException(nameof(index));
+        if (StatusIndex == index) return;
+        StatusIndex = index;
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public void ClearStatus() { StatusIndex = 0; SelectionChanged?.Invoke(this, EventArgs.Empty); }
     public string[] SortOptions => new[] { "Name A–Z", "Name Z–A", "Role ID descending", "Role ID" };
 
