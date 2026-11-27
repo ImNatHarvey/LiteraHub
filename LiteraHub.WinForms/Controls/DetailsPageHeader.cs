@@ -56,6 +56,18 @@ public sealed class DetailsPageHeader : TableLayoutPanel
         set => _back.Enabled = value;
     }
 
+    // Opt-in for details pages whose content and footer share the same right edge.
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool AlignBackToRightEdge
+    {
+        get => _back.Margin.Right == 0;
+        set
+        {
+            var margin = _back.Margin;
+            _back.Margin = new Padding(margin.Left, margin.Top, value ? 0 : 2, margin.Bottom);
+        }
+    }
+
     private bool _compactMode;
 
     // Book Editor uses a compact Back column and title on narrow screens.

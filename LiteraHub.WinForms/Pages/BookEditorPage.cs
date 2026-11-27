@@ -1,5 +1,6 @@
 
 using System;
+using FontAwesome.Sharp;
 using System.ComponentModel;
 using System.IO;
 using System.Net.Http;
@@ -25,7 +26,7 @@ public sealed class BookEditorPage : ThemedUserControl
     private readonly TableLayoutPanel _layout = new()
     {
         Dock = DockStyle.Fill,
-        ColumnCount = 1,
+        ColumnCount = 2,
         RowCount = 4,
         Margin = Padding.Empty
     };
@@ -139,6 +140,9 @@ public sealed class BookEditorPage : ThemedUserControl
     private string? _coverPath;
     public event EventHandler? Saved;
 
+    private ThemedSectionCard _bookCard = null!;
+    private ThemedSectionCard _classificationCard = null!;
+    private ThemedSectionCard _inventoryCard = null!;
     private readonly Label _coverLabel;
     private readonly Label _bookSection;
     private readonly Label _classificationSection;
@@ -256,7 +260,8 @@ public sealed class BookEditorPage : ThemedUserControl
                 Padding = new Padding(12, 0, 8, 0)
             };
             _condition = replacement;
-            _content.Controls.Add(replacement);
+            _classificationCard.Controls.Add(replacement);
+            replacement.MouseWheel += HandleWheel;
             previous.Dispose();
             replacement.ApplyTheme();
             replacement.SelectedIndexChanged += (_, _) => RefreshValidationCaptions();
@@ -689,7 +694,8 @@ public sealed class BookEditorPage : ThemedUserControl
         _editing = existing is null;
 
         Dock = DockStyle.Fill;
-        Padding = new Padding(Space.L);
+        Padding = new Padding(Space.L, Space.L, 0, Space.L);
+        _detailsHeader.AlignBackToRightEdge = true;
 
         _detailsHeader.HeadingText = existing is null ? "Add Book" : "View Book";
 
@@ -699,8 +705,8 @@ public sealed class BookEditorPage : ThemedUserControl
 
         _bookSection = MakeLabel("Book Information", true);
         _classificationSection =
-            MakeLabel("Classification", true);
-        _inventorySection = MakeLabel("Inventory", true);
+            MakeLabel("Classification & Authors", true);
+        _inventorySection = MakeLabel("Inventory & Description", true);
 
         _coverLabel = MakeLabel("Cover Preview");
         _isbnLabel = MakeLabel("ISBN");
@@ -728,6 +734,7 @@ public sealed class BookEditorPage : ThemedUserControl
         return new Label
         {
             Text = text,
+            UseMnemonic = false,
             AutoSize = false,
             TextAlign = ContentAlignment.MiddleLeft,
             Tag = section ? "section" : "field"
@@ -736,8 +743,8 @@ public sealed class BookEditorPage : ThemedUserControl
 
     private void BuildLayout()
     {
-        _layout.ColumnStyles.Add(
-            new ColumnStyle(SizeType.Percent, 100));
+        _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Space.L));
 
         _layout.RowStyles.Add(
             new RowStyle(SizeType.Absolute, 56));
@@ -752,31 +759,13 @@ public sealed class BookEditorPage : ThemedUserControl
             new RowStyle(SizeType.Absolute, 60));
 
 
-        _content.Controls.AddRange(new Control[]
-        {
-            _bookSection,
-            _coverLabel,
-            _cover,
-            _isbnLabel,
-            _isbn,
-            _lookup,
-            _titleLabel,
-            _title,
-            _descriptionLabel,
-            _bookDescription,
-            _authorsLabel,
-            _authors,
-            _classificationSection,
-            _categoryLabel,
-            _category,
-            _conditionLabel,
-            _condition,
-            _inventorySection,
-            _totalLabel,
-            _total,
-            _availableLabel,
-            _available
-        });
+        _bookCard = new ThemedSectionCard(_bookSection, IconChar.Book);
+        _classificationCard = new ThemedSectionCard(_classificationSection, IconChar.Tags);
+        _inventoryCard = new ThemedSectionCard(_inventorySection, IconChar.BookOpen);
+        _bookCard.AddFields(_coverLabel, _cover, _isbnLabel, _isbn, _lookup, _titleLabel, _title);
+        _classificationCard.AddFields(_categoryLabel, _category, _conditionLabel, _condition, _authorsLabel, _authors);
+        _inventoryCard.AddFields(_totalLabel, _total, _availableLabel, _available, _descriptionLabel, _bookDescription);
+        _content.Controls.AddRange(new Control[] { _bookCard, _classificationCard, _inventoryCard });
         _actionFooter.Controls.AddRange(new Control[]
         {
             _delete, _archive, _save, _cancelEdit
@@ -791,6 +780,7 @@ public sealed class BookEditorPage : ThemedUserControl
         _layout.Controls.Add(_detailsHeader, 0, 0);
         _layout.SetRowSpan(_detailsHeader, 2);
         _layout.Controls.Add(_viewport, 0, 2);
+        _layout.SetColumnSpan(_viewport, 2);
         _layout.Controls.Add(_actionFooter, 0, 3);
 
         Controls.Add(_layout);
@@ -872,8 +862,11 @@ public sealed class BookEditorPage : ThemedUserControl
         _viewport.MouseWheel += HandleWheel;
         _content.MouseWheel += HandleWheel;
 
-        foreach (Control control in _content.Controls)
-            control.MouseWheel += HandleWheel;
+        foreach (Control card in _content.Controls)
+        {
+            card.MouseWheel += HandleWheel;
+            foreach (Control control in card.Controls) control.MouseWheel += HandleWheel;
+        }
     }
 
     private void PopulateExistingBook()
@@ -967,30 +960,13 @@ public sealed class BookEditorPage : ThemedUserControl
 
             _detailsHeader.CompactMode = portrait;
 
-            int width = _viewport.ClientSize.Width;
-
-            int height = portrait
-                ? ArrangePortrait(width)
-                : ArrangeDesktop(width);
-
-            // Desktop layouts are designed to fit
-            // without scrolling at 1280x720 and above.
-            bool needsScroll =
-                height > _viewport.ClientSize.Height;
-
-            _scrollbar.Visible = needsScroll;
-
-            if (needsScroll)
-            {
-                width = Math.Max(
-                    1,
-                    _viewport.ClientSize.Width -
-                    _scrollbar.Width);
-
-                height = portrait
-                    ? ArrangePortrait(width)
-                    : ArrangeDesktop(width);
-            }
+            // Header, cards and footer share the first column. The scrollbar lives
+            // in the existing outer page gutter and never reduces card width.
+            int gutter = Math.Max(_scrollbar.Width, (int)_layout.ColumnStyles[1].Width);
+            int width = Math.Max(1, Math.Min(_actionFooter.ClientSize.Width,
+                _viewport.ClientSize.Width - gutter));
+            int height = ArrangeCards(width);
+            _scrollbar.Visible = height > _viewport.ClientSize.Height;
 
             _contentHeight = height;
 
@@ -1019,192 +995,67 @@ public sealed class BookEditorPage : ThemedUserControl
         }
     }
 
-    private int ArrangeDesktop(int width)
+    private int ArrangeCards(int width)
     {
-        const int pad = 16;
-        const int gap = 22;
-        int viewportHeight = _viewport.ClientSize.Height;
-        int innerWidth = Math.Max(1, width - pad * 2);
-        int columnWidth = Math.Max(80, (innerWidth - gap) / 2);
-        int leftX = pad;
-        int rightX = pad + columnWidth + gap;
-        // Action buttons now live below the content surface.
-        int fieldBottom = Math.Max(pad, viewportHeight - pad);
-        // Compact *View* mode at 1280x720. The old 6/7px gaps could push
-        // a two-line author field and Description a few pixels past the
-        // viewport, activating the scrollbar even though the page nearly fit.
-        // Editing, wide desktop and portrait retain their own layouts.
-        bool compactView = _existing is not null && !_editing && width < 1200;
-        int labelGap = compactView ? 4 : 6;
-        int fieldGap = compactView ? 4 : 7;
-        bool wide = width >= 1200;
+        var layout = new ResponsiveSectionLayout(width);
+        int pad = layout.Padding;
+        int bookWidth = layout.WidthAt(0, 3);
+        int classificationWidth = layout.WidthAt(1, 3);
+        int inventoryWidth = layout.WidthAt(2, 3);
+        int w = Math.Max(1, bookWidth - 2 * pad);
+        int viewport = _viewport.ClientSize.Height;
+        int fieldGap = 7, labelGap = 5;
+        int a = _bookCard.ArrangeHeading(bookWidth, pad);
+        int b = _classificationCard.ArrangeHeading(classificationWidth, pad);
+        int c = _inventoryCard.ArrangeHeading(inventoryWidth, pad);
 
-        if (wide)
+        _coverLabel.SetBounds(pad, a, w, 19);
+        a += 19 + labelGap;
+        int coverHeight = Math.Clamp(viewport - 255 - (_editing ? 40 : 0), 95, 235);
+        int coverWidth = Math.Min(w, Math.Max(1, (int)Math.Round(coverHeight * .72)));
+        _cover.SetBounds(pad + (w - coverWidth) / 2, a, coverWidth, coverHeight);
+        a += coverHeight + fieldGap;
+        Field(_isbnLabel, _isbn, pad, ref a, w, 36, labelGap, fieldGap);
+        if (_editing)
         {
-            // Wide layout: Book Information and Classification are
-            // stacked in the FIRST column; Description is in the
-            // SECOND column. Avoid the old column reversal.
-            int leftY = pad;
-            int rightY = pad;
-
-            Section(_bookSection, leftX, ref leftY, columnWidth);
-
-            // Keep the large cover, then place Classification
-            // beneath Book Information in the first column.
-            int fixedAfterCover =
-                (19 + labelGap + 36 + fieldGap) + // ISBN
-                (34 + fieldGap) +                 // lookup
-                (19 + labelGap + 36 + fieldGap) + // title
-                33 +                              // classification heading
-                (19 + labelGap + 40 + fieldGap) * 2;
-            int coverHeight = Math.Clamp(
-                fieldBottom - leftY - (19 + labelGap + fieldGap)
-                - fixedAfterCover,
-                85, 230);
-            int coverWidth = Math.Max(55,
-                (int)Math.Round(coverHeight * 0.72));
-
-            Field(_coverLabel, _cover, leftX, ref leftY,
-                coverWidth, coverHeight, labelGap, fieldGap);
-            Field(_isbnLabel, _isbn, leftX, ref leftY,
-                columnWidth, 36, labelGap, fieldGap);
-            _lookup.SetBounds(leftX, leftY, columnWidth, 34);
-            leftY += 34 + fieldGap;
-            Field(_titleLabel, _title, leftX, ref leftY,
-                columnWidth, 36, labelGap, fieldGap);
-            Section(_classificationSection, leftX,
-                ref leftY, columnWidth);
-            Field(_categoryLabel, _category, leftX,
-                ref leftY, columnWidth, 40, labelGap, fieldGap);
-            Field(_conditionLabel, _condition, leftX,
-                ref leftY, columnWidth, 40, labelGap, fieldGap);
-
-            // Second column: Inventory, Authors, and Description.
-            // Description can leave some blank space below it.
-            Section(_inventorySection, rightX,
-                ref rightY, columnWidth);
-            int numberWidth = Math.Max(40, (columnWidth - 12) / 2);
-            int totalY = rightY;
-            int availableY = rightY;
-            Field(_totalLabel, _total, rightX,
-                ref totalY, numberWidth, 40, labelGap, fieldGap);
-            Field(_availableLabel, _available,
-                rightX + numberWidth + 12,
-                ref availableY, numberWidth, 40, labelGap, fieldGap);
-            rightY = Math.Max(totalY, availableY);
-            Field(_authorsLabel, _authors, rightX,
-                ref rightY, columnWidth, ViewAuthorHeight(columnWidth), labelGap, fieldGap);
-            Field(_descriptionLabel, _bookDescription,
-                rightX, ref rightY, columnWidth,
-                Math.Min(280, Math.Max(120, viewportHeight / 3)),
-                labelGap, fieldGap);
-
-            PositionFooterActions();
-            return Math.Max(viewportHeight,
-                Math.Max(leftY, rightY) + pad);
+            _lookup.SetBounds(pad, a, w, 34);
+            a += 34 + fieldGap;
         }
+        else _lookup.Bounds = Rectangle.Empty;
+        Field(_titleLabel, _title, pad, ref a, w, 40, labelGap, fieldGap);
 
-        // Preserve the already-approved 1280x720 arrangement exactly.
-        int bookX = leftX;
-        int classificationX = rightX;
-        int bookY = pad;
-        int classificationY = pad;
+        w = Math.Max(1, classificationWidth - 2 * pad);
+        Field(_categoryLabel, _category, pad, ref b, w, 40, labelGap, fieldGap);
+        Field(_conditionLabel, _condition, pad, ref b, w, 40, labelGap, fieldGap);
+        Field(_authorsLabel, _authors, pad, ref b, w, ViewAuthorHeight(w), labelGap, fieldGap);
 
-        Section(_classificationSection, classificationX,
-            ref classificationY, columnWidth);
-        Field(_categoryLabel, _category, classificationX,
-            ref classificationY, columnWidth, 40, labelGap, fieldGap);
-        Field(_conditionLabel, _condition, classificationX,
-            ref classificationY, columnWidth, 40, labelGap, fieldGap);
-        Section(_inventorySection, classificationX,
-            ref classificationY, columnWidth);
-
-        int numericWidth = Math.Max(40, (columnWidth - 12) / 2);
-        int totalRowY = classificationY;
-        int availableRowY = classificationY;
-        Field(_totalLabel, _total, classificationX,
-            ref totalRowY, numericWidth, 40, labelGap, fieldGap);
-        Field(_availableLabel, _available,
-            classificationX + numericWidth + 12,
-            ref availableRowY, numericWidth, 40, labelGap, fieldGap);
-        classificationY = Math.Max(totalRowY, availableRowY);
-        Field(_authorsLabel, _authors, classificationX,
-            ref classificationY, columnWidth, ViewAuthorHeight(columnWidth), labelGap, fieldGap);
-
-        int descriptionHeight = compactView &&
-            string.IsNullOrWhiteSpace(_existing?.Description)
-            ? 40
-            : Math.Max(compactView ? 40 : 48,
-                fieldBottom - classificationY - 19 - labelGap);
-        Field(_descriptionLabel, _bookDescription,
-            classificationX, ref classificationY, columnWidth,
-            descriptionHeight, labelGap, 0);
-
-        Section(_bookSection, bookX, ref bookY, columnWidth);
-        int afterCoverHeight =
-            (19 + labelGap + 36 + fieldGap) +
-            (34 + fieldGap) +
-            (19 + labelGap + 36 + fieldGap);
-        int coverLabelAndGap = 19 + labelGap + fieldGap;
-        int coverHeight1280 = Math.Max(78,
-            fieldBottom - bookY - coverLabelAndGap - afterCoverHeight);
-        if (compactView)
-            coverHeight1280 = Math.Min(190, coverHeight1280);
-        int coverWidth1280 = Math.Max(55,
-            (int)Math.Round(coverHeight1280 * 0.72));
-
-        Field(_coverLabel, _cover, bookX, ref bookY,
-            coverWidth1280, coverHeight1280, labelGap, fieldGap);
-        Field(_isbnLabel, _isbn, bookX, ref bookY,
-            columnWidth, 36, labelGap, fieldGap);
-        _lookup.SetBounds(bookX, bookY, columnWidth, 34);
-        bookY += 34 + fieldGap;
-        Field(_titleLabel, _title, bookX, ref bookY,
-            columnWidth, 36, labelGap, fieldGap);
-
+        w = Math.Max(1, inventoryWidth - 2 * pad);
+        // Keep the numeric captions readable in compact columns.
+        if (w >= 250)
+        {
+            int numberWidth = (w - 12) / 2;
+            int otherY = c;
+            Field(_totalLabel, _total, pad, ref c, numberWidth, 40, labelGap, fieldGap);
+            Field(_availableLabel, _available, pad + numberWidth + 12, ref otherY, w - numberWidth - 12, 40, labelGap, fieldGap);
+            c = Math.Max(c, otherY);
+        }
+        else
+        {
+            Field(_totalLabel, _total, pad, ref c, w, 40, labelGap, fieldGap);
+            Field(_availableLabel, _available, pad, ref c, w, 40, labelGap, fieldGap);
+        }
+        int descriptionHeight = Math.Max(110, viewport - c - pad - 35);
+        if (layout.Columns < 3) descriptionHeight = Math.Clamp(descriptionHeight, 110, 280);
+        if (_existing is not null && !_editing)
+        {
+            var measured = TextRenderer.MeasureText(_existing.Description ?? "—", Theme.BodyStrong,
+                new Size(Math.Max(1, w - 26), 10000), TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
+            descriptionHeight = Math.Max(descriptionHeight, measured.Height + 16);
+        }
+        Field(_descriptionLabel, _bookDescription, pad, ref c, w, descriptionHeight, labelGap, fieldGap);
         PositionFooterActions();
-        return Math.Max(viewportHeight,
-            Math.Max(bookY, classificationY) + pad);
-    }
-
-    private int ArrangePortrait(int width)
-    {
-        const int pad = 12;
-        int x = pad;
-        int fieldWidth = Math.Max(80, width - pad * 2);
-        int y = pad;
-
-        Section(_bookSection, x, ref y, fieldWidth);
-        Field(_coverLabel, _cover, x, ref y, 88, 124);
-        Field(_isbnLabel, _isbn, x, ref y, fieldWidth, 40);
-        _lookup.SetBounds(x, y, fieldWidth, 36);
-        y += 46;
-        Field(_titleLabel, _title, x, ref y, fieldWidth, 40);
-
-        Section(_classificationSection, x, ref y, fieldWidth);
-        Field(_categoryLabel, _category, x, ref y,
-            fieldWidth, 40);
-        Field(_conditionLabel, _condition, x, ref y,
-            fieldWidth, 40);
-        Section(_inventorySection, x, ref y, fieldWidth);
-
-        int numericWidth = Math.Max(40, (fieldWidth - 12) / 2);
-        int totalY = y;
-        int availableY = y;
-        Field(_totalLabel, _total, x, ref totalY,
-            numericWidth, 40);
-        Field(_availableLabel, _available,
-            x + numericWidth + 12, ref availableY,
-            numericWidth, 40);
-        y = Math.Max(totalY, availableY) + 8;
-
-        Field(_authorsLabel, _authors, x, ref y,
-            fieldWidth, ViewAuthorHeight(fieldWidth));
-        Field(_descriptionLabel, _bookDescription,
-            x, ref y, fieldWidth, 90);
-        y += 8;
-        PositionFooterActions();
-        return y + pad;
+        return layout.Place(new[] { _bookCard, _classificationCard, _inventoryCard },
+            new[] { a + pad, b + pad, c + pad }, viewport);
     }
 
     private void PositionFooterActions()
@@ -1247,10 +1098,17 @@ public sealed class BookEditorPage : ThemedUserControl
                     Math.Max(0, label.Width - 1), Math.Max(0, label.Height - 1));
             };
             _viewValues[key] = label;
-            _content.Controls.Add(label);
+            var card = key switch
+            {
+                "ISBN" or "Title" => _bookCard,
+                "Category" or "Condition" or "Authors" => _classificationCard,
+                _ => _inventoryCard
+            };
+            card.Controls.Add(label);
         }
         _viewValues["ISBN"].Text = _existing.Isbn;
         _viewValues["Title"].Text = _existing.Title;
+        _viewValues["Description"].TextAlign = ContentAlignment.TopLeft;
         _viewValues["Description"].Text = _existing.Description ?? "—";
         // Book.Authors is the complete joined author list returned by the repository.
         // Never replace this with the picker caption (e.g. '5 authors selected').
@@ -1533,18 +1391,6 @@ public sealed class BookEditorPage : ThemedUserControl
         }
     }
 
-    private static void Section(
-        Label label,
-        int x,
-        ref int y,
-        int width)
-    {
-        label.SetBounds(
-            x, y, width, 25);
-
-        y += 33;
-    }
-
     private static void Field(
         Label label,
         Control input,
@@ -1612,22 +1458,23 @@ public sealed class BookEditorPage : ThemedUserControl
         _layout.BackColor = c.Background;
         _detailsHeader.ApplyTheme();
 
-        _viewport.BackColor = c.Surface;
-        _content.BackColor = c.Surface;
+        _viewport.BackColor = c.Background;
+        _content.BackColor = c.Background;
         _actionFooter.BackColor = c.Background;
 
-        foreach (Control control in _content.Controls)
-        {
-            if (control is not Label label)
-                continue;
+        foreach (Control card in _content.Controls)
+            foreach (Control control in card.Controls)
+            {
+                if (control is not Label label)
+                    continue;
 
-            label.BackColor = c.Surface;
-            label.ForeColor = c.Text;
+                label.BackColor = c.Surface;
+                label.ForeColor = c.Text;
 
-            label.Font = Equals(label.Tag, "section")
-                ? Theme.BodyStrong
-                : Theme.Body;
-        }
+                label.Font = Equals(label.Tag, "section")
+                    ? Theme.BodyStrong
+                    : Theme.Body;
+            }
 
         foreach (var overlay in _viewValues.Values)
         {
@@ -1769,7 +1616,12 @@ public sealed class BookEditorPage : ThemedUserControl
                 var destination = new Rectangle(7, 0,
                     Math.Max(1, Width - 7), Math.Max(1, Height));
                 g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                g.DrawImage(_coverImage, destination);
+                double scale = Math.Min((double)destination.Width / _coverImage.Width,
+                    (double)destination.Height / _coverImage.Height);
+                int imageWidth = Math.Max(1, (int)Math.Round(_coverImage.Width * scale));
+                int imageHeight = Math.Max(1, (int)Math.Round(_coverImage.Height * scale));
+                g.DrawImage(_coverImage, new Rectangle(destination.X + (destination.Width - imageWidth) / 2,
+                    destination.Y + (destination.Height - imageHeight) / 2, imageWidth, imageHeight));
                 return;
             }
 

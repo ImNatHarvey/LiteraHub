@@ -37,6 +37,22 @@ public sealed class ScrollHost : ThemedUserControl
     private Control? _content;
     private bool _useSurfaceBackground;
     private bool _updatingMetrics;
+    private int _reservedRightGutter;
+
+    // Optional page gutter outside the content edge, so scrolling never narrows cards.
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public int ReservedRightGutter
+    {
+        get => _reservedRightGutter;
+        set
+        {
+            int width = Math.Max(0, value);
+            if (_reservedRightGutter == width) return;
+            _reservedRightGutter = width;
+            UpdateMetrics();
+        }
+    }
 
     public ScrollHost()
     {
@@ -132,8 +148,9 @@ public sealed class ScrollHost : ThemedUserControl
                     12f * DeviceDpi / 96f))
                 : 0;
 
-            _layout.ColumnStyles[1].Width =
-                scrollbarWidth;
+            int gutter = Math.Max(_reservedRightGutter, scrollbarWidth);
+            _layout.ColumnStyles[1].Width = gutter;
+            _bar.Margin = new Padding(Math.Max(0, gutter - scrollbarWidth), 0, 0, 0);
 
             _bar.Visible = needsScroll;
 

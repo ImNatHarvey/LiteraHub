@@ -1,4 +1,5 @@
 using System;
+using FontAwesome.Sharp;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -24,7 +25,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
     private readonly IStudentService _service;
     private readonly Student? _original;
     private readonly bool _canHardDelete;
-    private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Margin = Padding.Empty, Padding = Padding.Empty };
+    private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 4, Margin = Padding.Empty, Padding = Padding.Empty };
     private readonly DetailsPageHeader _detailsHeader = new() { Dock = DockStyle.Fill };
     private readonly ScrollHost _scroll = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
     private readonly Panel _surface = new() { Margin = Padding.Empty };
@@ -33,14 +34,13 @@ public sealed class StudentDetailsPage : ThemedUserControl
     private readonly Button _archive = new() { FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Text = "" };
     private readonly Button _delete = new() { FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Text = "" };
     private readonly Button _cancel = new() { FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Text = "Cancel", Visible = false };
-    private readonly Button _photoButton = new() { FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Text = "Choose Photo" };
     private readonly AvatarView _avatar = new();
     private readonly Dictionary<string, ThemedTextField> _inputs = new();
     private readonly Dictionary<string, Label> _viewInputs = new();
     private readonly Dictionary<string, (Label Caption, Control Control)> _fields = new();
     private readonly Label _studentHeading = new() { Text = "Student Information" };
     private readonly Label _addressHeading = new() { Text = "Address" };
-    private readonly Label _contactHeading = new() { Text = "Personal & Contact" };
+    private readonly Label _contactHeading = new() { Text = "Personal & Contact", UseMnemonic = false };
     private readonly Button _birthDate = new() { FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, TextAlign = ContentAlignment.MiddleLeft };
     private readonly ThemedFilterDropdown _gender = new(new[] { "Select Gender", "Male", "Female", "Other", "Prefer not to say" })
     {
@@ -58,6 +58,9 @@ public sealed class StudentDetailsPage : ThemedUserControl
     private bool _validationAttempted;
     private bool _arranging;
     private bool _responsive;
+    private ThemedSectionCard _studentCard = null!;
+    private ThemedSectionCard _addressCard = null!;
+    private ThemedSectionCard _contactCard = null!;
 
     public event EventHandler? BackRequested;
 
@@ -71,8 +74,10 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _original = student;
         _editing = student is null;
         Dock = DockStyle.Fill;
-        Padding = new Padding(Space.L);
+        Padding = new Padding(Space.L, Space.L, 0, Space.L);
+        _detailsHeader.AlignBackToRightEdge = true;
         _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Space.L));
         // Shared header occupies the same 56px title row + 42px subtitle row.
         _layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 98));
         _layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
@@ -80,6 +85,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
         _layout.Controls.Add(_detailsHeader, 0, 0);
         _layout.Controls.Add(_scroll, 0, 2);
+        _layout.SetColumnSpan(_scroll, 2);
         _layout.Controls.Add(_actionFooter, 0, 3);
 
         AddInput("StudentNo", "Student ID", 30, student?.StudentNo ?? MakeStudentNumber());
@@ -109,7 +115,23 @@ public sealed class StudentDetailsPage : ThemedUserControl
         UpdateBirthDateCaption();
         _birthDate.Click += (_, _) => OpenBirthDatePicker();
 
-        _surface.Controls.AddRange(new Control[] { _studentHeading, _addressHeading, _contactHeading, _avatar, _photoButton, _viewBirthDate, _viewGender });
+        _studentCard = new ThemedSectionCard(_studentHeading, IconChar.UserGraduate);
+        _addressCard = new ThemedSectionCard(_addressHeading, IconChar.Home);
+        _contactCard = new ThemedSectionCard(_contactHeading, IconChar.UserAlt);
+        _studentCard.AddFields(_avatar);
+        _contactCard.AddFields(_viewBirthDate, _viewGender);
+        foreach (var (key, field) in _fields)
+        {
+            var card = key switch
+            {
+                "StudentNo" or "FirstName" or "MiddleName" or "LastName" => _studentCard,
+                "HouseNo" or "Street" or "Municipality" or "CityProvince" or "ZipCode" => _addressCard,
+                _ => _contactCard
+            };
+            card.AddFields(field.Caption, field.Control);
+            if (_viewInputs.TryGetValue(key, out var view)) card.AddFields(view);
+        }
+        _surface.Controls.AddRange(new Control[] { _studentCard, _addressCard, _contactCard });
         _actionFooter.Controls.AddRange(new Control[] { _delete, _archive, _save, _cancel });
         _actionFooter.Configure(_delete, _archive, _save, _cancel, () => false);
         _scroll.SetContent(_surface);
@@ -140,7 +162,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _cancel.Click += (_, _) => { if (_busy) return; _validation.Clear(); _validationAttempted = false; ResetValidationCaptions(); RestoreOriginal(); SetEditing(false); };
         _archive.Click += async (_, _) => await ToggleActiveAsync();
         _delete.Click += async (_, _) => await DeleteStudentAsync();
-        _photoButton.Click += (_, _) => SelectPhoto();
+        _avatar.EditRequested += (_, _) => SelectPhoto();
         _save.Paint += (_, e) => DrawAction(e, _save, 0);
         _archive.Paint += (_, e) => DrawAction(e, _archive, 1);
         _delete.Paint += (_, e) => DrawAction(e, _delete, 2);
@@ -210,96 +232,60 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _arranging = true;
         try
         {
-            int width = Math.Max(1, _scroll.ClientSize.Width - 12);
-            bool portrait = width < 690;
-            _responsive = portrait;
-            int pad = portrait ? 12 : 16;
-            int gap = 22;
-            int inner = Math.Max(80, width - pad * 2);
-            int columnWidth = portrait ? inner : Math.Max(90, (inner - 2 * gap) / 3);
-            int[] x = portrait ? new[] { pad, pad, pad } : new[] { pad, pad + columnWidth + gap, pad + (columnWidth + gap) * 2 };
-            int startY = 14;
-            int fieldHeight = 40;
-            // At 1280x720, the four Student Information fields plus a large
-            // avatar used to exceed the viewport, forcing an unnecessary bar.
-            // Retain full desktop spacing whenever there is room.
-            int fieldStep = portrait ? 74 : (_scroll.ClientSize.Height < 600 ? 70 : 72);
-            int y1 = startY, y2 = startY, y3 = startY;
-            void Heading(Label label, int left, ref int top)
-            {
-                label.SetBounds(left, top, columnWidth, 26);
-                top += 31;
-            }
-            void Field(string key, int left, ref int top)
-            {
-                var field = _fields[key];
-                field.Caption.SetBounds(left, top, columnWidth, 19);
-                field.Control.SetBounds(left, top + 27, columnWidth, fieldHeight);
-                if (_viewInputs.TryGetValue(key, out var view))
-                {
-                    view.Bounds = field.Control.Bounds;
-                    if (!_editing || key == "StudentNo") view.BringToFront();
-                }
-                top += fieldStep;
-            }
-            if (portrait)
-            {
-                Heading(_studentHeading, x[0], ref y1);
-                _avatar.SetBounds(x[0] + (columnWidth - 100) / 2, y1, 100, 100);
-                y1 += 108;
-                _photoButton.SetBounds(x[0], y1, columnWidth, 32);
-                y1 += 43;
-                foreach (var key in new[] { "StudentNo", "FirstName", "MiddleName", "LastName", "BirthDate", "Gender" }) Field(key, x[0], ref y1);
-                y2 = y1 + 7;
-                Heading(_addressHeading, x[0], ref y2);
-                foreach (var key in new[] { "HouseNo", "Street", "Municipality", "CityProvince", "ZipCode" }) Field(key, x[0], ref y2);
-                y3 = y2 + 7;
-                Heading(_contactHeading, x[0], ref y3);
-                foreach (var key in new[] { "MobileNo", "LandlineNo", "Email" }) Field(key, x[0], ref y3);
-            }
-            else
-            {
-                Heading(_studentHeading, x[0], ref y1);
-                int avatarSize = width >= 1300 ? 148 : width >= 1150 ? 120 : 78;
-                // Budget space for heading, photo button, four inputs and the
-                // bottom padding. The ScrollHost still scrolls if the actual
-                // available viewport is too short (e.g. high-DPI small display).
-                // Photo button is hidden in View mode; do not reserve its
-                // 33px row there. That unused space caused the 1280px scrollbar.
-                int photoRow = _editing ? 33 : 0;
-                int maxAvatarThatFits = _scroll.ClientSize.Height -
-                    (startY + 31 + 4 + photoRow + 4 * fieldStep + 14);
-                avatarSize = Math.Min(avatarSize, Math.Max(78, maxAvatarThatFits));
-                _avatar.SetBounds(x[0] + (columnWidth - avatarSize) / 2, y1, avatarSize, avatarSize);
-                y1 += avatarSize + 4;
-                if (_editing)
-                {
-                    _photoButton.SetBounds(x[0], y1, columnWidth, 28);
-                    y1 += 33;
-                }
-                else
-                {
-                    _photoButton.Bounds = Rectangle.Empty;
-                }
-                foreach (var key in new[] { "StudentNo", "FirstName", "MiddleName", "LastName" }) Field(key, x[0], ref y1);
+            // Reserve the outer gutter for scrolling without narrowing the cards.
+            int gutter = Math.Max(0, _scroll.ClientSize.Width - _actionFooter.ClientSize.Width);
+            _scroll.ReservedRightGutter = gutter;
+            int width = Math.Max(1, _scroll.ClientSize.Width - gutter);
+            int viewport = _scroll.ClientSize.Height;
 
-                Heading(_addressHeading, x[1], ref y2);
-                foreach (var key in new[] { "HouseNo", "Street", "Municipality", "CityProvince", "ZipCode" }) Field(key, x[1], ref y2);
-                Heading(_contactHeading, x[2], ref y3);
-                foreach (var key in new[] { "BirthDate", "Gender", "MobileNo", "LandlineNo", "Email" }) Field(key, x[2], ref y3);
+            int ArrangeCards(int width)
+            {
+                var layout = new ResponsiveSectionLayout(width);
+                _responsive = layout.Columns == 1;
+                int pad = layout.Padding;
+                int studentWidth = layout.WidthAt(0, 3);
+                int addressWidth = layout.WidthAt(1, 3);
+                int contactWidth = layout.WidthAt(2, 3);
+                int w = Math.Max(1, studentWidth - 2 * pad);
+                int step = viewport < 600 ? 67 : 72;
+                int a = _studentCard.ArrangeHeading(studentWidth, pad);
+                int b = _addressCard.ArrangeHeading(addressWidth, pad);
+                int c = _contactCard.ArrangeHeading(contactWidth, pad);
+                void Field(string key, ref int top)
+                {
+                    var field = _fields[key];
+                    field.Caption.SetBounds(pad, top, w, 19);
+                    field.Control.SetBounds(pad, top + 24, w, 40);
+                    if (_viewInputs.TryGetValue(key, out var view))
+                    {
+                        view.Bounds = field.Control.Bounds;
+                        if (!_editing || key == "StudentNo") view.BringToFront();
+                    }
+                    top += step;
+                }
+                int desiredAvatar = width >= 1300 ? 148 : width >= 1150 ? 120 : 78;
+                int maxAvatar = viewport - a - pad - 4 * step - 8;
+                int avatarSize = Math.Max(1, Math.Min(w, Math.Min(desiredAvatar, Math.Max(78, maxAvatar))));
+                _avatar.SetBounds(pad + (w - avatarSize) / 2, a, avatarSize, avatarSize);
+                a += avatarSize + 6;
+                foreach (var key in new[] { "StudentNo", "FirstName", "MiddleName", "LastName" }) Field(key, ref a);
+                w = Math.Max(1, addressWidth - 2 * pad);
+                foreach (var key in new[] { "HouseNo", "Street", "Municipality", "CityProvince", "ZipCode" }) Field(key, ref b);
+                w = Math.Max(1, contactWidth - 2 * pad);
+                foreach (var key in new[] { "BirthDate", "Gender", "MobileNo", "LandlineNo", "Email" }) Field(key, ref c);
+                _viewBirthDate.Bounds = _birthDate.Bounds;
+                _viewGender.Bounds = _gender.Bounds;
+                _viewBirthDate.BringToFront();
+                _viewGender.BringToFront();
+                return layout.Place(new[] { _studentCard, _addressCard, _contactCard },
+                    new[] { a + pad, b + pad, c + pad }, viewport);
             }
-            // The content surface contains fields only. Buttons live in the
-            // dedicated footer beneath it, matching the Books editor.
-            int contentBottom = Math.Max(y1, Math.Max(y2, y3)) + 14;
-            int targetHeight = Math.Max(contentBottom, _scroll.ClientSize.Height);
+
+            int height = ArrangeCards(width);
+            int targetHeight = Math.Max(height, viewport);
             if (_surface.Height != targetHeight) _surface.Height = targetHeight;
             _scroll.RefreshMetrics();
-            _viewBirthDate.Bounds = _birthDate.Bounds;
-            _viewGender.Bounds = _gender.Bounds;
-            _viewBirthDate.BringToFront();
-            _viewGender.BringToFront();
             PositionFooterButtons();
-            // The shared DetailsPageHeader owns title font and theme styling.
             _save.Invalidate(); _archive.Invalidate(); _delete.Invalidate();
         }
         finally { _arranging = false; }
@@ -408,7 +394,8 @@ public sealed class StudentDetailsPage : ThemedUserControl
             _viewGender.BringToFront();
         }
 
-        _photoButton.Visible = editing;
+        _avatar.Editable = editing;
+        _toolTip.SetToolTip(_avatar, editing ? "Change student photo" : null);
         _save.AccessibleName = editing ? "Save Student" : "Edit Student";
         // Match Book Editor: the three action buttons retain their positions
         // and remain visible for an existing record in View and Edit.
@@ -717,7 +704,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
         var c = Theme.Colors;
         _layout.BackColor = c.Background;
         _detailsHeader.ApplyTheme();
-        _surface.BackColor = c.Surface;
+        _surface.BackColor = c.Background;
         _actionFooter.BackColor = c.Background;
         foreach (var section in new[] { _studentHeading, _addressHeading, _contactHeading })
         {
@@ -752,7 +739,7 @@ public sealed class StudentDetailsPage : ThemedUserControl
         _birthDate.FlatAppearance.BorderSize = 1;
         _birthDate.FlatAppearance.MouseOverBackColor = c.AccentSoft;
         _gender.ApplyTheme();
-        foreach (var button in new[] { _cancel, _archive, _photoButton })
+        foreach (var button in new[] { _cancel, _archive })
         {
             button.BackColor = c.SurfaceAlt;
             button.ForeColor = c.Text;
@@ -805,23 +792,139 @@ public sealed class StudentDetailsPage : ThemedUserControl
     {
         private string _initials = "?";
         private Image? _photo;
+        private bool _editable;
+        private bool _hover;
+        public event EventHandler? EditRequested;
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool Editable
+        {
+            get => _editable;
+            set
+            {
+                _editable = value;
+                _hover = false;
+                TabStop = value;
+                AccessibleName = value ? "Change student photo" : "Student photo";
+                AccessibleRole = value ? AccessibleRole.PushButton : AccessibleRole.Graphic;
+                Cursor = Cursors.Default;
+                Invalidate();
+            }
+        }
+        private bool IsInside(Point p)
+        {
+            var r = AvatarBounds;
+            double x = (p.X - r.Left - r.Width / 2.0) / (r.Width / 2.0);
+            double y = (p.Y - r.Top - r.Height / 2.0) / (r.Height / 2.0);
+            return x * x + y * y <= 1;
+        }
+        private Rectangle AvatarBounds => new(2, 2, Math.Max(1, Width - 5), Math.Max(1, Height - 5));
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            bool hover = _editable && IsInside(e.Location);
+            if (_hover == hover) return;
+            _hover = hover;
+            Cursor = hover ? Cursors.Hand : Cursors.Default;
+            Invalidate();
+        }
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            base.OnMouseLeave(e);
+            _hover = false;
+            Cursor = Cursors.Default;
+            Invalidate();
+        }
+        protected override void OnMouseClick(MouseEventArgs e)
+        {
+            base.OnMouseClick(e);
+            if (_editable && e.Button == MouseButtons.Left && IsInside(e.Location))
+                EditRequested?.Invoke(this, EventArgs.Empty);
+        }
+        protected override bool IsInputKey(Keys keyData) =>
+            _editable && (keyData == Keys.Enter || keyData == Keys.Space) || base.IsInputKey(keyData);
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            if (_editable && (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Space))
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                EditRequested?.Invoke(this, EventArgs.Empty);
+            }
+        }
+        protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); Invalidate(); }
+        protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); Invalidate(); }
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public string Initials { get => _initials; set { _initials = string.IsNullOrWhiteSpace(value) ? "?" : value.ToUpperInvariant(); Invalidate(); } }
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Image? Photo { get => _photo; set { if (ReferenceEquals(_photo, value)) return; var previous = _photo; _photo = value; previous?.Dispose(); Invalidate(); } }
-        public AvatarView() => SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        public AvatarView()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
+            TabStop = false;
+        }
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
             var c = Theme.Colors;
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            using var clip = new GraphicsPath();
-            var rect = new Rectangle(2, 2, Math.Max(1, Width - 5), Math.Max(1, Height - 5));
-            clip.AddEllipse(rect);
-            using (var bg = new SolidBrush(c.AccentSoft)) g.FillEllipse(bg, rect);
+            var rect = AvatarBounds;
+            if (_editable && (_hover || Focused))
+            {
+                // Render the original avatar, then downsample and smoothly upscale
+                // it inside the circular clip. The original photo remains untouched.
+                using var original = new Bitmap(rect.Width, rect.Height);
+                using (var canvas = Graphics.FromImage(original))
+                {
+                    canvas.SmoothingMode = SmoothingMode.AntiAlias;
+                    DrawAvatar(canvas, new Rectangle(Point.Empty, original.Size));
+                }
+                using var small = new Bitmap(Math.Max(1, rect.Width / 7), Math.Max(1, rect.Height / 7));
+                using (var canvas = Graphics.FromImage(small))
+                {
+                    canvas.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    canvas.DrawImage(original, new Rectangle(Point.Empty, small.Size));
+                }
+                using var clip = new GraphicsPath();
+                clip.AddEllipse(rect);
+                var state = g.Save();
+                g.SetClip(clip);
+                g.InterpolationMode = InterpolationMode.HighQualityBilinear;
+                g.DrawImage(small, rect);
+                using (var shade = new SolidBrush(Color.FromArgb(185, c.Surface)))
+                    g.FillEllipse(shade, rect);
+                g.Restore(state);
+
+                // Same square-and-pencil geometry as the Save Student action.
+                var iconState = g.Save();
+                g.TranslateTransform(rect.Left + rect.Width / 2f, rect.Top + rect.Height / 2f);
+                float scale = Math.Clamp(rect.Width / 70f, 1f, 1.7f);
+                g.ScaleTransform(scale, scale);
+                using (var pen = new Pen(c.Text, 2f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                {
+                    g.DrawLine(pen, -8, -7, 1, -7);
+                    g.DrawLine(pen, -8, -7, -8, 8);
+                    g.DrawLine(pen, -8, 8, 7, 8);
+                    g.DrawLine(pen, 7, 8, 7, 1);
+                    g.DrawLine(pen, -2, 3, 8, -7);
+                    g.DrawLine(pen, -3, 5, -2, 3);
+                }
+                g.Restore(iconState);
+            }
+            else DrawAvatar(g, rect);
+            using var border = new Pen(_editable && Focused ? c.Accent : c.Border, 2f);
+            g.DrawEllipse(border, rect);
+        }
+        private void DrawAvatar(Graphics g, Rectangle rect)
+        {
+            var c = Theme.Colors;
+            using var bg = new SolidBrush(c.AccentSoft);
+            g.FillEllipse(bg, rect);
             if (_photo is not null)
             {
+                using var clip = new GraphicsPath();
+                clip.AddEllipse(rect);
                 var state = g.Save();
                 g.SetClip(clip);
                 g.DrawImage(_photo, rect);
@@ -837,11 +940,8 @@ public sealed class StudentDetailsPage : ThemedUserControl
                     FormatFlags = StringFormatFlags.NoWrap
                 };
                 using var ink = new SolidBrush(c.Accent);
-                // DrawString avoids the TextRenderer vertical overhang on '?' and initials.
                 g.DrawString(_initials, font, ink, rect, centered);
             }
-            using var pen = new Pen(c.Border, 2f);
-            g.DrawEllipse(pen, rect);
         }
         protected override void Dispose(bool disposing) { if (disposing) _photo?.Dispose(); base.Dispose(disposing); }
     }
