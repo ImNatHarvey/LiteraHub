@@ -45,7 +45,7 @@ internal static class Program
             };
 
             bootstrap = Task.Run(() =>
-                    DatabaseBootstrapper.RunAsync(options, hasher))
+                    DatabaseBootstrapper.RunAsync(options, hasher, ConfirmInitialCredential))
                 .GetAwaiter()
                 .GetResult();
         }
@@ -113,6 +113,24 @@ internal static class Program
             metadata,
             students,
             staffUsers, roles, profile);
+    }
+
+    // Bootstrap runs on a worker. The credential dialog requires an STA thread for Clipboard.
+    private static bool ConfirmInitialCredential(string username, string password)
+    {
+        bool confirmed = false;
+        Exception? failure = null;
+        var dialogThread = new Thread(() =>
+        {
+            try { confirmed = ThemedMessageDialog.ConfirmInitialCredential(username, password); }
+            catch (Exception ex) { failure = ex; }
+        });
+        dialogThread.SetApartmentState(ApartmentState.STA);
+        dialogThread.Start();
+        dialogThread.Join();
+        if (failure is not null)
+            throw new DatabaseBootstrapException("Unable to display the initial account setup dialog.", failure);
+        return confirmed;
     }
 
     private static void RunSessions(

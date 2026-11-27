@@ -12,7 +12,8 @@ public enum AuthFailure
     None,
     InvalidCredentials,
     AccountDisabled,
-    RoleNotAllowed
+    RoleNotAllowed,
+    TemporarilyLocked
 }
 
 public sealed record AuthResult(
@@ -22,6 +23,8 @@ public sealed record AuthResult(
     UserSession? Session,
     bool MustChangePassword)
 {
+    public int RetryAfterSeconds { get; init; }
+
     public static AuthResult Ok(UserSession session, bool mustChangePassword) =>
         new(true, AuthFailure.None, "", session, mustChangePassword);
 

@@ -33,4 +33,23 @@ public sealed class PasswordPolicyTests
         string password = new string('a', length - 1) + "1";
         Assert.Equal(accepted, PasswordPolicy.Validate(password, "Previous123", "librarian") is null);
     }
+
+    [Theory]
+    [InlineData(35, true)]
+    [InlineData(36, false)]
+    public void EnforcesUtf8ByteLimit(int letters, bool accepted)
+    {
+        // Each é occupies two bytes, plus the trailing ASCII digit.
+        string password = new string('é', letters) + "1";
+        Assert.Equal(accepted, PasswordPolicy.Validate(password, "Previous123", "librarian") is null);
+    }
+
+    [Theory]
+    [InlineData(35, true)]
+    [InlineData(36, false)]
+    public void EnforcesExactMultibyteBoundary(int letters, bool accepted)
+    {
+        string password = new string('é', letters) + "12";
+        Assert.Equal(accepted, PasswordPolicy.Validate(password, "Previous123", "librarian") is null);
+    }
 }

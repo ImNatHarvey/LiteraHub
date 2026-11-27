@@ -1,4 +1,5 @@
-﻿using System.Text.RegularExpressions;
+﻿using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using Dapper;
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Settings;
@@ -9,7 +10,6 @@ namespace LiteraHub.Data.Bootstrap;
 public static class DatabaseBootstrapper
 {
     private const string AdminUsername = "admin";
-    private const string AdminTempPassword = "Admin@123"; // forced change on first login (Step 3)
 
     private const string CreateVersionTableSql = """
         IF OBJECT_ID(N'dbo.SchemaVersion', N'U') IS NULL
@@ -20,7 +20,7 @@ public static class DatabaseBootstrapper
         );
         """;
 
-    public static async Task<BootstrapResult> RunAsync(DatabaseOptions options, IPasswordHasher hasher)
+    public static async Task<BootstrapResult> RunAsync(DatabaseOptions options, IPasswordHasher hasher, Func<string, string, bool> confirmInitialCredential)
     {
         if (!Regex.IsMatch(options.Name, "^[A-Za-z0-9_]+$"))
             throw new DatabaseBootstrapException(
@@ -66,7 +66,7 @@ public static class DatabaseBootstrapper
             // 3) Migrate, seed admin, summarize.
             var connectionString = BuildConnectionString(server, options.Name);
             var applied = await ApplyMigrationsAsync(connectionString);
-            await SeedAdminAsync(connectionString, hasher);
+            await SeedAdminAsync(connectionString, hasher, confirmInitialCredential);
             var summary = await GetSummaryAsync(connectionString);
 
             return new BootstrapResult(server, connectionString, applied, summary);
@@ -131,7 +131,7 @@ public static class DatabaseBootstrapper
         return appliedNow;
     }
 
-    private static async Task SeedAdminAsync(string connectionString, IPasswordHasher hasher)
+    private static async Task SeedAdminAsync(string connectionString, IPasswordHasher hasher, Func<string, string, bool> confirmInitialCredential)
     {
         await using var conn = new SqlConnection(connectionString);
         await conn.OpenAsync();
@@ -141,12 +141,16 @@ public static class DatabaseBootstrapper
             "SELECT COUNT(*) FROM dbo.Users WITH (UPDLOCK, HOLDLOCK)", transaction: tx);
         if (userCount == 0)
         {
+            // Provision only on an empty database; never replace an existing owner credential.
+            string temporaryPassword = "Aa1!" + RandomNumberGenerator.GetHexString(32);
+            if (!confirmInitialCredential(AdminUsername, temporaryPassword))
+                throw new DatabaseBootstrapException("Initial account setup was cancelled. Restart LiteraHub to try again.");
             var adminRoleId = await conn.ExecuteScalarAsync<int>(
                 "SELECT RoleId FROM dbo.Roles WHERE Name=N'Admin' AND IsActive=1 AND IsSystem=1", transaction: tx);
             var ownerId = await conn.ExecuteScalarAsync<int>("""
                 INSERT dbo.Users (Username,PasswordHash,RoleId,MustChangePassword,IsSystemOwner)
                 OUTPUT INSERTED.UserId VALUES (@Username,@Hash,@RoleId,1,1);
-                """, new { Username = AdminUsername, Hash = hasher.Hash(AdminTempPassword), RoleId = adminRoleId }, tx);
+                """, new { Username = AdminUsername, Hash = hasher.Hash(temporaryPassword), RoleId = adminRoleId }, tx);
             await conn.ExecuteAsync("""
                 INSERT dbo.SystemOwnerAnchor(SingletonId,UserId,IsSystemOwner,RoleId,IsActive)
                 VALUES (1,@ownerId,1,@adminRoleId,1);

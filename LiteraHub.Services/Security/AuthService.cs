@@ -6,7 +6,7 @@ namespace LiteraHub.Services.Security;
 
 public sealed class AuthService : IAuthService
 {
-    private const string InvalidMessage = "Invalid username or password.";
+    private const string InvalidMessage = "Invalid credentials or temporarily locked. Try again later.";
 
     // MVP: only staff accounts can sign in. Flip to true when the borrower portal (bonus) is built.
     private const bool BorrowerPortalEnabled = false;
@@ -15,6 +15,7 @@ public sealed class AuthService : IAuthService
     private readonly IPasswordHasher _hasher;
     private readonly ISessionContext _session;
     private readonly Lazy<string> _dummyHash;
+    private int? _pendingPasswordChangeUserId;
 
     public AuthService(IUserRepository users, IPasswordHasher hasher, ISessionContext session)
     {
@@ -26,17 +27,18 @@ public sealed class AuthService : IAuthService
 
     public async Task<AuthResult> LoginAsync(string username, string password)
     {
+        _pendingPasswordChangeUserId = null;
+        _session.SignOut();
         username = (username ?? "").Trim();
         if (username.Length == 0 || string.IsNullOrEmpty(password))
             return AuthResult.Fail(AuthFailure.InvalidCredentials, "Enter your username and password.");
 
-        var user = await _users.GetByUsernameAsync(username);
+        var dummyHash = await Task.Run(() => _dummyHash.Value);
+        var (user, retryAfterSeconds) = await _users.AuthenticateAsync(username, password, _hasher.Verify, dummyHash);
+        if (retryAfterSeconds > 0)
+            return AuthResult.Fail(AuthFailure.TemporarilyLocked, "Login temporarily restricted.") with { RetryAfterSeconds = retryAfterSeconds };
 
-        // Always run a hash check, even for unknown users, so timing does not reveal valid usernames.
-        var hashToCheck = user?.PasswordHash ?? _dummyHash.Value;
-        var passwordOk = await Task.Run(() => _hasher.Verify(password, hashToCheck));
-
-        if (user is null || !passwordOk)
+        if (user is null)
             return AuthResult.Fail(AuthFailure.InvalidCredentials, InvalidMessage);
 
         if (!user.IsActive)
@@ -47,7 +49,10 @@ public sealed class AuthService : IAuthService
 
         var session = ToSession(user);
         if (user.MustChangePassword)
+        {
+            _pendingPasswordChangeUserId = user.UserId;
             return AuthResult.Ok(session, mustChangePassword: true);
+        }
 
         _session.SignIn(session);
         return AuthResult.Ok(session, mustChangePassword: false);
@@ -55,6 +60,8 @@ public sealed class AuthService : IAuthService
 
     public async Task<ServiceResult> ChangePasswordAsync(int userId, string currentPassword, string newPassword)
     {
+        if (_session.Current?.UserId != userId && _pendingPasswordChangeUserId != userId)
+            return ServiceResult.Fail("Sign in before changing your password.");
         var user = await _users.GetByIdAsync(userId);
         if (user is null || !user.IsActive)
             return ServiceResult.Fail("Account not found.");
@@ -68,7 +75,9 @@ public sealed class AuthService : IAuthService
             return ServiceResult.Fail(problem);
 
         var newHash = await Task.Run(() => _hasher.Hash(newPassword));
-        await _users.UpdatePasswordAsync(user.UserId, newHash, mustChangePassword: false);
+        if (!await _users.UpdatePasswordAsync(user.UserId, user.PasswordHash, newHash, mustChangePassword: false))
+            return ServiceResult.Fail("Account changed or is temporarily locked. Sign in again and retry.");
+        _pendingPasswordChangeUserId = null;
 
         // Completing a forced change signs the user in.
         if (_session.Current is null && IsRoleAllowed(user.RoleName))
@@ -77,7 +86,11 @@ public sealed class AuthService : IAuthService
         return ServiceResult.Ok();
     }
 
-    public void Logout() => _session.SignOut();
+    public void Logout()
+    {
+        _pendingPasswordChangeUserId = null;
+        _session.SignOut();
+    }
 
     private static bool IsRoleAllowed(string roleName) =>
         BorrowerPortalEnabled || !string.Equals(roleName, RoleNames.Borrower, StringComparison.OrdinalIgnoreCase);

@@ -1,4 +1,6 @@
-﻿namespace LiteraHub.Services.Security;
+﻿using System.Text;
+
+namespace LiteraHub.Services.Security;
 
 public static class PasswordPolicy
 {
@@ -13,8 +15,8 @@ public static class PasswordPolicy
         if (string.IsNullOrEmpty(newPassword) || newPassword.Length < MinLength)
             return $"The new password must be at least {MinLength} characters.";
 
-        if (newPassword.Length > MaxLength)
-            return $"The new password must be at most {MaxLength} characters.";
+        if (Encoding.UTF8.GetByteCount(newPassword) > MaxLength)
+            return $"The new password must be at most {MaxLength} UTF-8 bytes.";
 
         if (!newPassword.Any(char.IsLetter) || !newPassword.Any(char.IsDigit))
             return "The new password must contain at least one letter and one number.";

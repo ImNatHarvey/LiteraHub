@@ -17,6 +17,7 @@ internal static class Migrations
         new Migration(9, "Protect the original system owner", V9()),
         new Migration(10, "Owner authorization limits and audit", V10()),
         new Migration(11, "Add structured PSGC student addresses", V11()),
+        new Migration(12, "Add persistent sign-in attempt limits", V12()),
     };
 
     private static string Index(string name, string table, string columns) =>
@@ -488,6 +489,19 @@ internal static class Migrations
                 AND LEN(RegionCode) = 10 AND LEN(CityMunicipalityCode) = 10 AND LEN(BarangayCode) = 10
                 AND RegionCode NOT LIKE '%[^0-9]%' AND CityMunicipalityCode NOT LIKE '%[^0-9]%' AND BarangayCode NOT LIKE '%[^0-9]%'
                 AND (ProvinceCode IS NULL OR (LEN(ProvinceCode) = 10 AND ProvinceCode NOT LIKE '%[^0-9]%'))));
+        """
+    };
+    private static string[] V12() => new[]
+    {
+        """
+        ALTER TABLE dbo.Users ADD
+            LoginFailures INT NOT NULL CONSTRAINT DF_Users_LoginFailures DEFAULT 0,
+            LoginLockedUntil DATETIME2 NULL;
+        """,
+        """
+        ALTER TABLE dbo.Users ADD CONSTRAINT CK_Users_LoginAttempts CHECK (
+            (LoginFailures BETWEEN 0 AND 4 AND LoginLockedUntil IS NULL)
+            OR (LoginFailures = 5 AND LoginLockedUntil IS NOT NULL));
         """
     };
 }

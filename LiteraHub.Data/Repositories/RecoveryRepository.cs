@@ -14,7 +14,14 @@ public sealed class RecoveryRepository(IDbConnectionFactory factory) : IRecovery
         public bool Locked { get; set; }
         public int Failures { get; set; }
     }
-    public async Task<bool> ResetAsync(string username, string passkey, string password, Func<string, string, bool> verify, Func<string, string> hash)
+    public Task<bool> ResetAsync(string username, string passkey, string password, Func<string, string, bool> verify, Func<string, string> hash) =>
+        RecoverAsync(username, passkey, password, verify, hash, false);
+
+    public Task<bool> UnlockAsync(string username, string passkey, Func<string, string, bool> verify) =>
+        RecoverAsync(username, passkey, null, verify, null, true);
+
+    private async Task<bool> RecoverAsync(string username, string passkey, string? password,
+        Func<string, string, bool> verify, Func<string, string>? hash, bool unlock)
     {
         await using var db = factory.CreateConnection();
         await db.OpenAsync();
@@ -28,16 +35,26 @@ public sealed class RecoveryRepository(IDbConnectionFactory factory) : IRecovery
             WHERE u.Username=@username
             """, new { username }, tx);
         bool success = false;
-        string eventType = "RecoveryDenied";
+        string eventType = unlock ? "UnlockDenied" : "RecoveryDenied";
         if (state is { Eligible: true, Locked: false, RecoveryPasskeyHash: not null })
         {
             bool valid = await Task.Run(() => verify(passkey, state.RecoveryPasskeyHash));
-            if (valid && !await Task.Run(() => verify(password, state.PasswordHash)))
+            if (valid && unlock)
             {
-                string newHash = await Task.Run(() => hash(password));
+                await db.ExecuteAsync("""
+                    UPDATE dbo.Users SET LoginFailures=0, LoginLockedUntil=NULL,
+                    RecoveryPasskeyHash=NULL, RecoveryPasskeyCreatedAt=NULL,
+                    RecoveryFailures=0, RecoveryLockedUntil=NULL WHERE UserId=@UserId
+                    """, new { state.UserId }, tx);
+                success = true; eventType = "UnlockSucceeded";
+            }
+            else if (valid && !unlock && !await Task.Run(() => verify(password!, state.PasswordHash)))
+            {
+                string newHash = await Task.Run(() => hash!(password!));
                 await db.ExecuteAsync("""
                     UPDATE dbo.Users SET PasswordHash=@newHash, MustChangePassword=0, RecoveryPasskeyHash=NULL,
-                    RecoveryPasskeyCreatedAt=NULL, RecoveryFailures=0, RecoveryLockedUntil=NULL WHERE UserId=@UserId
+                    RecoveryPasskeyCreatedAt=NULL, RecoveryFailures=0, RecoveryLockedUntil=NULL,
+                    LoginFailures=0, LoginLockedUntil=NULL WHERE UserId=@UserId
                     """, new { newHash, state.UserId }, tx);
                 success = true; eventType = "RecoverySucceeded";
             }

@@ -31,6 +31,11 @@ public sealed class LoginForm : Form
     private readonly string[] _recoveryNames = { "Username", "Recovery passkey", "New password", "Confirm new password" };
     private readonly Label[] _recoveryLabels = new Label[4];
     private readonly ThemedTextField[] _recoveryFields = new ThemedTextField[4];
+    private bool _unlockMode;
+    private readonly Button _recoveryToggle = new() { Text = "Unlock instead", Cursor = Cursors.Hand, FlatStyle = FlatStyle.Flat };
+    private readonly System.Windows.Forms.Timer _lockoutTimer = new() { Interval = 250 };
+    private readonly System.Diagnostics.Stopwatch _lockoutClock = new();
+    private int _lockoutSeconds;
     private readonly Button _reset = new() { Text = "Reset Password", Cursor = Cursors.Hand, FlatStyle = FlatStyle.Flat };
     private readonly Label _recoveryStatus = new() { TextAlign = ContentAlignment.MiddleLeft };
     private bool _recoveryError;
@@ -67,7 +72,7 @@ public sealed class LoginForm : Form
         FlatStyle = FlatStyle.Flat,
         AccessibleName = "Show password"
     };
-    private readonly Button _forgot = new() { Text = "Forgot password?", Cursor = Cursors.Hand, FlatStyle = FlatStyle.Flat };
+    private readonly Button _forgot = new() { Text = "Recover account?", Cursor = Cursors.Hand, FlatStyle = FlatStyle.Flat };
 
     private readonly Button _signIn = new() { Text = "Sign In", Cursor = Cursors.Hand, FlatStyle = FlatStyle.Flat };
     private readonly Label _footer = new() { Text = "LiteraHub  •  STI Balagtas", TextAlign = ContentAlignment.MiddleCenter };
@@ -137,7 +142,7 @@ public sealed class LoginForm : Form
         _passwordFrame.Controls.Add(_password);
         _passwordFrame.Controls.Add(_passwordLeadingIcon);
         _passwordFrame.Controls.Add(_eye);
-        _recoveryView.Controls.AddRange(new Control[] { _recoveryTitle, _recoveryDescription, _back, _reset, _recoveryStatus });
+        _recoveryView.Controls.AddRange(new Control[] { _recoveryTitle, _recoveryDescription, _back, _reset, _recoveryStatus, _recoveryToggle });
         BuildRecoveryFields();
         BuildChangeView();
         _recoveryView.Visible = false;
@@ -159,7 +164,9 @@ public sealed class LoginForm : Form
 
         _passwordFrame.Paint += PaintPasswordFrame;
         _passwordLeadingIcon.Click += (_, _) => _password.Focus();
-        _username.TextChanged += (_, _) => ClearUsernameValidation();
+        _username.TextChanged += (_, _) => { ClearUsernameValidation(); ClearLockout(); };
+        _lockoutTimer.Tick += (_, _) => UpdateLockout();
+        _recoveryToggle.Click += (_, _) => SetRecoveryMode(!_unlockMode);
         _password.TextChanged += (_, _) => ClearPasswordValidation();
         _password.Enter += (_, _) => { _passwordFrame.Invalidate(); UpdateLabels(); };
         _password.Leave += (_, _) => { _passwordFrame.Invalidate(); UpdateLabels(); };
@@ -406,6 +413,44 @@ public sealed class LoginForm : Form
         RecoveryStatus("Your recovery passkey can only be used once.");
     }
 
+    private void SetRecoveryMode(bool unlock)
+    {
+        if (_busy) return;
+        _unlockMode = unlock;
+        _recoveryTitle.Text = unlock ? "Unlock Account" : "Reset Password";
+        _recoveryDescription.Text = unlock ? "Use your passkey to unlock login without changing your password." : "Use your recovery passkey to reset your password.";
+        _recoveryToggle.Text = unlock ? "Reset password instead" : "Unlock instead";
+        _reset.Text = unlock ? "Unlock Account" : "Reset Password";
+        for (int i = 2; i < 4; i++)
+        {
+            _recoveryFields[i].Text = "";
+            RecoveryValidation(i, "");
+            _recoveryFields[i].Visible = _recoveryLabels[i].Visible = !unlock;
+        }
+        RecoveryStatus("Your recovery passkey can only be used once.");
+        LayoutPanels();
+    }
+
+    private void ClearLockout()
+    {
+        _lockoutTimer.Stop();
+        _lockoutClock.Reset();
+        _lockoutSeconds = 0;
+        _subtitle.Text = "Sign in to manage your library.";
+        _subtitle.ForeColor = Theme.Colors.TextMuted;
+        if (!_busy) { _signIn.Enabled = true; _signIn.Text = "Sign In"; }
+    }
+
+    private void UpdateLockout()
+    {
+        int remaining = Math.Max(0, _lockoutSeconds - (int)_lockoutClock.Elapsed.TotalSeconds);
+        if (remaining == 0) { ClearLockout(); return; }
+        _subtitle.Text = "Login temporarily restricted. Recover account or wait.";
+        _subtitle.ForeColor = Theme.Colors.Danger;
+        _signIn.Enabled = false;
+        _signIn.Text = $"Try again in {remaining / 60:00}:{remaining % 60:00}";
+    }
+
     private void RecoveryValidation(int index, string message)
     {
         _recoveryFields[index].HasValidationError = message.Length > 0;
@@ -435,27 +480,29 @@ public sealed class LoginForm : Form
     {
         if (_busy || !_recoveryMode || _slide.Enabled) return;
         bool valid = true;
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < (_unlockMode ? 2 : 4); i++)
         {
             bool missing = string.IsNullOrWhiteSpace(_recoveryFields[i].Text);
             RecoveryValidation(i, missing ? "Required" : "");
             valid &= !missing;
         }
         if (!valid) return;
-        if (_recoveryFields[2].Text != _recoveryFields[3].Text)
+        if (!_unlockMode && _recoveryFields[2].Text != _recoveryFields[3].Text)
         {
             RecoveryValidation(3, "Does not match");
             return;
         }
         _busy = true;
-        _reset.Enabled = _back.Enabled = false;
-        _reset.Text = "Resetting…";
+        _reset.Enabled = _back.Enabled = _recoveryToggle.Enabled = false;
+        _reset.Text = _unlockMode ? "Unlocking…" : "Resetting…";
         foreach (var field in _recoveryFields) field.Enabled = false;
         string username = _recoveryFields[0].Text;
         bool success = false;
         try
         {
-            var result = await _recovery.ResetAsync(username, _recoveryFields[1].Text, _recoveryFields[2].Text);
+            var result = _unlockMode
+                ? await _recovery.UnlockAsync(username, _recoveryFields[1].Text)
+                : await _recovery.ResetAsync(username, _recoveryFields[1].Text, _recoveryFields[2].Text);
             if (IsDisposed || Disposing) return;
             success = result.Success;
             if (!success) RecoveryStatus(result.Error ?? "Recovery unavailable.", true);
@@ -470,17 +517,21 @@ public sealed class LoginForm : Form
             _busy = false;
             if (!IsDisposed && !Disposing)
             {
-                _reset.Enabled = _back.Enabled = true;
-                _reset.Text = "Reset Password";
+                _reset.Enabled = _back.Enabled = _recoveryToggle.Enabled = true;
+                _reset.Text = _unlockMode ? "Unlock Account" : "Reset Password";
                 foreach (var field in _recoveryFields) field.Enabled = true;
             }
         }
         if (success && !IsDisposed && !Disposing)
         {
+            bool unlocked = _unlockMode;
+            ClearLockout();
             _username.Text = username;
             _password.Clear();
             SwitchMode(false);
-            CatalogActionFeedback.Notify(this, "Password reset. Generate a new passkey after signing in.");
+            CatalogActionFeedback.Notify(this, unlocked
+                ? "Account unlocked. Sign in with your current password and generate a new passkey."
+                : "Password reset. Generate a new passkey after signing in.");
         }
     }
 
@@ -548,6 +599,7 @@ public sealed class LoginForm : Form
             _eye.AccessibleName = "Show password";
             ClearUsernameValidation(); ClearPasswordValidation();
             ClearRecovery();
+            SetRecoveryMode(_lockoutSeconds > 0);
             _recoveryFields[0].Text = _username.Text;
         }
         else ClearRecovery();
@@ -615,9 +667,11 @@ public sealed class LoginForm : Form
                 _recoveryLabels[i].SetBounds(fx, ry + 94 + i * 67, fw, 22);
                 _recoveryFields[i].SetBounds(fx, ry + 118 + i * 67, fw, 40);
             }
-            _recoveryStatus.SetBounds(fx, ry + 365, fw, 52);
-            _reset.SetBounds(fx, ry + 424, fw, 44);
-            _back.SetBounds(fx, ry + 474, fw, 34);
+            int statusY = ry + (_unlockMode ? 230 : 365);
+            _recoveryStatus.SetBounds(fx, statusY, fw, 42);
+            _reset.SetBounds(fx, statusY + 46, fw, 44);
+            _recoveryToggle.SetBounds(fx, statusY + 94, fw, 27);
+            _back.SetBounds(fx, statusY + 121, fw, 30);
             int errorHeight = string.IsNullOrWhiteSpace(_changeStatus.Text) ? 0 : 48;
             int cy = Math.Max(16, (h - (455 + errorHeight)) / 2);
             _changeTitle.SetBounds(fx, cy, fw, 48);
@@ -649,7 +703,7 @@ public sealed class LoginForm : Form
 
     private async Task SignInAsync()
     {
-        if (_busy || _recoveryMode || _pendingLogin is not null || _slide.Enabled) return;
+        if (_busy || _lockoutSeconds > 0 || _recoveryMode || _pendingLogin is not null || _slide.Enabled) return;
         bool missingUser = string.IsNullOrWhiteSpace(_username.Text);
         bool missingPassword = string.IsNullOrEmpty(_password.Text);
         if (missingUser || missingPassword)
@@ -674,7 +728,15 @@ public sealed class LoginForm : Form
                 DialogResult = DialogResult.OK;
                 return;
             }
-            ShowValidation(result.Message, true, true);
+            if (result.RetryAfterSeconds > 0)
+            {
+                _password.Clear();
+                _lockoutSeconds = result.RetryAfterSeconds;
+                _lockoutClock.Restart();
+                _lockoutTimer.Start();
+                UpdateLockout();
+            }
+            else ShowValidation(result.Message, true, true);
         }
         catch (Exception ex)
         {
@@ -690,6 +752,8 @@ public sealed class LoginForm : Form
     private void ShowValidation(string message, bool badUser, bool badPassword)
     {
         _password.Clear();
+        _subtitle.Text = message == "Required" ? "Enter your username and password." : message;
+        _subtitle.ForeColor = Theme.Colors.Danger;
         _usernameInvalid = badUser;
         _passwordInvalid = badPassword;
         _username.HasValidationError = badUser;
@@ -728,6 +792,7 @@ public sealed class LoginForm : Form
         _forgot.Enabled = !busy;
         _signIn.Enabled = !busy;
         _signIn.Text = busy ? "Signing in…" : "Sign In";
+        if (!busy && _lockoutSeconds > 0) UpdateLockout();
         UseWaitCursor = busy;
     }
 
@@ -781,7 +846,7 @@ public sealed class LoginForm : Form
         }
         _welcome.ForeColor = c.Text;
         RetintLogo();
-        _subtitle.ForeColor = c.TextMuted;
+        _subtitle.ForeColor = _lockoutSeconds > 0 || _usernameInvalid || _passwordInvalid ? c.Danger : c.TextMuted;
         _recoveryTitle.ForeColor = c.Text;
         _recoveryDescription.ForeColor = c.TextMuted;
         _username.BackColor = c.Surface;
@@ -807,6 +872,11 @@ public sealed class LoginForm : Form
         _signIn.ForeColor = c.OnAccent;
         _signIn.FlatAppearance.BorderSize = 0;
         _signIn.FlatAppearance.MouseOverBackColor = c.Accent;
+        _recoveryToggle.BackColor = c.Surface;
+        _recoveryToggle.ForeColor = c.Accent;
+        _recoveryToggle.Font = Theme.Caption;
+        _recoveryToggle.FlatAppearance.BorderSize = 0;
+        _recoveryToggle.FlatAppearance.MouseOverBackColor = c.Surface;
         _back.BackColor = c.Surface;
         _back.ForeColor = c.Accent;
         _back.FlatAppearance.BorderSize = 0;
@@ -838,6 +908,8 @@ public sealed class LoginForm : Form
             Theme.Changed -= ThemeChanged;
             _slide.Stop();
             _slide.Dispose();
+            _lockoutTimer.Stop();
+            _lockoutTimer.Dispose();
             _logoThemed?.Dispose();
             _logoOriginal?.Dispose();
         }

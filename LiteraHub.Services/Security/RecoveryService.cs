@@ -5,6 +5,15 @@ namespace LiteraHub.Services.Security;
 
 public sealed class RecoveryService(IRecoveryRepository repository, IPasswordHasher hasher) : IRecoveryService
 {
+    public async Task<ServiceResult> UnlockAsync(string username, string passkey)
+    {
+        username = (username ?? "").Trim();
+        if (username.Length is < 1 or > 50 || passkey is null || passkey.Length != 16 || !passkey.All(char.IsAsciiLetterOrDigit))
+            return ServiceResult.Fail("Invalid recovery credentials or recovery temporarily unavailable.");
+        return await repository.UnlockAsync(username, passkey, hasher.Verify)
+            ? ServiceResult.Ok() : ServiceResult.Fail("Invalid recovery credentials or recovery temporarily unavailable.");
+    }
+
     public async Task<ServiceResult> ResetAsync(string username, string passkey, string password)
     {
         username = username.Trim();

@@ -294,6 +294,16 @@ public sealed class ThemedMessageDialog : Form
         dialog.ShowDialog(owner);
     }
 
+    public static bool ConfirmInitialCredential(string username, string password)
+    {
+        using var dialog = new ThemedMessageDialog("First-time library setup",
+            $"Username: {username}\nSave this temporary administrator password securely. Confirm only after saving it. You must change it at first sign-in. Cancel to stop setup.",
+            true, false, "Saved", password);
+        dialog.StartPosition = FormStartPosition.CenterScreen;
+        dialog.ShowInTaskbar = true;
+        return dialog.ShowDialog() == DialogResult.OK;
+    }
+
     public static void ShowRecoveryPasskey(IWin32Window? owner, string passkey)
     {
         using var dialog = new ThemedMessageDialog("Recovery passkey generated",
