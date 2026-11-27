@@ -1,6 +1,6 @@
 # LiteraHub — File Map and Responsibilities
 
-**Updated:** 2026-11-27  
+**Updated:** 2026-11-28  
 **Repository:** https://github.com/ImNatHarvey/LiteraHub
 
 ## Application projects and test project
@@ -16,7 +16,7 @@ LiteraHub.WinForms/       # WinForms program, pages, controls, themes, assets
   Pages/                  # four catalog pages and detail editors
   Controls/               # themed and shared UI components
   Theming/                # palettes, preferences
-LiteraHub.Tests/          # F7.0.1 test project (pending acceptance)
+LiteraHub.Tests/          # F7.0.1 test project (accepted locally)
 .github/workflows/        # build.yml
 tools/psgc/               # converter
 docs/                     # eight maintained Markdown documents
@@ -81,13 +81,27 @@ docs/                     # eight maintained Markdown documents
 | `LiteraHub.Services/Students/PsgcCatalog.cs` | Embedded immutable geographic catalog |
 | `LiteraHub.Services/Resources/PSGC/psgc.json`, `SOURCE.md` | Offline data and attribution |
 | `tools/psgc/convert_psgc.py` | Reproducible dataset conversion |
-| `LiteraHub.Tests/LiteraHub.Tests.csproj`, `PasswordPolicyTests.cs`, `PsgcCatalogTests.cs` | Initial automated tests (pending acceptance) |
-| `.github/workflows/build.yml` | Windows CI restore/build/test (pending acceptance) |
+| `LiteraHub.Tests/LiteraHub.Tests.csproj`, `PasswordPolicyTests.cs`, `PsgcCatalogTests.cs` | Initial automated tests (accepted locally) |
+| `.github/workflows/build.yml` | Windows CI restore/build/test definition; current run unverified |
 
-F7.0.2–F9 remain pending.
+## F7.0.2–F7.0.3 source map
 
-## Docs to maintain
+| Path | Responsibility |
+|---|---|
+| `LiteraHub.Core/Security/RolePermission.cs` | Stable granular permission keys; inspect before adding grants |
+| `LiteraHub.Core/Models/AuditEvent.cs` | Fixed audit module/action/outcome and safe description |
+| `LiteraHub.Data/Repositories/AuditWriter.cs` | Transaction-aware audit insertion |
+| `LiteraHub.Data/Repositories/UserRepository.cs` | Persistent authentication attempts and selected authentication audit |
+| `LiteraHub.Data/Repositories/RecoveryRepository.cs` | Single-use staff recovery, reset and unlock |
+| `LiteraHub.Data/Repositories/AuthorCreationRepository.cs`, `CategoryRepository.cs`, `BookRepository.cs`, `StudentRepository.cs` | Transactional catalog audit; PSGC UPDATE fix in StudentRepository |
+| `LiteraHub.Data/Repositories/StaffUserRepository.cs`, `RoleRepository.cs`, `ProfileRepository.cs` | Account, role and profile audit |
+| `LiteraHub.Data/Bootstrap/Migrations.cs` | V12 login state, V13 audit table |
+| `LiteraHub.Tests/AuthServiceTests.cs`, `LoginAttemptPolicyTests.cs`, `AuditEventTests.cs` | Security and audit regression tests |
 
-`PROJECT_BRIEF.md`, `PROGRESS.md`, `DECISIONS.md`, `SESSION_HANDOFF.md`, `FILES.md`, `SCHEMA.md`, `OPEN_QUESTIONS.md`, `ENHANCEMENT_ROADMAP.md`.
+## F7.1 inspection targets (not implemented)
 
-`AUTHOR_SELECTION_BATCH.md` is intentionally excluded and is to be deleted separately by the user. `LiteraHub.md` at repository root is a separate project note and **not** one of these eight files; its stale next-phase guidance should eventually be reconciled as well.
+Inspect current LoginForm, Program, ShellForm, StudentDetailsPage, StudentsPage, RolesPage/RoleDetailsPage, ProfilePage, AuthService, UserRepository, RecoveryRepository, StaffUserService/Repository, StudentService/Repository, RoleRepository, DelegationGuard, PermissionService, session/role models, password policy, migration/bootstrap and existing tests. Confirm precise names/signatures using current tree. New student account repository/service/models, registration/approval UI and Student Shell are proposed, not existing accepted files.
+
+## Documentation
+
+Eight maintained `docs/` files; master prompt/checklist supplied separately for chat handoff. AUTHOR_SELECTION_BATCH.md retired; root LiteraHub.md may need separate reconciliation. No source files changed by documentation update.

@@ -1,6 +1,6 @@
 # LiteraHub — Open Questions and Verification Checklist
 
-**Updated:** 2026-11-27
+**Updated:** 2026-11-28
 
 ## Resolved/accepted decisions
 
@@ -10,31 +10,15 @@
 - No Google/email/SMS identity provider; offline hashed single-use recovery passkeys and authorized regeneration are accepted.
 - User requests removal of `AUTHOR_SELECTION_BATCH.md`, retaining eight current docs.
 
-## Remaining security review (F7.0.2 and F9)
+## Resolved scope and immediate next work
 
-- Define institution-authorized recovery runbook for loss of System Owner credentials/passkey; no universal bypass password.
-- Review initial bootstrap credential provisioning, global authorization lockout denial-of-service tradeoff, audit retention, and independent negative-path tests.
-- Verify role assignment UI matches backend restrictions and that authorization is operation-specific. Do not reopen accepted F5 UI unless a regression is found.
+F7.0.3 accepted/pushed, F7.1 approved. Student display name maps to Borrower system key. Hybrid registration, staff approval/direct creation, dedicated student shell, requests, reservation expiry, renewal, waitlist, fines and notifications approved. No additional scope approval required.
 
-## F6 — PSGC offline address integration (completed)
-
-- PSA 2026-Q3 dataset embedded in Services under `LiteraHub.PSGC.Data`: 18 regions, 82 provinces, 1,642 cities/municipalities, 14 Manila districts and 42,010 barangays. See `LiteraHub.Services/Resources/PSGC/SOURCE.md` for attribution and conversion details.
-- Searchable cascading Region → Province (where applicable) → City/Municipality → Barangay; independent cities, NCR and province-free localities supported. ZIP remains manual.
-- V11 adds nullable structured address codes and names; legacy addresses are preserved until deliberately converted. Final UI removes ordinary address preview and legacy captions while preserving conversion and error handling.
-- Converter is tracked at `tools/psgc/convert_psgc.py`; solution reference is repository-relative.
-
-## Remaining PSGC maintenance
-
-- Verify future releases and retired-code mappings before replacing the embedded snapshot; do not guess replacements or derive ZIP from PSGC.
-- Future tests: legacy student service persistence, V11 upgrade in isolated SQL database, offline UI regression.
-
-## Remaining academic scope
-
-1. Verify seeded loan limits, allowed book conditions, loan duration and fines policy (previously noted seven days / three loans / no fines).
-2. Design atomic Borrow & Return transactions and concurrency/rollback tests.
-3. Implement all four required Reports and academic search facilities.
-4. Test staff role permissions, logout/login, account recovery, metadata offline failure, SQL migrations and desktop packaging.
-
-## Documentation
-
-The eight maintained docs should be reconciled at major milestones. `LiteraHub.md` at repo root still has older next-phase guidance and can be refreshed separately if user authorizes a ninth document.
+## Open implementation decisions (do not block safe work unnecessarily)
+- Verify exact registration identity evidence and credential handoff with institution; student number/name alone insufficient. Decide pending request expiration/retry, account archive/reactivation and self-service profile field policy.
+- New student-account staff permissions, role protection, transactional review and live linked-student checks; verify current grant and recovery behavior. Do not enable student login prematurely.
+- LoanDays=7 and MaxActiveLoans=3 are existing seeds; pickup deadline, renewal count/duration, waitlist eligibility, fine rate/grace/cap, overdue and balance restrictions remain institutional policy choices. Use configurable safe defaults; no assumed fines.
+- Determine aggregate inventory reservation representation and stable lock ordering; preserve existing unavailable stock. Decide fine ledger and policy snapshots, expiry processing, historic deletion protection.
+- Verify SQL integration/concurrency tests in isolated database, CI run status, clean install and upgrade; no independent runtime claims. Review authorized Owner recovery, audit retention, privacy, direct SQL trust boundary and least privilege before release.
+- Maintain PSGC version/provenance, legacy conversion and province-free cases; do not infer ZIP or retired codes.
+- Mandatory circulation searches and four reports remain open. Final academic compliance, deployment and documentation pending.

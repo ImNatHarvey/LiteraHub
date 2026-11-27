@@ -1,6 +1,6 @@
 # LiteraHub — Project Brief and Academic Scope
 
-**Updated:** 2026-11-27  
+**Updated:** 2026-11-28  
 **Academic source:** `05 Case Study -Library Management System` (STI Balagtas, Case Study #5)  
 **Repository:** https://github.com/ImNatHarvey/LiteraHub
 
@@ -32,9 +32,9 @@ Develop a scaled-down C# and Microsoft SQL library management system for STI Bal
 - **Students:** Student ID, first/middle/last/complete name.
 - **Borrow/Return:** Borrow date, return date, student last/first name, ISBN.
 
-## Implementation checkpoint — 2026-11-27
+## Implementation checkpoint — 2026-11-28
 
-Catalog F1–F4 and authentication F5 are user-accepted. Verified GitHub baseline: `8801495d1b1a323c0e12a9465d776b8bb629cfa9` (portable PSGC converter and solution reference). F5.7, F5.8 and F6 passed user-reported acceptance tests and were pushed. F7.0.1 test project and CI are delivered for acceptance; no independent .NET build or SQL runtime test has been performed.
+**Verified GitHub master:** `468f8f8187026dd933dd6a7861e27325cc736dce` — F7.0.3, checked during handoff. **Local acceptance:** 29/29 tests passed; V13, category CRUD audit, authentication audit and student PSGC persistence verified by user screenshots. No independent Windows build or SQL execution claimed. F7.1 approved, not delivered or accepted.
 
 - F5.0–F5.2: theme-adaptive split-screen login, three local carousel slides, validation, password visibility, and borderless themed window controls.
 - F5.3: staff CRUD, temporary passwords, personal names and Full Name search.
@@ -58,18 +58,46 @@ Catalog F1–F4 and authentication F5 are user-accepted. Verified GitHub baselin
 - V11 adds nullable structured address codes and names; legacy addresses are preserved until deliberately converted. Final UI removes ordinary address preview and legacy captions while preserving conversion and error handling.
 - Converter is tracked at `tools/psgc/convert_psgc.py`; solution reference is repository-relative.
 
-## F7 — Engineering foundation and Borrow & Return
+## F7.0 — Accepted engineering and security baseline
 
-- F7.0.1 (current): xUnit `LiteraHub.Tests` and Windows GitHub Actions restore/build/test workflow. Initial tests cover existing ASCII password policy and embedded PSGC counts, hierarchy, invalid combinations, province-free geography and caching. No SQL Server required for this batch. Test execution pending acceptance.
-- F7.0.2: correct BCrypt UTF-8 byte limit, securely provision initial owner credentials, and implement persistent login throttling/lockout; preserve existing accounts and protections.
-- F7.0.3: central audit model, repository and service; preserve existing recovery/owner audit records. Use transaction-aware success logging and never log credentials. Add isolated SQL integration and authorization tests.
-- F7.1: implement student/book selection, loan dates, limits, overdue detection, returns, condition and remarks, search/filter/sort/pagination and RBAC. Atomic concurrency-safe transactions, no duplicate return, explicit zero availability preserved. Reuse shared cards and toolbar.
-- F7.2: permission-controlled institutional loan settings. Existing defaults are 7 days and 3 active loans; approve other policy choices before implementation.
+- F7.0.1: `LiteraHub.Tests` xUnit project, Windows GitHub Actions workflow and portable solution references. Initial 13 tests passed locally. CI definition exists; successful CI run on current commit is not independently established. SQL integration tests remain outstanding.
+- F7.0.2: secure random initial administrator credential shown through authorized provisioning, no hardcoded universal password; preserve existing credentials. BCrypt input policy uses UTF-8 byte length, not character count. Pending mandatory password change cannot establish an ordinary session before completion.
+- F7.0.2.1: five ordinary failed login attempts trigger a 3-minute persistent lockout; recovery and Owner authorization remain five failures/15 minutes. Exact remaining lockout countdown only disclosed when correct credentials are supplied for an eligible locked account. Recovery passkeys are hashed, single-use; successful recovery/unlock clears ordinary login lockout. Existing recovery is staff-only until F7.1 extends it safely.
+- V12 adds `Users.LoginFailures` and `LoginLockedUntil` with consistent-state constraint.
+- F7.0.3: `AuditEvent` and `AuditWriter` record successful catalog, staff, role and profile mutations in the same SQL transaction, and selected authentication events. Preserve RecoveryAudit and OwnerAuthorizationAudit. Credential verification is not proof of completed mandatory password change. Audit logs contain fixed event descriptions and no secrets.
+- V13 adds `dbo.ActivityAudit`. No standalone audit reader/UI yet. Not all denied actions, sign-outs, direct SQL modifications or tamper-resistance are covered. No historical backfill invented.
+- StudentRepository UPDATE now persists all six PSGC code/name fields. User verified Central Luzon/Bocaue/Turo codes after editing a legacy record. Legacy unconverted rows can remain NULL.
+- Final local acceptance: 29/29 tests, V13 startup, authentication audit, student update and five category lifecycle audit events; deleted category history preserved. Latest pushed commit verified.
 
-Pending: F8 dashboard/reports/activity log/notifications and F9 release testing.
+## Approved expanded product scope
 
-## Optional enhancements and scope control
+Student desktop self-registration with staff verification, staff-created accounts, protected Student role, own-data portal, requests/reservations/expiry, walk-in loans, renewals, waitlists, fines/payments/waivers and notifications. QR and web deferred. These extend, not replace, academic requirements.
 
-- Nine-themed Login carousel, offline single-use passkey recovery, offline PSGC address lookup, metadata/cover lookup and student photo previews are product enhancements, not substitutes for mandatory case-study functionality.
-- The case study names Municipality and City/Province address fields but does not require Region, Province and Barangay selectors. F6 adds these selectors through the backwards-compatible V11 migration.
-- Staff roles and student records are distinct; a borrower login portal is not required for the academic MVP.
+- [x] F1–F4 — Catalog and reusable UI foundation.
+- [x] F5.0–F5.6.1 — Staff authentication, RBAC, recovery, Owner and peer authorization.
+- [x] F5.7 — Responsive section cards and details layouts.
+- [x] F5.8 — Module summary cards and filter integration.
+- [x] F6 — Offline PSGC integration (V11); persistence correction verified in F7.0.3.
+- [x] F7.0.1 — xUnit and Windows CI definition; local acceptance (13 tests initially).
+- [x] F7.0.2 / F7.0.2.1 — Secure bootstrap, BCrypt UTF-8 policy, persistent login throttling (V12), recovery unlock and countdown.
+- [x] F7.0.3 — Transactional ActivityAudit foundation (V13); 29 tests passed locally.
+- [ ] **F7.1 — Complete Student Account System (NEXT).**
+- [ ] F7.2 — Circulation backend: borrow/return, requests, reservations, renewals, waitlists, fines.
+- [ ] F7.3 — Staff circulation interface.
+- [ ] F7.4 — Student self-service portal.
+- [ ] F7.5 — Library configuration and circulation policies.
+- [ ] F8.1 — Staff and student dashboards.
+- [ ] F8.2 — Reports and PDF export.
+- [ ] F8.3 — Activity Log UI, including existing security audit sources.
+- [ ] F8.4 — Staff/student Notification Center.
+- [ ] F9.1 — Security and database hardening.
+- [ ] F9.2 — Backup, installation and deployment.
+- [ ] F9.3 — Final regression, academic demonstration and documentation.
+
+## Academic requirements (final verification still pending)
+- [x] C# and Microsoft SQL Server, Books/Authors/Categories/Students CRUD foundations and search.
+- [x] Student structured address integration and persistence accepted; retain case-study address/contact fields.
+- [ ] Verify Books search ISBN/title/author/category/status; Authors ID/name/gender; Students ID/name against original case study.
+- [ ] Borrow/Return fields: student ID, borrow date, return date, remarks/comments, ISBN; mandatory search borrow date, return date, student first/last name, ISBN.
+- [ ] Four required reports: Books per Category, Books per Author, Books per Status, All Books.
+- [ ] Final original case-study compliance and presentation. If schedule constrained, mandatory circulation and four reports outrank optional enhancements; do not silently drop approved scope.
