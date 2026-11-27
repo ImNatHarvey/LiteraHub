@@ -8,10 +8,12 @@ namespace LiteraHub.Data.Repositories;
 public sealed class AuthorCreationRepository
 {
     private readonly IDbConnectionFactory _factory;
+    private readonly ISessionContext _session;
 
     public AuthorCreationRepository(
-        IDbConnectionFactory factory)
+        IDbConnectionFactory factory, ISessionContext session)
     {
+        _session = session ?? throw new ArgumentNullException(nameof(session));
         _factory = factory ??
             throw new ArgumentNullException(nameof(factory));
     }
@@ -24,8 +26,9 @@ public sealed class AuthorCreationRepository
             _factory.CreateConnection();
 
         await connection.OpenAsync();
+        await using var tx = await connection.BeginTransactionAsync();
 
-        return await connection.QuerySingleAsync<int>(
+        int createdId = await connection.QuerySingleAsync<int>(
             """
             INSERT INTO dbo.Authors
                 (FirstName, MiddleName, LastName,
@@ -35,7 +38,10 @@ public sealed class AuthorCreationRepository
                 (@FirstName, @MiddleName, @LastName,
                  @Gender, @BirthDate, 1);
             """,
-            input);
+            input, tx);
+        await AuditWriter.WriteAsync(connection, tx, _session.Current, new AuditEvent(AuditModule.Authors, AuditAction.Created, createdId));
+        await tx.CommitAsync();
+        return createdId;
     }
 
     public async Task<AuthorRecord?> GetByIdAsync(
@@ -89,6 +95,7 @@ public sealed class AuthorCreationRepository
             _factory.CreateConnection();
 
         await connection.OpenAsync();
+        await using var tx = await connection.BeginTransactionAsync();
 
         int affected = await connection.ExecuteAsync(
             """
@@ -108,8 +115,11 @@ public sealed class AuthorCreationRepository
                 input.LastName,
                 input.Gender,
                 input.BirthDate
-            });
+            }, tx);
 
+        if (affected > 0)
+            await AuditWriter.WriteAsync(connection, tx, _session.Current, new AuditEvent(AuditModule.Authors, AuditAction.Updated, authorId));
+        await tx.CommitAsync();
         return affected > 0;
     }
 
@@ -121,6 +131,7 @@ public sealed class AuthorCreationRepository
             _factory.CreateConnection();
 
         await connection.OpenAsync();
+        await using var tx = await connection.BeginTransactionAsync();
 
         int affected = await connection.ExecuteAsync(
             """
@@ -128,8 +139,11 @@ public sealed class AuthorCreationRepository
             SET IsActive = @isActive
             WHERE AuthorId = @authorId;
             """,
-            new { authorId, isActive });
+            new { authorId, isActive }, tx);
 
+        if (affected > 0)
+            await AuditWriter.WriteAsync(connection, tx, _session.Current, new AuditEvent(AuditModule.Authors, (isActive ? AuditAction.Restored : AuditAction.Archived), authorId));
+        await tx.CommitAsync();
         return affected > 0;
     }
 
@@ -140,6 +154,7 @@ public sealed class AuthorCreationRepository
             _factory.CreateConnection();
 
         await connection.OpenAsync();
+        await using var tx = await connection.BeginTransactionAsync();
 
         int affected = await connection.ExecuteAsync(
             """
@@ -152,8 +167,11 @@ public sealed class AuthorCreationRepository
                   WHERE AuthorId = @authorId
               );
             """,
-            new { authorId });
+            new { authorId }, tx);
 
+        if (affected > 0)
+            await AuditWriter.WriteAsync(connection, tx, _session.Current, new AuditEvent(AuditModule.Authors, AuditAction.Deleted, authorId));
+        await tx.CommitAsync();
         return affected > 0;
     }
 

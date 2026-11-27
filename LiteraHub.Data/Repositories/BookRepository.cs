@@ -12,6 +12,7 @@ namespace LiteraHub.Data.Repositories;
 public sealed class BookRepository : IBookRepository
 {
     private readonly IDbConnectionFactory _factory;
+    private readonly ISessionContext _session;
 
     private const string SelectBooks = """
         SELECT
@@ -35,8 +36,9 @@ public sealed class BookRepository : IBookRepository
             ON s.StatusId = b.StatusId
         """;
 
-    public BookRepository(IDbConnectionFactory factory)
+    public BookRepository(IDbConnectionFactory factory, ISessionContext session)
     {
+        _session = session ?? throw new ArgumentNullException(nameof(session));
         _factory = factory ??
             throw new ArgumentNullException(nameof(factory));
     }
@@ -186,6 +188,7 @@ public sealed class BookRepository : IBookRepository
                 conn, tx, id, resolvedAuthors);
             await ReplaceCategoriesAsync(conn, tx, id, input);
 
+            await AuditWriter.WriteAsync(conn, tx, _session.Current, new AuditEvent(AuditModule.Books, AuditAction.Created, id));
             await tx.CommitAsync();
             return id;
         }
@@ -293,6 +296,7 @@ public sealed class BookRepository : IBookRepository
                 conn, tx, bookId, resolvedAuthors);
             await ReplaceCategoriesAsync(conn, tx, bookId, input);
 
+            await AuditWriter.WriteAsync(conn, tx, _session.Current, new AuditEvent(AuditModule.Books, AuditAction.Updated, bookId));
             await tx.CommitAsync();
             return true;
         }
@@ -308,6 +312,7 @@ public sealed class BookRepository : IBookRepository
     {
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
 
         int affected = await conn.ExecuteAsync(
             """
@@ -315,8 +320,11 @@ public sealed class BookRepository : IBookRepository
             SET IsActive = @IsActive
             WHERE BookId = @BookId;
             """,
-            new { BookId = bookId, IsActive = isActive });
+            new { BookId = bookId, IsActive = isActive }, tx);
 
+        if (affected > 0)
+            await AuditWriter.WriteAsync(conn, tx, _session.Current, new AuditEvent(AuditModule.Books, (isActive ? AuditAction.Restored : AuditAction.Archived), bookId));
+        await tx.CommitAsync();
         return affected > 0;
     }
 
@@ -380,6 +388,8 @@ public sealed class BookRepository : IBookRepository
                 """,
                 new { BookId = bookId }, tx);
 
+            if (affected > 0)
+                await AuditWriter.WriteAsync(conn, tx, _session.Current, new AuditEvent(AuditModule.Books, AuditAction.Deleted, bookId));
             await tx.CommitAsync();
             return affected > 0;
         }
@@ -390,7 +400,7 @@ public sealed class BookRepository : IBookRepository
         }
     }
 
-    private static async Task<int[]> ResolveAuthorsAsync(
+    private async Task<int[]> ResolveAuthorsAsync(
         System.Data.Common.DbConnection conn,
         System.Data.Common.DbTransaction tx,
         BookInput input)
@@ -457,6 +467,7 @@ public sealed class BookRepository : IBookRepository
                     VALUES (@First, NULL, @Last, N'Unknown', NULL, 1);
                     """,
                     new { First = first, Last = last }, tx);
+                await AuditWriter.WriteAsync(conn, tx, _session.Current, new AuditEvent(AuditModule.Authors, AuditAction.Created, id));
             }
             ids.Add(id);
         }

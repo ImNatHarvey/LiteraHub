@@ -57,6 +57,7 @@ public sealed class RoleRepository : IRoleRepository
             OUTPUT INSERTED.RoleId VALUES (@Name, @Description, 1, 0);
             """, input, tx);
         await ReplacePermissionsAsync(conn, tx, id, input);
+        await AuditWriter.WriteAsync(conn, tx, actor, new AuditEvent(AuditModule.Roles, AuditAction.Created, id));
         await tx.CommitAsync();
         return id;
     }
@@ -76,6 +77,7 @@ public sealed class RoleRepository : IRoleRepository
             """, new { roleId, input.Description }, tx);
         if (systemUpdated == 1)
         {
+            await AuditWriter.WriteAsync(conn, tx, actor, new AuditEvent(AuditModule.Roles, AuditAction.Updated, roleId));
             await tx.CommitAsync();
             return true;
         }
@@ -85,6 +87,7 @@ public sealed class RoleRepository : IRoleRepository
             """, new { roleId, input.Name, input.Description }, tx);
         if (changed != 1) return false;
         await ReplacePermissionsAsync(conn, tx, roleId, input);
+        await AuditWriter.WriteAsync(conn, tx, actor, new AuditEvent(AuditModule.Roles, AuditAction.Updated, roleId));
         await tx.CommitAsync();
         return true;
     }
@@ -109,6 +112,8 @@ public sealed class RoleRepository : IRoleRepository
             WHERE RoleId = @roleId AND IsSystem = 0 AND IsActive <> @active
             AND (@active = 1 OR NOT EXISTS (SELECT 1 FROM dbo.Users WHERE RoleId = @roleId AND IsActive = 1));
             """, new { roleId, active }, tx);
+        if (changed == 1)
+            await AuditWriter.WriteAsync(conn, tx, actor, new AuditEvent(AuditModule.Roles, (active ? AuditAction.Restored : AuditAction.Archived), roleId));
         await tx.CommitAsync();
         return changed == 1;
     }
@@ -129,6 +134,7 @@ public sealed class RoleRepository : IRoleRepository
         await conn.ExecuteAsync("DELETE FROM dbo.RolePermissions WHERE RoleId = @roleId;", new { roleId }, tx);
         var changed = await conn.ExecuteAsync("DELETE FROM dbo.Roles WHERE RoleId = @roleId AND IsSystem = 0 AND IsActive = 0;", new { roleId }, tx);
         if (changed != 1) return false;
+        await AuditWriter.WriteAsync(conn, tx, actor, new AuditEvent(AuditModule.Roles, AuditAction.Deleted, roleId));
         await tx.CommitAsync();
         return true;
     }

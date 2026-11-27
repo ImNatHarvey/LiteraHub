@@ -8,6 +8,7 @@ namespace LiteraHub.Data.Repositories;
 public sealed class CategoryRepository : ICategoryRepository
 {
     private readonly IDbConnectionFactory _factory;
+    private readonly ISessionContext _session;
 
     private const string SelectSql = """
         SELECT
@@ -18,8 +19,9 @@ public sealed class CategoryRepository : ICategoryRepository
         FROM dbo.Categories
         """;
 
-    public CategoryRepository(IDbConnectionFactory factory)
+    public CategoryRepository(IDbConnectionFactory factory, ISessionContext session)
     {
+        _session = session ?? throw new ArgumentNullException(nameof(session));
         _factory = factory ??
             throw new ArgumentNullException(nameof(factory));
     }
@@ -66,6 +68,7 @@ public sealed class CategoryRepository : ICategoryRepository
 
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
 
         const string sql = """
             INSERT INTO dbo.Categories
@@ -75,13 +78,16 @@ public sealed class CategoryRepository : ICategoryRepository
                 (@Name, @Description, 1);
             """;
 
-        return await conn.QuerySingleAsync<int>(
+        int createdId = await conn.QuerySingleAsync<int>(
             sql,
             new
             {
                 input.Name,
                 input.Description
-            });
+            }, tx);
+        await AuditWriter.WriteAsync(conn, tx, _session.Current, new AuditEvent(AuditModule.Categories, AuditAction.Created, createdId));
+        await tx.CommitAsync();
+        return createdId;
     }
 
     public async Task<bool> UpdateAsync(
@@ -92,6 +98,7 @@ public sealed class CategoryRepository : ICategoryRepository
 
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
 
         const string sql = """
             UPDATE dbo.Categories
@@ -108,8 +115,11 @@ public sealed class CategoryRepository : ICategoryRepository
                 CategoryId = categoryId,
                 input.Name,
                 input.Description
-            });
+            }, tx);
 
+        if (affectedRows > 0)
+            await AuditWriter.WriteAsync(conn, tx, _session.Current, new AuditEvent(AuditModule.Categories, AuditAction.Updated, categoryId));
+        await tx.CommitAsync();
         return affectedRows > 0;
     }
 
@@ -119,6 +129,7 @@ public sealed class CategoryRepository : ICategoryRepository
     {
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
 
         const string sql = """
             UPDATE dbo.Categories
@@ -132,8 +143,11 @@ public sealed class CategoryRepository : ICategoryRepository
             {
                 CategoryId = categoryId,
                 IsActive = isActive
-            });
+            }, tx);
 
+        if (affectedRows > 0)
+            await AuditWriter.WriteAsync(conn, tx, _session.Current, new AuditEvent(AuditModule.Categories, (isActive ? AuditAction.Restored : AuditAction.Archived), categoryId));
+        await tx.CommitAsync();
         return affectedRows > 0;
     }
 
@@ -145,6 +159,7 @@ public sealed class CategoryRepository : ICategoryRepository
 
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
 
         // The FK constraint remains the final protection
         // against concurrent references.
@@ -167,8 +182,11 @@ public sealed class CategoryRepository : ICategoryRepository
 
         int affectedRows = await conn.ExecuteAsync(
             sql,
-            new { CategoryId = categoryId });
+            new { CategoryId = categoryId }, tx);
 
+        if (affectedRows > 0)
+            await AuditWriter.WriteAsync(conn, tx, _session.Current, new AuditEvent(AuditModule.Categories, AuditAction.Deleted, categoryId));
+        await tx.CommitAsync();
         return affectedRows > 0;
     }
 }

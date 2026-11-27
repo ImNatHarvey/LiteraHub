@@ -58,6 +58,7 @@ public sealed class UserRepository : IUserRepository
                 + " WHERE u.Username = @Username", new { Username = username }, tx);
         if (user is null)
         {
+            await AuditWriter.WriteAsync(conn, tx, null, new AuditEvent(AuditModule.Authentication, AuditAction.LoginRejected, null, AuditOutcome.Denied));
             await tx.CommitAsync();
             await Task.Run(() => verify(password, dummyHash));
             return (null, 0);
@@ -76,6 +77,7 @@ public sealed class UserRepository : IUserRepository
             var now = await conn.ExecuteScalarAsync<DateTime>("SELECT SYSUTCDATETIME();", transaction: tx);
             int remaining = confirmed && user.IsActive && !string.Equals(user.RoleName, "Borrower", StringComparison.OrdinalIgnoreCase)
                 ? Math.Max(0, (int)Math.Ceiling((row.LoginLockedUntil!.Value - now).TotalSeconds)) : 0;
+            await AuditWriter.WriteAsync(conn, tx, null, new AuditEvent(AuditModule.Authentication, AuditAction.LoginRejected, user.UserId, AuditOutcome.Denied));
             await tx.CommitAsync();
             return (null, remaining);
         }
@@ -90,7 +92,14 @@ public sealed class UserRepository : IUserRepository
                 UPDATE dbo.Users SET LoginFailures = @Failures, LoginLockedUntil = @LockedUntilUtc
                 WHERE UserId = @UserId;
                 """, new { next.Failures, next.LockedUntilUtc, user.UserId }, tx);
+            if (!valid && next.LockedUntilUtc.HasValue)
+                await AuditWriter.WriteAsync(conn, tx, null, new AuditEvent(AuditModule.Authentication, AuditAction.LoginLocked, user.UserId, AuditOutcome.Denied));
         }
+        bool eligible = valid && user.IsActive && !string.Equals(user.RoleName, "Borrower", StringComparison.OrdinalIgnoreCase);
+        UserSession? actor = eligible ? new(user.UserId, user.Username, user.RoleName, user.StudentId) : null;
+        await AuditWriter.WriteAsync(conn, tx, actor, new AuditEvent(AuditModule.Authentication,
+            eligible ? AuditAction.CredentialsVerified : AuditAction.LoginRejected, user.UserId,
+            eligible ? AuditOutcome.Success : AuditOutcome.Denied));
         await tx.CommitAsync();
         return (valid ? user : null, 0);
     }
@@ -99,7 +108,8 @@ public sealed class UserRepository : IUserRepository
     {
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
-        return await conn.ExecuteAsync("""
+        await using var tx = await conn.BeginTransactionAsync();
+        int affected = await conn.ExecuteAsync("""
             UPDATE u SET PasswordHash = @PasswordHash, MustChangePassword = @MustChangePassword,
                 LoginFailures = 0, LoginLockedUntil = NULL
             FROM dbo.Users u JOIN dbo.Roles r ON r.RoleId = u.RoleId
@@ -112,6 +122,14 @@ public sealed class UserRepository : IUserRepository
             MustChangePassword = mustChangePassword,
             UserId = userId,
             ExpectedHash = expectedHash
-        }) == 1;
+        }, tx);
+        if (affected == 1)
+        {
+            var user = await conn.QuerySingleAsync<UserAccount>(SelectSql + " WHERE u.UserId = @UserId", new { UserId = userId }, tx);
+            await AuditWriter.WriteAsync(conn, tx, new UserSession(user.UserId, user.Username, user.RoleName, user.StudentId),
+                new AuditEvent(AuditModule.Authentication, AuditAction.PasswordChanged, userId));
+        }
+        await tx.CommitAsync();
+        return affected == 1;
     }
 }

@@ -67,6 +67,8 @@ public sealed class StaffUserRepository : IStaffUserRepository
             WHERE Name = @Role AND IsActive = 1 AND Name <> N'Borrower';
             """, new { input.Username, input.FirstName, input.MiddleName, input.LastName, PasswordHash = passwordHash, passkeyHash, Role = input.RoleName }, tx);
         if (id > 0) await db.ExecuteAsync("INSERT dbo.RecoveryAudit(UserId, ActorUserId, EventType) VALUES (@id,@actorId,N'PasskeyIssued')", new { id, actorId = actor.UserId }, tx);
+        if (id > 0)
+            await AuditWriter.WriteAsync(db, tx, actor, new AuditEvent(AuditModule.Users, AuditAction.Created, id));
         await tx.CommitAsync();
         return id;
     }
@@ -108,6 +110,8 @@ public sealed class StaffUserRepository : IStaffUserRepository
             DELETE u FROM dbo.Users u JOIN dbo.Roles r ON r.RoleId = u.RoleId
             WHERE u.UserId = @UserId AND u.IsActive = 0 AND r.Name <> N'Borrower';
             """, new { UserId = userId }, tx);
+        if (deleted == 1)
+            await AuditWriter.WriteAsync(db, tx, actor, new AuditEvent(AuditModule.Users, AuditAction.Deleted, userId));
         await tx.CommitAsync();
         return deleted == 1;
     }
@@ -167,6 +171,8 @@ public sealed class StaffUserRepository : IStaffUserRepository
                     IsActive = @IsActive
                 WHERE UserId = @UserId
                 """, new { UserId = userId, Username = input?.Username, Role = input?.RoleName, IsActive = newActive, EditNames = input is not null, FirstName = input?.FirstName, MiddleName = input?.MiddleName, LastName = input?.LastName }, tx);
+            if (updated == 1)
+                await AuditWriter.WriteAsync(db, tx, actor, new AuditEvent(AuditModule.Users, (input is not null ? AuditAction.Updated : active == true ? AuditAction.Restored : AuditAction.Archived), userId));
             await tx.CommitAsync();
             return updated == 1;
         }

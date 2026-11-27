@@ -18,6 +18,7 @@ internal static class Migrations
         new Migration(10, "Owner authorization limits and audit", V10()),
         new Migration(11, "Add structured PSGC student addresses", V11()),
         new Migration(12, "Add persistent sign-in attempt limits", V12()),
+        new Migration(13, "Add activity audit foundation", V13()),
     };
 
     private static string Index(string name, string table, string columns) =>
@@ -502,6 +503,25 @@ internal static class Migrations
         ALTER TABLE dbo.Users ADD CONSTRAINT CK_Users_LoginAttempts CHECK (
             (LoginFailures BETWEEN 0 AND 4 AND LoginLockedUntil IS NULL)
             OR (LoginFailures = 5 AND LoginLockedUntil IS NOT NULL));
+        """
+    };
+    private static string[] V13() => new[]
+    {
+        """
+        CREATE TABLE dbo.ActivityAudit (
+            AuditId BIGINT IDENTITY PRIMARY KEY,
+            ActorUserId INT NULL,
+            ActorUsername NVARCHAR(50) NULL,
+            ActorRole NVARCHAR(50) NULL,
+            Module NVARCHAR(40) NOT NULL,
+            Action NVARCHAR(40) NOT NULL,
+            EntityId INT NULL,
+            Outcome NVARCHAR(20) NOT NULL CHECK (Outcome IN (N'Success',N'Failed',N'Denied')),
+            Description NVARCHAR(160) NOT NULL,
+            CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+        );
+        CREATE INDEX IX_ActivityAudit_CreatedAt ON dbo.ActivityAudit(CreatedAt DESC, AuditId DESC);
+        CREATE INDEX IX_ActivityAudit_Module ON dbo.ActivityAudit(Module, CreatedAt DESC);
         """
     };
 }

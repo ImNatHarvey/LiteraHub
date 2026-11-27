@@ -7,6 +7,7 @@ namespace LiteraHub.Data.Repositories;
 public sealed class StudentRepository : IStudentRepository
 {
     private readonly IDbConnectionFactory _factory;
+    private readonly ISessionContext _session;
 
     private const string SelectSql = """
         SELECT StudentId, StudentNo, FirstName, MiddleName, LastName,
@@ -17,8 +18,9 @@ public sealed class StudentRepository : IStudentRepository
         FROM dbo.Students
         """;
 
-    public StudentRepository(IDbConnectionFactory factory)
+    public StudentRepository(IDbConnectionFactory factory, ISessionContext session)
     {
+        _session = session ?? throw new ArgumentNullException(nameof(session));
         _factory = factory ?? throw new ArgumentNullException(nameof(factory));
     }
 
@@ -54,6 +56,7 @@ public sealed class StudentRepository : IStudentRepository
         ArgumentNullException.ThrowIfNull(input);
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
         const string sql = """
             INSERT INTO dbo.Students
                 (StudentNo, FirstName, MiddleName, LastName, HouseNo, Street,
@@ -67,7 +70,10 @@ public sealed class StudentRepository : IStudentRepository
                  @RegionCode, @ProvinceCode, @CityMunicipalityCode, @BarangayCode, @RegionName, @BarangayName,
                  @MobileNo, @LandlineNo, @Email);
             """;
-        return await conn.QuerySingleAsync<int>(sql, input);
+        int createdId = await conn.QuerySingleAsync<int>(sql, input, tx);
+        await AuditWriter.WriteAsync(conn, tx, _session.Current, new AuditEvent(AuditModule.Students, AuditAction.Created, createdId));
+        await tx.CommitAsync();
+        return createdId;
     }
 
     public async Task<bool> UpdateAsync(int studentId, StudentInput input)
@@ -75,18 +81,22 @@ public sealed class StudentRepository : IStudentRepository
         ArgumentNullException.ThrowIfNull(input);
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
         const string sql = """
             UPDATE dbo.Students SET
                 StudentNo = @StudentNo, FirstName = @FirstName,
                 MiddleName = @MiddleName, LastName = @LastName,
                 HouseNo = @HouseNo, Street = @Street,
                 Municipality = @Municipality, CityProvince = @CityProvince,
+                RegionCode = @RegionCode, ProvinceCode = @ProvinceCode,
+                CityMunicipalityCode = @CityMunicipalityCode, BarangayCode = @BarangayCode,
+                RegionName = @RegionName, BarangayName = @BarangayName,
                 ZipCode = @ZipCode, BirthDate = @BirthDate,
                 Gender = @Gender, MobileNo = @MobileNo,
                 LandlineNo = @LandlineNo, Email = @Email
             WHERE StudentId = @StudentId;
             """;
-        return await conn.ExecuteAsync(sql, new
+        int affected = await conn.ExecuteAsync(sql, new
         {
             StudentId = studentId,
             input.StudentNo,
@@ -109,7 +119,11 @@ public sealed class StudentRepository : IStudentRepository
             input.BarangayCode,
             input.RegionName,
             input.BarangayName
-        }) > 0;
+        }, tx);
+        if (affected > 0)
+            await AuditWriter.WriteAsync(conn, tx, _session.Current, new AuditEvent(AuditModule.Students, AuditAction.Updated, studentId));
+        await tx.CommitAsync();
+        return affected > 0;
     }
 
     // Hard delete is atomic and guarded by the database's existing foreign keys.
@@ -118,27 +132,37 @@ public sealed class StudentRepository : IStudentRepository
     {
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
         const string sql = """
             DELETE s FROM dbo.Students AS s
             WHERE s.StudentId = @StudentId
               AND NOT EXISTS (SELECT 1 FROM dbo.BorrowReturns AS br WHERE br.StudentId = s.StudentId)
               AND NOT EXISTS (SELECT 1 FROM dbo.Users AS u WHERE u.StudentId = s.StudentId);
             """;
-        return await conn.ExecuteAsync(sql, new { StudentId = studentId }) > 0;
+        int affected = await conn.ExecuteAsync(sql, new { StudentId = studentId }, tx);
+        if (affected > 0)
+            await AuditWriter.WriteAsync(conn, tx, _session.Current, new AuditEvent(AuditModule.Students, AuditAction.Deleted, studentId));
+        await tx.CommitAsync();
+        return affected > 0;
     }
 
     public async Task<bool> SetActiveAsync(int studentId, bool isActive)
     {
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
         const string sql = """
             UPDATE dbo.Students SET IsActive = @IsActive
             WHERE StudentId = @StudentId;
             """;
-        return await conn.ExecuteAsync(sql, new
+        int affected = await conn.ExecuteAsync(sql, new
         {
             StudentId = studentId,
             IsActive = isActive
-        }) > 0;
+        }, tx);
+        if (affected > 0)
+            await AuditWriter.WriteAsync(conn, tx, _session.Current, new AuditEvent(AuditModule.Students, (isActive ? AuditAction.Restored : AuditAction.Archived), studentId));
+        await tx.CommitAsync();
+        return affected > 0;
     }
 }

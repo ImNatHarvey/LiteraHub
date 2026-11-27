@@ -73,28 +73,28 @@ internal static class Program
 
         var users = new UserRepository(connectionFactory);
         var auth = new AuthService(users, hasher, session);
-        IProfileService profile = new ProfileService(new ProfileRepository(connectionFactory), users, hasher, session);
+        IProfileService profile = new ProfileService(new ProfileRepository(connectionFactory, session), users, hasher, session);
 
         var categoryRepository =
-            new CategoryRepository(connectionFactory);
+            new CategoryRepository(connectionFactory, session);
 
         ICategoryService categories =
             new CategoryService(categoryRepository, permissions);
 
         var bookRepository =
-            new BookRepository(connectionFactory);
+            new BookRepository(connectionFactory, session);
 
         IBookService books =
             new BookService(bookRepository, permissions);
 
         var authorRepository =
-            new AuthorCreationRepository(connectionFactory);
+            new AuthorCreationRepository(connectionFactory, session);
 
         IAuthorCreationService authors =
             new AuthorCreationService(authorRepository, permissions);
 
         IStudentService students = new StudentService(
-            new StudentRepository(connectionFactory), permissions);
+            new StudentRepository(connectionFactory, session), permissions);
 
         IStaffUserService staffUsers = new StaffUserService(
             new StaffUserRepository(connectionFactory, hasher), permissions, session, hasher, roleRepository);
