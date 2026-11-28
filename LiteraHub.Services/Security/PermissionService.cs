@@ -76,7 +76,7 @@ public sealed class PermissionService : IPermissionService
             RolePermission.CategoriesView or RolePermission.CategoriesAdd or RolePermission.CategoriesEdit or
                 RolePermission.CategoriesArchiveRestore or RolePermission.CategoriesDelete => RolePermission.CategoriesView,
             RolePermission.StudentsView or RolePermission.StudentsAdd or RolePermission.StudentsEdit or
-                RolePermission.StudentsArchiveRestore or RolePermission.StudentsDelete => RolePermission.StudentsView,
+                RolePermission.StudentsArchiveRestore or RolePermission.StudentsDelete or RolePermission.StudentsManageAccounts => RolePermission.StudentsView,
             RolePermission.UsersView or RolePermission.UsersAdd or RolePermission.UsersEdit or
                 RolePermission.UsersArchiveRestore or RolePermission.UsersDelete => RolePermission.UsersView,
             RolePermission.RolesView or RolePermission.RolesAdd or RolePermission.RolesEdit or

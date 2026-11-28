@@ -39,6 +39,7 @@ public enum RolePermission
     ReportsView,
     ReportsExport,
     ActivityLogView,
+    StudentsManageAccounts,
 }
 
 

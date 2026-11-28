@@ -1,7 +1,7 @@
 ﻿namespace LiteraHub.Core.Models;
 
-public enum AuditModule { Books, Authors, Categories, Students, Users, Roles, Profile, Authentication, Circulation, LibraryConfiguration }
-public enum AuditAction { Created, Updated, Archived, Restored, Deleted, CredentialsVerified, LoginRejected, LoginLocked, PasswordChanged, Borrowed, Returned }
+public enum AuditModule { Books, Authors, Categories, Students, Users, Roles, Profile, Authentication, Circulation, LibraryConfiguration, StudentAccounts }
+public enum AuditAction { Created, Updated, Archived, Restored, Deleted, CredentialsVerified, LoginRejected, LoginLocked, PasswordChanged, Borrowed, Returned, RegistrationSubmitted, RegistrationApproved, RegistrationRejected, RegistrationExpired }
 public enum AuditOutcome { Success, Failed, Denied }
 
 public sealed record AuditEvent(AuditModule Module, AuditAction Action, int? EntityId, AuditOutcome Outcome = AuditOutcome.Success)

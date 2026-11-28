@@ -51,6 +51,7 @@ public sealed class RoleRepository : IRoleRepository
         await conn.OpenAsync();
         await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable);
         var guard = await DelegationGuard.LoadAsync(conn, tx, actor, RolePermission.RolesAdd, RolePermission.RolesView);
+        RejectReservedName(input.Name);
         guard.CheckNewPermissions(input.Permissions);
         var id = await conn.ExecuteScalarAsync<int>("""
             INSERT INTO dbo.Roles (Name, Description, IsActive, IsSystem)
@@ -69,7 +70,7 @@ public sealed class RoleRepository : IRoleRepository
         await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable);
         var guard = await DelegationGuard.LoadAsync(conn, tx, actor, RolePermission.RolesEdit, RolePermission.RolesView);
         var target = await guard.CheckRoleAsync(roleId, null, roleMutation: true);
-        if (!target.IsSystem) guard.CheckNewPermissions(input.Permissions);
+        if (!target.IsSystem) { RejectReservedName(input.Name); guard.CheckNewPermissions(input.Permissions); }
         // System role updates may only change the description. Never replace their permissions.
         var systemUpdated = await conn.ExecuteAsync("""
             UPDATE dbo.Roles SET Description = @Description
@@ -90,6 +91,12 @@ public sealed class RoleRepository : IRoleRepository
         await AuditWriter.WriteAsync(conn, tx, actor, new AuditEvent(AuditModule.Roles, AuditAction.Updated, roleId));
         await tx.CommitAsync();
         return true;
+    }
+
+    private static void RejectReservedName(string name)
+    {
+        if (string.Equals(name.Trim(), "Student", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Student is a reserved system role display name.");
     }
 
     private static async Task ReplacePermissionsAsync(DbConnection conn, DbTransaction tx, int roleId, RoleInput input)

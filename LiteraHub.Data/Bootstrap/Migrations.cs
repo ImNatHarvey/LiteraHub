@@ -19,6 +19,7 @@ internal static class Migrations
         new Migration(11, "Add structured PSGC student addresses", V11()),
         new Migration(12, "Add persistent sign-in attempt limits", V12()),
         new Migration(13, "Add activity audit foundation", V13()),
+        new Migration(14, "Student account registration foundation", V14()),
     };
 
     private static string Index(string name, string table, string columns) =>
@@ -522,6 +523,45 @@ internal static class Migrations
         );
         CREATE INDEX IX_ActivityAudit_CreatedAt ON dbo.ActivityAudit(CreatedAt DESC, AuditId DESC);
         CREATE INDEX IX_ActivityAudit_Module ON dbo.ActivityAudit(Module, CreatedAt DESC);
+        """
+    };
+    private static string[] V14() => new[]
+    {
+        """
+        IF EXISTS (SELECT 1 FROM dbo.Roles WHERE Name=N'Student')
+            THROW 51014, 'A custom Student role conflicts with the reserved display name. Rename it before upgrading.', 1;
+        INSERT dbo.RolePermissions(RoleId, PermissionKey)
+        SELECT RoleId, N'StudentsManageAccounts' FROM dbo.Roles r
+        WHERE r.Name IN (N'Admin', N'Librarian') AND r.IsSystem=1
+          AND NOT EXISTS (SELECT 1 FROM dbo.RolePermissions p WHERE p.RoleId=r.RoleId AND p.PermissionKey=N'StudentsManageAccounts');
+        """,
+        """
+        CREATE TABLE dbo.StudentRegistrations (
+            RegistrationId INT IDENTITY PRIMARY KEY,
+            StudentId INT NULL REFERENCES dbo.Students(StudentId) ON DELETE SET NULL,
+            Status VARCHAR(12) NOT NULL DEFAULT 'Pending',
+            SubmittedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+            ExpiresAt DATETIME2 NOT NULL,
+            ReviewedAt DATETIME2 NULL,
+            ReviewerUserId INT NULL,
+            AccountUserId INT NULL,
+            DecisionCode VARCHAR(32) NULL,
+            CONSTRAINT CK_StudentRegistrations_Dates CHECK (ExpiresAt > SubmittedAt),
+            CONSTRAINT CK_StudentRegistrations_State CHECK (
+                (Status='Pending' AND ReviewedAt IS NULL AND ReviewerUserId IS NULL AND AccountUserId IS NULL AND DecisionCode IS NULL)
+                OR (Status='Approved' AND ReviewedAt IS NOT NULL AND ReviewerUserId IS NOT NULL AND AccountUserId IS NOT NULL AND DecisionCode IS NOT NULL AND DecisionCode='IdentityVerified')
+                OR (Status='Rejected' AND ReviewedAt IS NOT NULL AND ReviewerUserId IS NOT NULL AND AccountUserId IS NULL AND DecisionCode IS NOT NULL AND DecisionCode IN ('IdentityNotVerified','NotEligible'))
+                OR (Status='Expired' AND ReviewedAt IS NOT NULL AND ReviewerUserId IS NULL AND AccountUserId IS NULL AND DecisionCode IS NOT NULL AND DecisionCode='Expired'))
+        );
+        CREATE UNIQUE INDEX UX_StudentRegistrations_Pending ON dbo.StudentRegistrations(StudentId)
+            WHERE Status='Pending' AND StudentId IS NOT NULL;
+        CREATE INDEX IX_StudentRegistrations_Queue ON dbo.StudentRegistrations(Status, ExpiresAt, RegistrationId);
+        CREATE TABLE dbo.StudentRegistrationThrottle (
+            SingletonId INT PRIMARY KEY CHECK (SingletonId=1),
+            WindowStartedAt DATETIME2 NOT NULL,
+            Attempts INT NOT NULL CHECK (Attempts BETWEEN 0 AND 10)
+        );
+        INSERT dbo.StudentRegistrationThrottle VALUES(1,SYSUTCDATETIME(),0);
         """
     };
 }
