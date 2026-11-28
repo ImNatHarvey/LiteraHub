@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
 using LiteraHub.Core.Security;
+using LiteraHub.Data.Repositories;
 using LiteraHub.WinForms.Controls;
 using LiteraHub.WinForms.Pages;
 using LiteraHub.WinForms.Theming;
@@ -64,6 +65,8 @@ public sealed class ShellForm : Form
     private readonly IAuthorCreationService _authors;
     private readonly IBookMetadataService _metadata;
     private readonly IStudentService _students;
+    private readonly StudentAccountRepository? _studentAccounts;
+    private string? _selectedPageKey;
     private readonly IStaffUserService _staffUsers;
     private readonly IRoleService _roles;
 
@@ -142,8 +145,11 @@ public sealed class ShellForm : Form
         IAuthorCreationService authors,
         IBookMetadataService metadata,
         IStudentService students,
-        IStaffUserService staffUsers, IRoleService roles, IProfileService profile)
+        IStaffUserService staffUsers, IRoleService roles, IProfileService profile, StudentAccountRepository? studentAccounts = null)
     {
+        if (session.Current is not { } actor || actor.StudentId.HasValue || !StudentAccountPolicy.IsValidIdentity(actor.RoleName, actor.StudentId) || StudentAccountPolicy.IsStudentRole(actor.RoleName))
+            throw new UnauthorizedAccessException("Staff session required.");
+        _studentAccounts = studentAccounts;
         _profile = profile ?? throw new ArgumentNullException(nameof(profile));
         _session = session ??
             throw new ArgumentNullException(nameof(session));
@@ -258,6 +264,7 @@ public sealed class ShellForm : Form
         Controls.Add(_root);
 
         Theme.Changed += OnThemeChanged;
+        FormClosing += (_, e) => { if (_currentPage is StudentsPage { AccountOperationInProgress: true }) e.Cancel = true; };
 
         ResumeLayout(performLayout: true);
     }
@@ -346,6 +353,7 @@ public sealed class ShellForm : Form
 
     private void Logout()
     {
+        if (_currentPage is StudentsPage { AccountOperationInProgress: true }) return;
         _auth.Logout();
         LoggedOut = true;
         Close();
@@ -353,6 +361,8 @@ public sealed class ShellForm : Form
 
     private void ShowPage(string key)
     {
+        if (_currentPage is StudentsPage { AccountOperationInProgress: true })
+        { if (_selectedPageKey is not null) _nav.SelectItem(_selectedPageKey); return; }
         var page = _pages.FirstOrDefault(
             p => p.Key == key);
 
@@ -390,7 +400,7 @@ public sealed class ShellForm : Form
 
         else if (key == "students")
         {
-            next = new StudentsPage(_students, _permissions);
+            next = new StudentsPage(_students, _permissions, _studentAccounts);
         }
         else if (key == "authors")
         {
@@ -424,6 +434,7 @@ public sealed class ShellForm : Form
         next.Dock = DockStyle.Fill;
 
         SwapPage(next);
+        _selectedPageKey = page.Key;
         _nav.SelectItem(page.Key);
     }
 

@@ -26,14 +26,15 @@ public sealed class RecoveryRepository(IDbConnectionFactory factory) : IRecovery
         await using var db = factory.CreateConnection();
         await db.OpenAsync();
         await using var tx = await db.BeginTransactionAsync(IsolationLevel.Serializable);
-        var state = await db.QuerySingleOrDefaultAsync<State>("""
+        var matches = (await db.QueryAsync<State>($$"""
             SELECT u.UserId, u.PasswordHash, u.RecoveryPasskeyHash,
-                CAST(CASE WHEN u.IsActive=1 AND r.IsActive=1 AND r.Name<>N'Borrower' THEN 1 ELSE 0 END AS BIT) Eligible,
+                CAST(CASE WHEN {{AccountEligibility.Sql}} THEN 1 ELSE 0 END AS BIT) Eligible,
                 CAST(CASE WHEN RecoveryLockedUntil > SYSUTCDATETIME() THEN 1 ELSE 0 END AS BIT) Locked,
                 CASE WHEN RecoveryLockedUntil <= SYSUTCDATETIME() THEN 0 ELSE RecoveryFailures END Failures
             FROM dbo.Users u WITH (UPDLOCK,HOLDLOCK) JOIN dbo.Roles r ON r.RoleId=u.RoleId
-            WHERE u.Username=@username
-            """, new { username }, tx);
+            WHERE {{UserRepository.LoginIdentifierSql}}
+            """, new { Username = username }, tx)).Take(2).ToList();
+        var state = matches.Count == 1 ? matches[0] : null;
         bool success = false;
         string eventType = unlock ? "UnlockDenied" : "RecoveryDenied";
         if (state is { Eligible: true, Locked: false, RecoveryPasskeyHash: not null })
@@ -53,6 +54,7 @@ public sealed class RecoveryRepository(IDbConnectionFactory factory) : IRecovery
                 string newHash = await Task.Run(() => hash!(password!));
                 await db.ExecuteAsync("""
                     UPDATE dbo.Users SET PasswordHash=@newHash, MustChangePassword=0, RecoveryPasskeyHash=NULL,
+                    SessionVersion=SessionVersion+CASE WHEN StudentId IS NOT NULL THEN 1 ELSE 0 END,
                     RecoveryPasskeyCreatedAt=NULL, RecoveryFailures=0, RecoveryLockedUntil=NULL,
                     LoginFailures=0, LoginLockedUntil=NULL WHERE UserId=@UserId
                     """, new { newHash, state.UserId }, tx);

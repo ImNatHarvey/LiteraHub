@@ -10,8 +10,13 @@ public sealed class UserAccount
     public int? StudentId { get; set; }
     public bool MustChangePassword { get; set; }
 
-    // True only when both the user and the role are active.
+    public long SessionVersion { get; set; }
+
+    // True only when the account, role and linked identity are eligible.
     public bool IsActive { get; set; }
 }
 
-public sealed record UserSession(int UserId, string Username, string RoleName, int? StudentId);
+public sealed record UserSession(int UserId, string Username, string RoleName, int? StudentId)
+{
+    public long SessionVersion { get; init; }
+}

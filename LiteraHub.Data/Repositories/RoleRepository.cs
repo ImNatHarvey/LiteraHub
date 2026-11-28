@@ -42,7 +42,7 @@ public sealed class RoleRepository : IRoleRepository
             JOIN dbo.Roles r ON r.RoleId = u.RoleId
             JOIN dbo.RolePermissions rp ON rp.RoleId = r.RoleId
             WHERE u.UserId = @userId AND u.IsActive = 1 AND u.MustChangePassword = 0
-              AND r.IsActive = 1 AND r.Name = @roleName;
+              AND r.IsActive = 1 AND r.Name = @roleName AND u.StudentId IS NULL AND r.Name NOT IN(N'Borrower',N'Student');
             """, new { userId, roleName }).ToList();
     }
     public async Task<int> CreateAsync(RoleInput input, UserSession actor)
@@ -70,6 +70,7 @@ public sealed class RoleRepository : IRoleRepository
         await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable);
         var guard = await DelegationGuard.LoadAsync(conn, tx, actor, RolePermission.RolesEdit, RolePermission.RolesView);
         var target = await guard.CheckRoleAsync(roleId, null, roleMutation: true);
+        if (StudentAccountPolicy.IsStudentRole(target.Name)) throw new InvalidOperationException("The Student system role is protected.");
         if (!target.IsSystem) { RejectReservedName(input.Name); guard.CheckNewPermissions(input.Permissions); }
         // System role updates may only change the description. Never replace their permissions.
         var systemUpdated = await conn.ExecuteAsync("""
@@ -95,7 +96,7 @@ public sealed class RoleRepository : IRoleRepository
 
     private static void RejectReservedName(string name)
     {
-        if (string.Equals(name.Trim(), "Student", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(name.Trim(), "Student", StringComparison.OrdinalIgnoreCase) || StudentAccountPolicy.IsStudentRole(name.Trim()))
             throw new InvalidOperationException("Student is a reserved system role display name.");
     }
 

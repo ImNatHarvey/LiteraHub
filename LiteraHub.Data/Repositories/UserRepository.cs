@@ -8,12 +8,14 @@ namespace LiteraHub.Data.Repositories;
 
 public sealed class UserRepository : IUserRepository
 {
-    private const string SelectSql = """
+    private static readonly string SelectSql = $$"""
         SELECT u.UserId, u.Username, u.PasswordHash, u.RoleId, r.Name AS RoleName, u.StudentId, u.MustChangePassword,
-               CAST(CASE WHEN u.IsActive = 1 AND r.IsActive = 1 THEN 1 ELSE 0 END AS BIT) AS IsActive
+               u.SessionVersion, CAST(CASE WHEN {{AccountEligibility.Sql}} THEN 1 ELSE 0 END AS BIT) AS IsActive
         FROM dbo.Users u
         INNER JOIN dbo.Roles r ON r.RoleId = u.RoleId
         """;
+
+    internal const string LoginIdentifierSql = "(u.Username = @Username OR (r.Name=N'Borrower' AND EXISTS (SELECT 1 FROM dbo.Students loginStudent WHERE loginStudent.StudentId=u.StudentId AND loginStudent.StudentNo=@Username)))";
 
     private readonly IDbConnectionFactory _factory;
 
@@ -26,9 +28,8 @@ public sealed class UserRepository : IUserRepository
     {
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
-        return await conn.QuerySingleOrDefaultAsync<UserAccount>(
-            SelectSql + " WHERE u.Username = @Username",
-            new { Username = username });
+        var matches = (await conn.QueryAsync<UserAccount>(SelectSql + " WHERE " + LoginIdentifierSql, new { Username = username })).Take(2).ToList();
+        return matches.Count == 1 ? matches[0] : null;
     }
 
     public async Task<UserAccount?> GetByIdAsync(int userId)
@@ -53,9 +54,10 @@ public sealed class UserRepository : IUserRepository
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
         await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable);
-        var user = await conn.QuerySingleOrDefaultAsync<UserAccount>(
+        var matches = (await conn.QueryAsync<UserAccount>(
             SelectSql.Replace("FROM dbo.Users u", "FROM dbo.Users u WITH (UPDLOCK, HOLDLOCK)")
-                + " WHERE u.Username = @Username", new { Username = username }, tx);
+                + " WHERE " + LoginIdentifierSql, new { Username = username }, tx)).Take(2).ToList();
+        var user = matches.Count == 1 ? matches[0] : null;
         if (user is null)
         {
             await AuditWriter.WriteAsync(conn, tx, null, new AuditEvent(AuditModule.Authentication, AuditAction.LoginRejected, null, AuditOutcome.Denied));
@@ -75,7 +77,7 @@ public sealed class UserRepository : IUserRepository
             // No session is granted and the lockout is not changed.
             bool confirmed = await Task.Run(() => verify(password, user.PasswordHash));
             var now = await conn.ExecuteScalarAsync<DateTime>("SELECT SYSUTCDATETIME();", transaction: tx);
-            int remaining = confirmed && user.IsActive && !string.Equals(user.RoleName, "Borrower", StringComparison.OrdinalIgnoreCase)
+            int remaining = confirmed && user.IsActive && StudentAccountPolicy.IsValidIdentity(user.RoleName, user.StudentId)
                 ? Math.Max(0, (int)Math.Ceiling((row.LoginLockedUntil!.Value - now).TotalSeconds)) : 0;
             await AuditWriter.WriteAsync(conn, tx, null, new AuditEvent(AuditModule.Authentication, AuditAction.LoginRejected, user.UserId, AuditOutcome.Denied));
             await tx.CommitAsync();
@@ -95,8 +97,8 @@ public sealed class UserRepository : IUserRepository
             if (!valid && next.LockedUntilUtc.HasValue)
                 await AuditWriter.WriteAsync(conn, tx, null, new AuditEvent(AuditModule.Authentication, AuditAction.LoginLocked, user.UserId, AuditOutcome.Denied));
         }
-        bool eligible = valid && user.IsActive && !string.Equals(user.RoleName, "Borrower", StringComparison.OrdinalIgnoreCase);
-        UserSession? actor = eligible ? new(user.UserId, user.Username, user.RoleName, user.StudentId) : null;
+        bool eligible = valid && user.IsActive && StudentAccountPolicy.IsValidIdentity(user.RoleName, user.StudentId);
+        UserSession? actor = eligible ? new(user.UserId, user.Username, user.RoleName, user.StudentId) { SessionVersion = user.SessionVersion } : null;
         await AuditWriter.WriteAsync(conn, tx, actor, new AuditEvent(AuditModule.Authentication,
             eligible ? AuditAction.CredentialsVerified : AuditAction.LoginRejected, user.UserId,
             eligible ? AuditOutcome.Success : AuditOutcome.Denied));
@@ -104,16 +106,17 @@ public sealed class UserRepository : IUserRepository
         return (valid ? user : null, 0);
     }
 
-    public async Task<bool> UpdatePasswordAsync(int userId, string expectedHash, string passwordHash, bool mustChangePassword)
+    public async Task<bool> UpdatePasswordAsync(int userId, string expectedHash, string passwordHash, bool mustChangePassword, long expectedSessionVersion = 0)
     {
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
-        await using var tx = await conn.BeginTransactionAsync();
-        int affected = await conn.ExecuteAsync("""
+        await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable);
+        int affected = await conn.ExecuteAsync($$"""
             UPDATE u SET PasswordHash = @PasswordHash, MustChangePassword = @MustChangePassword,
                 LoginFailures = 0, LoginLockedUntil = NULL
             FROM dbo.Users u JOIN dbo.Roles r ON r.RoleId = u.RoleId
-            WHERE u.UserId = @UserId AND u.IsActive = 1 AND r.IsActive = 1
+            WHERE u.UserId = @UserId AND {{AccountEligibility.Sql}}
+              AND u.SessionVersion = @expectedSessionVersion
               AND u.PasswordHash COLLATE Latin1_General_100_BIN2 = @ExpectedHash
               AND (u.LoginLockedUntil IS NULL OR u.LoginLockedUntil <= SYSUTCDATETIME());
             """, new
@@ -121,7 +124,8 @@ public sealed class UserRepository : IUserRepository
             PasswordHash = passwordHash,
             MustChangePassword = mustChangePassword,
             UserId = userId,
-            ExpectedHash = expectedHash
+            ExpectedHash = expectedHash,
+            expectedSessionVersion
         }, tx);
         if (affected == 1)
         {

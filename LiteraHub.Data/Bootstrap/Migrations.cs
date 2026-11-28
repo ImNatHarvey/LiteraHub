@@ -20,6 +20,7 @@ internal static class Migrations
         new Migration(12, "Add persistent sign-in attempt limits", V12()),
         new Migration(13, "Add activity audit foundation", V13()),
         new Migration(14, "Student account registration foundation", V14()),
+        new Migration(15, "Isolate student permissions and version student sessions", V15()),
     };
 
     private static string Index(string name, string table, string columns) =>
@@ -562,6 +563,19 @@ internal static class Migrations
             Attempts INT NOT NULL CHECK (Attempts BETWEEN 0 AND 10)
         );
         INSERT dbo.StudentRegistrationThrottle VALUES(1,SYSUTCDATETIME(),0);
+        """
+    };
+    private static string[] V15() => new[]
+    {
+        """
+        ALTER TABLE dbo.Users ADD SessionVersion BIGINT NOT NULL CONSTRAINT DF_Users_SessionVersion DEFAULT 0;
+        """,
+        """
+        ALTER TABLE dbo.Users ADD CONSTRAINT CK_Users_SessionVersion CHECK (SessionVersion>=0);
+        """,
+        """
+        DELETE p FROM dbo.RolePermissions p JOIN dbo.Roles r ON r.RoleId=p.RoleId
+        WHERE r.Name=N'Borrower' AND r.IsSystem=1;
         """
     };
 }

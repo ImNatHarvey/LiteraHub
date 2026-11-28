@@ -8,14 +8,11 @@ public sealed class AuthService : IAuthService
 {
     private const string InvalidMessage = "Invalid credentials or temporarily locked. Try again later.";
 
-    // MVP: only staff accounts can sign in. Flip to true when the borrower portal (bonus) is built.
-    private const bool BorrowerPortalEnabled = false;
-
     private readonly IUserRepository _users;
     private readonly IPasswordHasher _hasher;
     private readonly ISessionContext _session;
     private readonly Lazy<string> _dummyHash;
-    private int? _pendingPasswordChangeUserId;
+    private UserSession? _pendingPasswordChange;
 
     public AuthService(IUserRepository users, IPasswordHasher hasher, ISessionContext session)
     {
@@ -27,7 +24,7 @@ public sealed class AuthService : IAuthService
 
     public async Task<AuthResult> LoginAsync(string username, string password)
     {
-        _pendingPasswordChangeUserId = null;
+        _pendingPasswordChange = null;
         _session.SignOut();
         username = (username ?? "").Trim();
         if (username.Length == 0 || string.IsNullOrEmpty(password))
@@ -44,13 +41,13 @@ public sealed class AuthService : IAuthService
         if (!user.IsActive)
             return AuthResult.Fail(AuthFailure.AccountDisabled, "This account is disabled. Contact the administrator.");
 
-        if (!IsRoleAllowed(user.RoleName))
-            return AuthResult.Fail(AuthFailure.RoleNotAllowed, "Borrower accounts cannot sign in yet. Please see the librarian.");
+        if (!StudentAccountPolicy.IsValidIdentity(user.RoleName, user.StudentId))
+            return AuthResult.Fail(AuthFailure.RoleNotAllowed, "Account identity is unavailable. Please see the librarian.");
 
         var session = ToSession(user);
         if (user.MustChangePassword)
         {
-            _pendingPasswordChangeUserId = user.UserId;
+            _pendingPasswordChange = session;
             return AuthResult.Ok(session, mustChangePassword: true);
         }
 
@@ -60,10 +57,11 @@ public sealed class AuthService : IAuthService
 
     public async Task<ServiceResult> ChangePasswordAsync(int userId, string currentPassword, string newPassword)
     {
-        if (_session.Current?.UserId != userId && _pendingPasswordChangeUserId != userId)
+        var expected = _session.Current ?? _pendingPasswordChange;
+        if (expected is null || expected.UserId != userId)
             return ServiceResult.Fail("Sign in before changing your password.");
         var user = await _users.GetByIdAsync(userId);
-        if (user is null || !user.IsActive)
+        if (user is null || !StudentAccountPolicy.MatchesSession(user, expected))
             return ServiceResult.Fail("Account not found.");
 
         var currentOk = await Task.Run(() => _hasher.Verify(currentPassword ?? "", user.PasswordHash));
@@ -75,26 +73,29 @@ public sealed class AuthService : IAuthService
             return ServiceResult.Fail(problem);
 
         var newHash = await Task.Run(() => _hasher.Hash(newPassword));
-        if (!await _users.UpdatePasswordAsync(user.UserId, user.PasswordHash, newHash, mustChangePassword: false))
+        if ((_session.Current ?? _pendingPasswordChange) != expected ||
+            !await _users.UpdatePasswordAsync(user.UserId, user.PasswordHash, newHash, mustChangePassword: false, expectedSessionVersion: expected.SessionVersion))
             return ServiceResult.Fail("Account changed or is temporarily locked. Sign in again and retry.");
-        _pendingPasswordChangeUserId = null;
-
-        // Completing a forced change signs the user in.
-        if (_session.Current is null && IsRoleAllowed(user.RoleName))
-            _session.SignIn(ToSession(user));
+        // Recheck eligibility after the password update, before establishing the session.
+        var refreshed = await _users.GetByIdAsync(userId);
+        if (refreshed is null || refreshed.MustChangePassword || !StudentAccountPolicy.MatchesSession(refreshed, expected) ||
+            (_session.Current ?? _pendingPasswordChange) != expected)
+        {
+            Logout();
+            return ServiceResult.Fail("Account changed. Sign in again.");
+        }
+        _pendingPasswordChange = null;
+        if (_session.Current is null) _session.SignIn(ToSession(refreshed));
 
         return ServiceResult.Ok();
     }
 
     public void Logout()
     {
-        _pendingPasswordChangeUserId = null;
+        _pendingPasswordChange = null;
         _session.SignOut();
     }
 
-    private static bool IsRoleAllowed(string roleName) =>
-        BorrowerPortalEnabled || !string.Equals(roleName, RoleNames.Borrower, StringComparison.OrdinalIgnoreCase);
-
     private static UserSession ToSession(UserAccount user) =>
-        new(user.UserId, user.Username, user.RoleName, user.StudentId);
+        new(user.UserId, user.Username, user.RoleName, user.StudentId) { SessionVersion = user.SessionVersion };
 }

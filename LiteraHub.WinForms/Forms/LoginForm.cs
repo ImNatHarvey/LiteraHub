@@ -9,6 +9,8 @@ using System.Windows.Forms;
 using FontAwesome.Sharp;
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
+using LiteraHub.Core.Security;
+using LiteraHub.Data.Repositories;
 using LiteraHub.WinForms.Controls;
 using LiteraHub.WinForms.Theming;
 
@@ -28,7 +30,18 @@ public sealed class LoginForm : Form
 
     private readonly IAuthService _auth;
     private readonly IRecoveryService _recovery;
-    private readonly string[] _recoveryNames = { "Username", "Recovery passkey", "New password", "Confirm new password" };
+    private readonly StudentAccountRepository? _studentAccounts;
+    private bool _registrationMode;
+    private readonly Panel _registrationView = new();
+    private readonly Button _register = new() { Text = "Student Registration", FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand };
+    private readonly Label _registerTitle = new() { Text = "Student Registration", TextAlign = ContentAlignment.MiddleLeft };
+    private readonly Label _registerDescription = new() { Text = "Enter the library-issued Student ID (e.g. STU-123456789). If you do not know it, ask library staff. Identity and enrollment must be verified before credentials are issued." };
+    private readonly Label _registerStudentLabel = new() { Text = "Student ID" };
+    private readonly ThemedTextField _registerStudent = new() { MaxLength = 30, LeadingIcon = IconChar.UserAlt };
+    private readonly Label _registerStatus = new() { AutoSize = false, UseMnemonic = false };
+    private readonly Button _registerSubmit = new() { Text = "Submit Request", FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand };
+    private readonly Button _registerBack = new() { Text = "Back to Sign In", FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand };
+    private readonly string[] _recoveryNames = { "Username or Student ID", "Recovery passkey", "New password", "Confirm new password" };
     private readonly Label[] _recoveryLabels = new Label[4];
     private readonly ThemedTextField[] _recoveryFields = new ThemedTextField[4];
     private bool _unlockMode;
@@ -46,10 +59,10 @@ public sealed class LoginForm : Form
     private readonly Panel _recoveryView = new();
     private readonly PictureBox _brandLogo = new() { SizeMode = PictureBoxSizeMode.Zoom, TabStop = false };
     private readonly Label _welcome = new() { Text = "LiteraHub", TextAlign = ContentAlignment.MiddleCenter };
-    private readonly Label _subtitle = new() { Text = "Sign in to manage your library.", TextAlign = ContentAlignment.MiddleCenter };
+    private readonly Label _subtitle = new() { Text = "Sign in to LiteraHub.", TextAlign = ContentAlignment.MiddleCenter };
     private Image? _logoOriginal;
     private Image? _logoThemed;
-    private readonly Label _usernameTitle = new() { Text = "Username" };
+    private readonly Label _usernameTitle = new() { Text = "Username or Student ID" };
     private readonly Label _usernameHint = new() { Text = "Required", Visible = false, TextAlign = ContentAlignment.MiddleRight };
     private readonly Label _passwordTitle = new() { Text = "Password" };
     private readonly Label _passwordHint = new() { Text = "Required", Visible = false, TextAlign = ContentAlignment.MiddleRight };
@@ -109,10 +122,11 @@ public sealed class LoginForm : Form
 
     public AuthResult? Result { get; private set; }
 
-    public LoginForm(IAuthService auth, IRecoveryService recovery)
+    public LoginForm(IAuthService auth, IRecoveryService recovery, StudentAccountRepository? studentAccounts = null)
     {
         _auth = auth ?? throw new ArgumentNullException(nameof(auth));
         _recovery = recovery ?? throw new ArgumentNullException(nameof(recovery));
+        _studentAccounts = studentAccounts;
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.None;
         Text = "LiteraHub — Sign In";
@@ -137,7 +151,7 @@ public sealed class LoginForm : Form
         _loginView.Controls.AddRange(new Control[]
         {
             _brandLogo, _welcome, _subtitle, _usernameTitle, _usernameHint, _username,
-            _passwordTitle, _passwordHint, _passwordFrame, _forgot, _signIn, _footer
+            _passwordTitle, _passwordHint, _passwordFrame, _forgot, _register, _signIn, _footer
         });
         _passwordFrame.Controls.Add(_password);
         _passwordFrame.Controls.Add(_passwordLeadingIcon);
@@ -145,6 +159,20 @@ public sealed class LoginForm : Form
         _recoveryView.Controls.AddRange(new Control[] { _recoveryTitle, _recoveryDescription, _back, _reset, _recoveryStatus, _recoveryToggle });
         BuildRecoveryFields();
         BuildChangeView();
+        _accountPanel.Controls.Add(_registrationView);
+        _registrationView.Controls.AddRange(new Control[] { _registerTitle, _registerDescription, _registerStudentLabel,
+            _registerStudent, _registerStatus, _registerSubmit, _registerBack });
+        _registrationView.Visible = false;
+        _register.Visible = _studentAccounts is not null;
+        _registerStudent.TabIndex = 0; _registerSubmit.TabIndex = 1; _registerBack.TabIndex = 2;
+        _username.TabIndex = 0; _passwordFrame.TabIndex = 1; _password.TabIndex = 0;
+        _signIn.TabIndex = 2; _register.TabIndex = 3; _forgot.TabIndex = 4;
+        _register.Click += (_, _) => SwitchRegistration(true);
+        _registerBack.Click += (_, _) => SwitchRegistration(false);
+        _registerSubmit.Click += async (_, _) => await SubmitRegistrationAsync();
+        _registerStudent.TextChanged += (_, _) => { _registerStudent.HasValidationError = false; _registerStatus.Text = ""; };
+        _registrationView.MouseDown += BeginDrag;
+        _registerTitle.MouseDown += BeginDrag;
         _recoveryView.Visible = false;
 
         _welcome.Font = new Font("Segoe UI", 27f, FontStyle.Bold);
@@ -196,7 +224,8 @@ public sealed class LoginForm : Form
             if (_elapsed >= 1f)
             {
                 _slide.Stop();
-                if (_recoveryMode) _recoveryFields[0].FocusInput();
+                if (_registrationMode) _registerStudent.FocusInput();
+                else if (_recoveryMode) _recoveryFields[0].FocusInput();
                 else _username.FocusInput();
             }
         };
@@ -299,6 +328,7 @@ public sealed class LoginForm : Form
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        if (keyData == Keys.Escape && _registrationMode) { SwitchRegistration(false); return true; }
         // Preserve Escape as a sign-out request without assigning Form.CancelButton.
         if (keyData == Keys.Escape && _pendingLogin is not null)
         {
@@ -436,7 +466,7 @@ public sealed class LoginForm : Form
         _lockoutTimer.Stop();
         _lockoutClock.Reset();
         _lockoutSeconds = 0;
-        _subtitle.Text = "Sign in to manage your library.";
+        _subtitle.Text = "Sign in to LiteraHub.";
         _subtitle.ForeColor = Theme.Colors.TextMuted;
         if (!_busy) { _signIn.Enabled = true; _signIn.Text = "Sign In"; }
     }
@@ -586,7 +616,7 @@ public sealed class LoginForm : Form
 
     private void SwitchMode(bool recovery)
     {
-        if (_recoveryMode == recovery || _busy || _pendingLogin is not null) return;
+        if (_registrationMode || _recoveryMode == recovery || _busy || _pendingLogin is not null || _slide.Enabled) return;
         _recoveryMode = recovery;
         _loginView.Visible = !recovery;
         _recoveryView.Visible = recovery;
@@ -610,6 +640,51 @@ public sealed class LoginForm : Form
         _elapsed = 0f;
         _slide.Start();
 
+    }
+
+    private void SwitchRegistration(bool registration)
+    {
+        if (_studentAccounts is null || _busy || _recoveryMode || _pendingLogin is not null || _slide.Enabled || _registrationMode == registration) return;
+        _registrationMode = registration;
+        _loginView.Visible = !registration;
+        _registrationView.Visible = registration;
+        _password.Clear(); _password.UseSystemPasswordChar = true;
+        _eye.IconChar = IconChar.Eye; _eye.AccessibleName = "Show password";
+        _registerStudent.Text = ""; _registerStatus.Text = ""; _registerStudent.HasValidationError = false;
+        AcceptButton = registration ? _registerSubmit : _signIn;
+        _accountPanel.BringToFront(); _windowControls.BringToFront();
+        _from = _position; _to = registration ? 0f : 1f; _elapsed = 0f; _slide.Start();
+    }
+
+    private async Task SubmitRegistrationAsync()
+    {
+        if (_studentAccounts is null || !_registrationMode || _busy || _slide.Enabled) return;
+        if (!StudentAccountPolicy.IsValidStudentNo(_registerStudent.Text))
+        {
+            _registerStudent.HasValidationError = true;
+            _registerStatus.Text = "Enter a valid student ID."; _registerStatus.ForeColor = Theme.Colors.Danger;
+            _registerStudent.FocusInput(); return;
+        }
+        _busy = true; _registerStudent.Enabled = _registerSubmit.Enabled = _registerBack.Enabled = false;
+        _registerSubmit.Text = "Submitting…";
+        try
+        {
+            string response = await _studentAccounts.SubmitAsync(_registerStudent.Text);
+            if (IsDisposed || Disposing) return;
+            _registerStudent.Text = "";
+            _registerStatus.ForeColor = Theme.Colors.Text;
+            _registerStatus.Text = response;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(ex.GetType().Name);
+            if (!IsDisposed) { _registerStatus.ForeColor = Theme.Colors.Danger; _registerStatus.Text = "Registration is temporarily unavailable. Please try again or visit the library."; }
+        }
+        finally
+        {
+            _busy = false;
+            if (!IsDisposed) { _registerStudent.Enabled = _registerSubmit.Enabled = _registerBack.Enabled = true; _registerSubmit.Text = "Submit Request"; }
+        }
     }
 
     private void LayoutPanels()
@@ -639,6 +714,7 @@ public sealed class LoginForm : Form
 
             _loginView.Bounds = _accountPanel.ClientRectangle;
             _recoveryView.Bounds = _accountPanel.ClientRectangle;
+            _registrationView.Bounds = _accountPanel.ClientRectangle;
             _changeView.Bounds = _accountPanel.ClientRectangle;
             int fw = Math.Min(365, Math.Max(260, accountWidth - 84));
             int fx = (accountWidth - fw) / 2;
@@ -655,7 +731,16 @@ public sealed class LoginForm : Form
             _passwordTitle.SetBounds(fx, startY + 278, fw, 22);
             _passwordHint.SetBounds(fx + fw / 2, startY + 278, fw / 2, 22);
             _passwordFrame.SetBounds(fx, startY + 305, fw, 42);
-            _forgot.SetBounds(fx + fw - 170, startY + 352, 170, 25);
+            _register.SetBounds(fx, startY + 352, fw / 2, 28);
+            _forgot.SetBounds(fx + fw / 2, startY + 352, fw - fw / 2, 28);
+            int regY = Math.Max(20, (h - 424) / 2);
+            _registerTitle.SetBounds(fx, regY, fw, 48);
+            _registerDescription.SetBounds(fx, regY + 58, fw, 88);
+            _registerStudentLabel.SetBounds(fx, regY + 154, fw, 24);
+            _registerStudent.SetBounds(fx, regY + 182, fw, 42);
+            _registerStatus.SetBounds(fx, regY + 237, fw, 75);
+            _registerSubmit.SetBounds(fx, regY + 324, fw, 44);
+            _registerBack.SetBounds(fx, regY + 377, fw, 34);
             _signIn.SetBounds(fx, startY + 403, fw, 45);
             _footer.SetBounds(fx, h - 65, fw, 24);
 
@@ -703,7 +788,7 @@ public sealed class LoginForm : Form
 
     private async Task SignInAsync()
     {
-        if (_busy || _lockoutSeconds > 0 || _recoveryMode || _pendingLogin is not null || _slide.Enabled) return;
+        if (_busy || _lockoutSeconds > 0 || _recoveryMode || _registrationMode || _pendingLogin is not null || _slide.Enabled) return;
         bool missingUser = string.IsNullOrWhiteSpace(_username.Text);
         bool missingPassword = string.IsNullOrEmpty(_password.Text);
         if (missingUser || missingPassword)
@@ -790,6 +875,7 @@ public sealed class LoginForm : Form
         _password.Enabled = !busy;
         _eye.Enabled = !busy;
         _forgot.Enabled = !busy;
+        _register.Enabled = !busy;
         _signIn.Enabled = !busy;
         _signIn.Text = busy ? "Signing in…" : "Sign In";
         if (!busy && _lockoutSeconds > 0) UpdateLockout();
@@ -805,7 +891,7 @@ public sealed class LoginForm : Form
 
     private void UpdateLabels()
     {
-        _usernameTitle.Text = _usernameInvalid ? "Username • " + _usernameHint.Text : "Username";
+        _usernameTitle.Text = _usernameInvalid ? "Username or Student ID • " + _usernameHint.Text : "Username or Student ID";
         _passwordTitle.Text = _passwordInvalid ? "Password • " + _passwordHint.Text : "Password";
         _usernameTitle.ForeColor = _usernameInvalid ? Theme.Colors.Danger : Theme.Colors.Text;
         _passwordTitle.ForeColor = _passwordInvalid ? Theme.Colors.Danger : Theme.Colors.Text;
@@ -825,6 +911,20 @@ public sealed class LoginForm : Form
         _accountPanel.BackColor = c.Surface;
         _loginView.BackColor = c.Surface;
         _recoveryView.BackColor = c.Surface;
+        _registrationView.BackColor = c.Surface;
+        _registerTitle.Font = Theme.Title; _registerTitle.ForeColor = c.Text;
+        _registerDescription.Font = Theme.Body; _registerDescription.ForeColor = c.TextMuted;
+        _registerStudentLabel.Font = Theme.Body; _registerStudentLabel.ForeColor = c.Text;
+        _registerStatus.Font = Theme.Body; _registerStatus.ForeColor = _registerStudent.HasValidationError ? c.Danger : c.Text;
+        _registerStudent.BackColor = c.Surface;
+        foreach (var link in new[] { _register, _registerBack })
+        {
+            link.Font = Theme.Caption; link.BackColor = c.Surface; link.ForeColor = c.Accent;
+            link.FlatAppearance.BorderSize = 0; link.FlatAppearance.MouseOverBackColor = c.Surface; link.FlatAppearance.MouseDownBackColor = c.Surface;
+        }
+        _register.TextAlign = ContentAlignment.MiddleLeft;
+        _registerSubmit.Font = Theme.BodyStrong; _registerSubmit.BackColor = c.Accent; _registerSubmit.ForeColor = c.OnAccent;
+        _registerSubmit.FlatAppearance.BorderSize = 0;
         _changeView.BackColor = c.Surface;
         _changeTitle.ForeColor = c.Text;
         _changeIntro.ForeColor = c.TextMuted;

@@ -1,3 +1,4 @@
+using System.Data;
 using Dapper;
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
@@ -132,12 +133,13 @@ public sealed class StudentRepository : IStudentRepository
     {
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
-        await using var tx = await conn.BeginTransactionAsync();
+        await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable);
         const string sql = """
             DELETE s FROM dbo.Students AS s
             WHERE s.StudentId = @StudentId
               AND NOT EXISTS (SELECT 1 FROM dbo.BorrowReturns AS br WHERE br.StudentId = s.StudentId)
-              AND NOT EXISTS (SELECT 1 FROM dbo.Users AS u WHERE u.StudentId = s.StudentId);
+              AND NOT EXISTS (SELECT 1 FROM dbo.Users AS u WHERE u.StudentId = s.StudentId)
+              AND NOT EXISTS (SELECT 1 FROM dbo.StudentRegistrations AS reg WHERE reg.StudentId=s.StudentId);
             """;
         int affected = await conn.ExecuteAsync(sql, new { StudentId = studentId }, tx);
         if (affected > 0)
@@ -150,7 +152,7 @@ public sealed class StudentRepository : IStudentRepository
     {
         await using var conn = _factory.CreateConnection();
         await conn.OpenAsync();
-        await using var tx = await conn.BeginTransactionAsync();
+        await using var tx = await conn.BeginTransactionAsync(IsolationLevel.Serializable);
         const string sql = """
             UPDATE dbo.Students SET IsActive = @IsActive
             WHERE StudentId = @StudentId;
@@ -161,7 +163,26 @@ public sealed class StudentRepository : IStudentRepository
             IsActive = isActive
         }, tx);
         if (affected > 0)
+        {
+            if (!isActive)
+            {
+                var disabled = await conn.QueryAsync<int>("""
+                    UPDATE u SET IsActive=0,SessionVersion=SessionVersion+1
+                    OUTPUT INSERTED.UserId
+                    FROM dbo.Users u JOIN dbo.Roles r ON r.RoleId=u.RoleId
+                    WHERE u.StudentId=@studentId AND r.Name=N'Borrower' AND r.IsSystem=1 AND u.IsSystemOwner=0 AND u.IsActive=1;
+                    """, new { studentId }, tx);
+                foreach (int userId in disabled)
+                    await AuditWriter.WriteAsync(conn, tx, _session.Current, new AuditEvent(AuditModule.StudentAccounts, AuditAction.Archived, userId));
+                var expired = await conn.QueryAsync<int>("""
+                    UPDATE dbo.StudentRegistrations SET Status='Expired',ReviewedAt=SYSUTCDATETIME(),DecisionCode='Expired'
+                    OUTPUT INSERTED.RegistrationId WHERE StudentId=@studentId AND Status='Pending';
+                    """, new { studentId }, tx);
+                foreach (int registrationId in expired)
+                    await AuditWriter.WriteAsync(conn, tx, _session.Current, new AuditEvent(AuditModule.StudentAccounts, AuditAction.RegistrationExpired, registrationId));
+            }
             await AuditWriter.WriteAsync(conn, tx, _session.Current, new AuditEvent(AuditModule.Students, (isActive ? AuditAction.Restored : AuditAction.Archived), studentId));
+        }
         await tx.CommitAsync();
         return affected > 0;
     }

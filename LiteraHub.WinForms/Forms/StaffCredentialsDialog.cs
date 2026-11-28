@@ -7,10 +7,10 @@ namespace LiteraHub.WinForms.Forms;
 
 public sealed class StaffCredentialsDialog : Form
 {
-    private StaffCredentialsDialog(string username, string? password, string passkey)
+    private StaffCredentialsDialog(string username, string? password, string passkey, string? titleOverride)
     {
         var c = Theme.Colors;
-        Text = password is null ? "Recovery Passkey Issued" : "Staff Account Created";
+        Text = titleOverride ?? (password is null ? "Recovery Passkey Issued" : "Staff Account Created");
         StartPosition = FormStartPosition.CenterParent;
         ShowInTaskbar = false;
         MaximizeBox = MinimizeBox = false;
@@ -46,9 +46,9 @@ public sealed class StaffCredentialsDialog : Form
         Controls.Add(text); Controls.Add(copy);
     }
 
-    public static void ShowCredentials(IWin32Window? owner, string username, string? password, string passkey)
+    public static void ShowCredentials(IWin32Window? owner, string username, string? password, string passkey, string? titleOverride = null)
     {
-        using var dialog = new StaffCredentialsDialog(username, password, passkey);
+        using var dialog = new StaffCredentialsDialog(username, password, passkey, titleOverride);
         dialog.ShowDialog(owner);
     }
 }

@@ -18,7 +18,8 @@ public sealed class PermissionService : IPermissionService
     private HashSet<string> LoadKeys()
     {
         var current = _session.Current;
-        if (current is null) return new(StringComparer.Ordinal);
+        if (current is null || current.StudentId.HasValue || !StudentAccountPolicy.IsValidIdentity(current.RoleName, current.StudentId) || StudentAccountPolicy.IsStudentRole(current.RoleName))
+            return new(StringComparer.Ordinal);
         try
         {
             return new(_roles.GetActiveUserPermissionKeys(current.UserId, current.RoleName),

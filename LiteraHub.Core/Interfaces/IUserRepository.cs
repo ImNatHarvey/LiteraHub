@@ -12,5 +12,5 @@ public interface IUserRepository
     Task<(UserAccount? User, int RetryAfterSeconds)> AuthenticateAsync(string username, string password,
         Func<string, string, bool> verify, string dummyHash);
 
-    Task<bool> UpdatePasswordAsync(int userId, string expectedHash, string passwordHash, bool mustChangePassword);
+    Task<bool> UpdatePasswordAsync(int userId, string expectedHash, string passwordHash, bool mustChangePassword, long expectedSessionVersion = 0);
 }

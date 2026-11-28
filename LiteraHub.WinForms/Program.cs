@@ -1,6 +1,7 @@
 
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
+using LiteraHub.Core.Security;
 using LiteraHub.Core.Settings;
 using LiteraHub.Data;
 using LiteraHub.Data.Bootstrap;
@@ -102,6 +103,8 @@ internal static class Program
         IBookMetadataService metadata =
             new OpenLibraryMetadataService();
 
+        var studentAccounts = new StudentAccountRepository(connectionFactory, hasher, session);
+        var studentPortal = new StudentPortalRepository(connectionFactory, session);
         RunSessions(
             new RecoveryService(new RecoveryRepository(connectionFactory), hasher),
             auth,
@@ -112,7 +115,7 @@ internal static class Program
             authors,
             metadata,
             students,
-            staffUsers, roles, profile);
+            staffUsers, roles, profile, studentAccounts, studentPortal);
     }
 
     // Bootstrap runs on a worker. The credential dialog requires an STA thread for Clipboard.
@@ -143,13 +146,13 @@ internal static class Program
         IAuthorCreationService authors,
         IBookMetadataService metadata,
         IStudentService students,
-        IStaffUserService staffUsers, IRoleService roles, IProfileService profile)
+        IStaffUserService staffUsers, IRoleService roles, IProfileService profile, StudentAccountRepository studentAccounts, StudentPortalRepository studentPortal)
     {
         while (true)
         {
             AuthResult? login;
 
-            using (var loginForm = new LoginForm(auth, recovery))
+            using (var loginForm = new LoginForm(auth, recovery, studentAccounts))
             {
                 if (loginForm.ShowDialog() != DialogResult.OK)
                     return;
@@ -161,9 +164,17 @@ internal static class Program
                 return;
 
             // Defense in depth: LoginForm must complete the forced change first.
-            if (login.MustChangePassword || session.Current?.UserId != login.Session.UserId)
+            if (login.MustChangePassword || session.Current != login.Session || !StudentAccountPolicy.IsValidIdentity(login.Session.RoleName, login.Session.StudentId))
             {
                 auth.Logout();
+                continue;
+            }
+
+            if (StudentAccountPolicy.IsStudentRole(login.Session.RoleName))
+            {
+                using var studentShell = new StudentShellForm(session, auth, profile, studentPortal);
+                studentShell.ShowDialog(); auth.Logout();
+                if (!studentShell.LoggedOut) return;
                 continue;
             }
 
@@ -176,7 +187,7 @@ internal static class Program
                 authors,
                 metadata,
                 students,
-                staffUsers, roles, profile);
+                staffUsers, roles, profile, studentAccounts);
 
             shell.ShowDialog();
             auth.Logout();

@@ -1,8 +1,10 @@
+using FontAwesome.Sharp;
 using System.Collections.Generic;
 using System.Drawing.Drawing2D;
 using LiteraHub.Core.Interfaces;
 using LiteraHub.Core.Models;
 using LiteraHub.Core.Security;
+using LiteraHub.Data.Repositories;
 using LiteraHub.WinForms.Controls;
 using LiteraHub.WinForms.Forms;
 using LiteraHub.WinForms.Theming;
@@ -14,6 +16,11 @@ public sealed class StudentsPage : ThemedUserControl
 {
     private readonly ModuleSummaryCardStrip _moduleCards = new();
     private readonly IStudentService _service;
+    private readonly StudentAccountRepository? _studentAccounts;
+    private StudentAccountsPage? _accountPage;
+    private readonly Panel _titleRow = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
+    private readonly CenteredIconButton _manageAccounts = new() { Text = "Student Accounts", Dock = DockStyle.Right, Width = 160, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, IconChar = IconChar.User, IconSize = 18, ImageAlign = ContentAlignment.MiddleCenter, TextAlign = ContentAlignment.MiddleCenter, TextImageRelation = TextImageRelation.ImageBeforeText };
+    public bool AccountOperationInProgress => _accountPage?.IsBusy == true;
     private readonly IPermissionService _permissions;
     private readonly Panel _host = new() { Dock = DockStyle.Fill };
     private readonly TableLayoutPanel _layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(Space.L), Margin = Padding.Empty };
@@ -48,10 +55,11 @@ public sealed class StudentsPage : ThemedUserControl
     private bool _compact;
     private bool _responsiveInitialized;
 
-    public StudentsPage(IStudentService service, IPermissionService permissions)
+    public StudentsPage(IStudentService service, IPermissionService permissions, StudentAccountRepository? studentAccounts = null)
     {
         _service = service ?? throw new ArgumentNullException(nameof(service));
         _permissions = permissions ?? throw new ArgumentNullException(nameof(permissions));
+        _studentAccounts = studentAccounts;
         Dock = DockStyle.Fill;
         _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         foreach (int height in new[] { 50, 56, 36, 0, 60 })
@@ -72,7 +80,10 @@ public sealed class StudentsPage : ThemedUserControl
         foreach (Control control in _pageControls.Controls) control.Margin = new Padding(4, 8, 0, 0);
         _pagination.Controls.Add(_pageInfo, 0, 0);
         _pagination.Controls.Add(_pageControls, 1, 0);
-        _layout.Controls.Add(_heading, 0, 0);
+        _titleRow.Controls.Add(_heading); _titleRow.Controls.Add(_manageAccounts); _manageAccounts.BringToFront();
+        _manageAccounts.Visible = _studentAccounts is not null && _permissions.Can(RolePermission.StudentsManageAccounts);
+        _manageAccounts.Click += (_, _) => OpenAccounts();
+        _layout.Controls.Add(_titleRow, 0, 0);
         _layout.RowStyles.Insert(1, new RowStyle(SizeType.Absolute, ModuleSummaryCardStrip.PreferredRowHeight));
         ConfigureSummaryCards();
         _layout.Controls.Add(_moduleCards, 0, 1);
@@ -207,6 +218,7 @@ public sealed class StudentsPage : ThemedUserControl
         _loadFailed = false;
         _emptyState.Visible = false;
         _add.Enabled = false;
+        _manageAccounts.Enabled = false;
         _status.Text = "Loading students...";
         try
         {
@@ -232,6 +244,7 @@ public sealed class StudentsPage : ThemedUserControl
             if (!IsDisposed && !Disposing)
             {
                 _add.Enabled = _permissions.Can(RolePermission.StudentsAdd);
+                _manageAccounts.Enabled = _permissions.Can(RolePermission.StudentsManageAccounts);
                 if (_loadFailed)
                 {
                     _emptyState.Configure(CatalogEmptyKind.LoadFailed, false,
@@ -309,9 +322,21 @@ public sealed class StudentsPage : ThemedUserControl
         _emptyState.BringToFront();
     }
 
+    private void OpenAccounts()
+    {
+        if (_studentAccounts is null || _accountPage is not null || _details is not null || _loading || !_permissions.Can(RolePermission.StudentsManageAccounts)) return;
+        var page = new StudentAccountsPage(_studentAccounts, _permissions) { Dock = DockStyle.Fill };
+        _accountPage = page;
+        page.BackRequested += async (_, _) => {
+            if (page.IsBusy || _accountPage != page) return;
+            _host.Controls.Remove(page); page.Dispose(); _accountPage = null; _layout.Visible = true; _layout.BringToFront(); await ReloadAsync();
+        };
+        _layout.Visible = false; _host.Controls.Add(page); page.BringToFront();
+    }
+
     private async Task OpenDetailsAsync(int? id)
     {
-        if (_details is not null || _loading || !_permissions.Can(RolePermission.StudentsView) || (!id.HasValue && !_permissions.Can(RolePermission.StudentsAdd))) return;
+        if (_accountPage is not null || _details is not null || _loading || !_permissions.Can(RolePermission.StudentsView) || (!id.HasValue && !_permissions.Can(RolePermission.StudentsAdd))) return;
         try
         {
             Student? student = id.HasValue ? await _service.GetByIdAsync(id.Value) : null;
@@ -477,6 +502,9 @@ public sealed class StudentsPage : ThemedUserControl
         base.ApplyTheme();
         var c = Theme.Colors;
         foreach (Control control in new Control[] { _host, _layout, _toolbar, _pagination, _pageControls, _resultsHost }) control.BackColor = c.Background;
+        _titleRow.BackColor = c.Background;
+        _manageAccounts.IconColor = c.Accent; _manageAccounts.BackColor = c.Surface; _manageAccounts.ForeColor = c.Text; _manageAccounts.Font = Theme.BodyStrong;
+        _manageAccounts.FlatAppearance.BorderColor = c.Border; _manageAccounts.FlatAppearance.MouseOverBackColor = c.AccentSoft;
         _heading.ForeColor = c.Text;
         _heading.Font = _compact ? Theme.BodyStrong : Theme.Title;
         _status.ForeColor = c.TextMuted;

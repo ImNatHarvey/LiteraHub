@@ -107,7 +107,7 @@ public sealed class StudentService : IStudentService
         {
             return await _repository.DeleteAsync(studentId)
                 ? ServiceResult.Ok()
-                : ServiceResult.Fail("This student cannot be deleted because the record is referenced by borrowing history or a linked account.");
+                : ServiceResult.Fail("This student cannot be deleted because the record is referenced by borrowing history, registration history or a linked account.");
         }
         catch (DbException)
         {

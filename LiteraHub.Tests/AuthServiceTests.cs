@@ -71,6 +71,49 @@ public sealed class AuthServiceTests
         Assert.Null(session.Current);
     }
 
+    [Fact]
+    public async Task LinkedStudentCanSignInWithVersion()
+    {
+        var (auth, session, repo) = Create();
+        repo.Account.RoleName = "Borrower"; repo.Account.StudentId = 23; repo.Account.SessionVersion = 5;
+        Assert.True((await auth.LoginAsync("librarian", "Previous123")).Success);
+        Assert.Equal(23, session.Current?.StudentId);
+        Assert.Equal(5L, session.Current?.SessionVersion);
+    }
+    [Theory]
+    [InlineData("Borrower", null)]
+    [InlineData("Librarian", 23)]
+    [InlineData("Student", null)]
+    public async Task InvalidIdentityCannotSignIn(string role, int? studentId)
+    {
+        var (auth, session, repo) = Create(); repo.Account.RoleName = role; repo.Account.StudentId = studentId;
+        Assert.False((await auth.LoginAsync("librarian", "Previous123")).Success);
+        Assert.Null(session.Current);
+    }
+    [Fact]
+    public async Task InactiveStudentCannotSignIn()
+    {
+        var (auth, session, repo) = Create(); repo.Account.RoleName = "Borrower"; repo.Account.StudentId = 23; repo.Account.IsActive = false;
+        Assert.False((await auth.LoginAsync("librarian", "Previous123")).Success); Assert.Null(session.Current);
+    }
+    [Fact]
+    public async Task StudentMustChangePasswordBeforeSession()
+    {
+        var (auth, session, repo) = Create(mustChange: true); repo.Account.RoleName = "Borrower"; repo.Account.StudentId = 23; repo.Account.SessionVersion = 2;
+        Assert.True((await auth.LoginAsync("librarian", "Previous123")).MustChangePassword); Assert.Null(session.Current);
+        Assert.True((await auth.ChangePasswordAsync(10, "Previous123", "NewPassword123")).Success);
+        Assert.Equal(2L, session.Current?.SessionVersion);
+    }
+    [Fact]
+    public async Task ArchivedAndRestoredStudentCannotFinishOldForcedChange()
+    {
+        var (auth, session, repo) = Create(mustChange: true); repo.Account.RoleName = "Borrower"; repo.Account.StudentId = 23;
+        Assert.True((await auth.LoginAsync("librarian", "Previous123")).MustChangePassword);
+        repo.Account.SessionVersion++;
+        Assert.False((await auth.ChangePasswordAsync(10, "Previous123", "NewPassword123")).Success);
+        Assert.Null(session.Current); Assert.True(repo.Account.MustChangePassword);
+    }
+
     private static (AuthService Auth, TestSession Session, TestRepository Repo) Create(bool mustChange = false)
     {
         var repo = new TestRepository(mustChange);
@@ -118,9 +161,9 @@ public sealed class AuthServiceTests
 
         public int RetryAfterSeconds { get; set; }
 
-        public Task<bool> UpdatePasswordAsync(int userId, string expectedHash, string passwordHash, bool mustChangePassword)
+        public Task<bool> UpdatePasswordAsync(int userId, string expectedHash, string passwordHash, bool mustChangePassword, long expectedSessionVersion = 0)
         {
-            if (userId != Account.UserId || expectedHash != Account.PasswordHash) return Task.FromResult(false);
+            if (userId != Account.UserId || expectedHash != Account.PasswordHash || expectedSessionVersion != Account.SessionVersion) return Task.FromResult(false);
             Account.PasswordHash = passwordHash;
             Account.MustChangePassword = mustChangePassword;
             return Task.FromResult(true);

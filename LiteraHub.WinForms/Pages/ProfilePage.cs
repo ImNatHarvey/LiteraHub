@@ -23,11 +23,13 @@ public sealed class ProfilePage : ThemedUserControl
     private readonly CenteredIconButton _editName = Action("Edit Name", IconChar.UserAlt);
     public event EventHandler? UsernameChanged;
     private bool _busy, _ready;
+    public bool IsBusy => _busy;
     private readonly Dictionary<ThemedTextField, (Label Caption, string Name, string Error)> _captions = new();
     private bool _hasKey;
-    public ProfilePage(IProfileService service)
+    public ProfilePage(IProfileService service, bool studentMode = false)
     {
         _service = service;
+        if (studentMode) Disposed += (_, _) => _editName.Dispose();
         Padding = new Padding(Space.L, Space.L, 0, Space.L);
         _surface.ReservedRightGutter = Space.L;
         _surface.SetContent(_grid);
@@ -38,7 +40,8 @@ public sealed class ProfilePage : ThemedUserControl
         {
             identityFields.Add(Caption(names[i])); identityFields.Add(_identity[i]);
             if (i == 0) identityFields.Add(_editUsername);
-            if (i == 1) identityFields.Add(_editName);
+            if (i == 1 && !studentMode) identityFields.Add(_editName);
+            else if (i == 1) { _editName.Visible = false; }
         }
         AddSection("Account Information", IconChar.UserAlt, identityFields.ToArray());
         AddSection("Appearance", IconChar.Palette, _theme);
@@ -193,7 +196,7 @@ public sealed class ProfilePage : ThemedUserControl
             _identity[0].Text = info.Username;
             _identity[1].Text = string.Join(" ", new[] { info.FirstName, info.MiddleName, info.LastName }.Where(n => !string.IsNullOrWhiteSpace(n)));
             if (_identity[1].Text.Length == 0) _identity[1].Text = "—";
-            _identity[2].Text = info.RoleName;
+            _identity[2].Text = LiteraHub.Core.Security.StudentAccountPolicy.DisplayRole(info.RoleName);
             _identity[3].Text = $"{info.UserId} · Active";
             _identity[4].Text = info.CreatedAt.ToString("MMMM d, yyyy");
             _hasKey = info.HasRecoveryPasskey;

@@ -113,6 +113,7 @@ public sealed class RolesPage : ThemedUserControl
         {
             if (e.RowIndex < 0 || e.RowIndex >= _grid.Rows.Count || _grid.Rows[e.RowIndex].DataBoundItem is not RoleDefinition user) return;
             if (e.ColumnIndex < 0) return;
+            if (_grid.Columns[e.ColumnIndex].Name == "Name") { e.Value = StudentAccountPolicy.DisplayRole(user.Name); e.FormattingApplied = true; }
             if (_grid.Columns[e.ColumnIndex].Name == "Type") { e.Value = user.IsSystem ? "System" : "Custom"; e.FormattingApplied = true; }
             if (_grid.Columns[e.ColumnIndex].Name == "Status") { e.Value = user.IsActive ? "Active" : "Inactive"; e.FormattingApplied = true; }
         };
@@ -302,14 +303,14 @@ public sealed class RolesPage : ThemedUserControl
         _filtered = _all.Where(u =>
             (_filter.RoleIndex == 0 || u.IsSystem == (_filter.RoleIndex == 1)) &&
             (_filter.StatusIndex == 0 || u.IsActive == (_filter.StatusIndex == 1)) &&
-            (query.Length == 0 || u.Name.Contains(query, StringComparison.OrdinalIgnoreCase) || u.RoleId.ToString().Contains(query)))
+            (query.Length == 0 || StudentAccountPolicy.DisplayRole(u.Name).Contains(query, StringComparison.OrdinalIgnoreCase) || u.RoleId.ToString().Contains(query)))
             .ToList();
         _filtered = (_filter.SortIndex switch
         {
-            1 => _filtered.OrderByDescending(u => u.Name, StringComparer.OrdinalIgnoreCase),
+            1 => _filtered.OrderByDescending(u => StudentAccountPolicy.DisplayRole(u.Name), StringComparer.OrdinalIgnoreCase),
             2 => _filtered.OrderByDescending(u => u.RoleId),
             3 => _filtered.OrderBy(u => u.RoleId),
-            _ => _filtered.OrderBy(u => u.Name, StringComparer.OrdinalIgnoreCase)
+            _ => _filtered.OrderBy(u => StudentAccountPolicy.DisplayRole(u.Name), StringComparer.OrdinalIgnoreCase)
         }).ToList();
         _page = 1;
         Render();

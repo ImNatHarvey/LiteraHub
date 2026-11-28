@@ -21,7 +21,7 @@ public sealed class StaffUserRepository : IStaffUserRepository
                r.IsActive AS RoleIsActive, CAST(CASE WHEN u.RecoveryPasskeyHash IS NULL THEN 0 ELSE 1 END AS BIT) AS HasRecoveryPasskey
         FROM dbo.Users u
         INNER JOIN dbo.Roles r ON r.RoleId = u.RoleId
-        WHERE r.Name <> N'Borrower'
+        WHERE r.Name NOT IN(N'Borrower',N'Student') AND u.StudentId IS NULL
         """;
 
     public StaffUserRepository(IDbConnectionFactory factory, IPasswordHasher hasher)
@@ -59,6 +59,7 @@ public sealed class StaffUserRepository : IStaffUserRepository
         await using var tx = await db.BeginTransactionAsync(IsolationLevel.Serializable);
         var guard = await DelegationGuard.LoadAsync(db, tx, actor, RolePermission.UsersAdd, RolePermission.UsersView);
         await guard.CheckAssignmentAsync(input.RoleName);
+        if (StudentAccountPolicy.IsReservedStudentIdentifier(input.Username)) throw new ArgumentException("The STU- prefix is reserved for Student IDs.");
         int id = await db.ExecuteScalarAsync<int>("""
             INSERT INTO dbo.Users (Username, PasswordHash, RoleId, MustChangePassword, IsActive, FirstName, MiddleName, LastName, RecoveryPasskeyHash, RecoveryPasskeyCreatedAt)
             OUTPUT INSERTED.UserId
@@ -169,7 +170,7 @@ public sealed class StaffUserRepository : IStaffUserRepository
                     RoleId = CASE WHEN @Role IS NULL THEN RoleId ELSE
                         (SELECT RoleId FROM dbo.Roles WHERE Name = @Role AND IsActive = 1 AND Name <> N'Borrower') END,
                     IsActive = @IsActive
-                WHERE UserId = @UserId
+                WHERE UserId = @UserId AND (@Username IS NULL OR @Username NOT LIKE N'STU-%' OR @Username=Username)
                 """, new { UserId = userId, Username = input?.Username, Role = input?.RoleName, IsActive = newActive, EditNames = input is not null, FirstName = input?.FirstName, MiddleName = input?.MiddleName, LastName = input?.LastName }, tx);
             if (updated == 1)
                 await AuditWriter.WriteAsync(db, tx, actor, new AuditEvent(AuditModule.Users, (input is not null ? AuditAction.Updated : active == true ? AuditAction.Restored : AuditAction.Archived), userId));

@@ -53,8 +53,8 @@ public sealed class RoleDetailsPage : ThemedUserControl
         _permissions = authorization;
         _grantable = authorization.GrantedRolePermissions().ToHashSet();
         bool admin = string.Equals(actorRole, RoleNames.Admin, StringComparison.OrdinalIgnoreCase);
-        _canManageTarget = role is null || admin || (!role.IsSystem &&
-            !string.Equals(role.Name, actorRole, StringComparison.OrdinalIgnoreCase) && _original.IsSubsetOf(_grantable));
+        _canManageTarget = role is null || (!StudentAccountPolicy.IsStudentRole(role.Name) && (admin || (!role.IsSystem &&
+            !string.Equals(role.Name, actorRole, StringComparison.OrdinalIgnoreCase) && _original.IsSubsetOf(_grantable))));
         Dock = DockStyle.Fill; Padding = new Padding(Space.L, Space.L, 0, Space.L);
         _header.AlignBackToRightEdge = true;
         _root.ColumnCount = 2;
@@ -88,7 +88,7 @@ public sealed class RoleDetailsPage : ThemedUserControl
             foreach (var permission in Enum.GetValues<RolePermission>().Where(p => p.ToString().StartsWith(group.Item1, StringComparison.Ordinal)))
             {
                 var suffix = permission.ToString()[group.Item1.Length..];
-                var box = new PermissionCheckBox { Text = suffix == "ArchiveRestore" ? "Archive / Restore" : suffix, AutoSize = false, AccessibleName = group.Item2 + " " + suffix };
+                var box = new PermissionCheckBox { Text = suffix == "ArchiveRestore" ? "Archive / Restore" : suffix == "ManageAccounts" ? "Manage Accounts" : suffix, AutoSize = false, AccessibleName = group.Item2 + " " + suffix };
                 _checks.Add(permission, box); boxes.Add(box); panel.Controls.Add(box);
                 box.CheckedChanged += (_, _) => PermissionChanged(permission, group.Item1);
             }
@@ -119,7 +119,7 @@ public sealed class RoleDetailsPage : ThemedUserControl
     }
     private void Restore()
     {
-        _name.Text = _role?.Name ?? ""; _description.Text = _role?.Description ?? "";
+        _name.Text = _role is null ? "" : StudentAccountPolicy.DisplayRole(_role.Name); _description.Text = _role?.Description ?? "";
         _viewName.Text = _name.Text; _viewDescription.Text = string.IsNullOrWhiteSpace(_description.Text) ? "—" : _description.Text;
         _setting = true;
         try { foreach (var pair in _checks) pair.Value.Checked = _original.Contains(pair.Key); }
@@ -145,7 +145,7 @@ public sealed class RoleDetailsPage : ThemedUserControl
         _header.HeadingText = _role is null ? "Add Role" : editing ? "Edit Role" : "Role Details";
         _header.SubtitleText = _role is null ? "Create a custom role and select its permissions." : $"Role ID: {_role.RoleId}";
         _type.Text = _role is null ? "Custom · Active on creation" : $"{(_role.IsSystem ? "System" : "Custom")} · {(_role.IsActive ? "Active" : "Archived")}";
-        _notice.Text = _role?.IsSystem == true ? "Only the description of a built-in role can be edited." : _canManageTarget ? "Only permissions you hold may be granted." : "This role is protected or has permissions beyond your own.";
+        _notice.Text = StudentAccountPolicy.IsStudentRole(_role?.Name) ? "The Student system role is protected and has no staff permissions." : _role?.IsSystem == true ? "Only the description of a built-in role can be edited." : _canManageTarget ? "Only permissions you hold may be granted." : "This role is protected or has permissions beyond your own.";
         _footer.ArrangeActions(); ApplyTheme();
     }
     private void PermissionChanged(RolePermission permission, string prefix)

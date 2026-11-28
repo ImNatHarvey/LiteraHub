@@ -22,13 +22,15 @@ internal sealed class DelegationGuard
 
     public static async Task<DelegationGuard> LoadAsync(DbConnection db, DbTransaction tx, UserSession actor, RolePermission action, RolePermission view)
     {
+        if (actor.StudentId.HasValue || !StudentAccountPolicy.IsValidIdentity(actor.RoleName, actor.StudentId) || StudentAccountPolicy.IsStudentRole(actor.RoleName))
+            throw new RolePermissionDeniedException(action);
         // Hold locks until commit; permission changes and account reassignment cannot race this decision.
         var role = await db.QuerySingleOrDefaultAsync<RoleDefinition>("""
             SELECT r.RoleId, r.Name, r.IsSystem, r.IsActive
             FROM dbo.Users u WITH (UPDLOCK, HOLDLOCK)
             JOIN dbo.Roles r WITH (UPDLOCK, HOLDLOCK) ON r.RoleId = u.RoleId
             WHERE u.UserId = @UserId AND u.IsActive = 1 AND u.MustChangePassword = 0
-              AND r.IsActive = 1 AND r.Name = @RoleName;
+              AND r.IsActive = 1 AND r.Name = @RoleName AND u.StudentId IS NULL AND r.Name NOT IN(N'Borrower',N'Student');
             """, new { actor.UserId, actor.RoleName }, tx);
         if (role is null) throw new RolePermissionDeniedException(action);
         var keys = (await ReadKeysAsync(db, tx, role.RoleId)).ToHashSet(StringComparer.Ordinal);
@@ -51,7 +53,7 @@ internal sealed class DelegationGuard
             """, new { id, name }, _tx);
         if (role is null || (requireActive && !role.IsActive))
             throw new InvalidOperationException("The selected role is unavailable.");
-        if (string.Equals(role.Name, RoleNames.Borrower, StringComparison.OrdinalIgnoreCase) && !roleMutation)
+        if ((StudentAccountPolicy.IsStudentRole(role.Name) || !StudentAccountPolicy.IsValidIdentity(role.Name, null)) && !roleMutation)
             throw new InvalidOperationException("Borrower is not a staff role.");
         if (IsOwner) return role;
         if ((!IsAdmin && role.IsSystem) || (roleMutation && role.RoleId == RoleId))
@@ -85,7 +87,7 @@ internal sealed class DelegationGuard
         if (await _db.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Users WITH (UPDLOCK, HOLDLOCK) WHERE UserId=@targetId AND IsSystemOwner=1", new { targetId }, _tx) > 0)
             throw new InvalidOperationException("The System Owner is protected. Only the owner can manage personal information through Profile & Settings.");
         var roleId = await _db.QuerySingleOrDefaultAsync<int?>("""
-            SELECT RoleId FROM dbo.Users WITH (UPDLOCK, HOLDLOCK) WHERE UserId = @targetId;
+            SELECT RoleId FROM dbo.Users WITH (UPDLOCK, HOLDLOCK) WHERE UserId = @targetId AND StudentId IS NULL;
             """, new { targetId }, _tx);
         if (roleId is null) throw new InvalidOperationException("Staff account was not found.");
         await CheckRoleAsync(roleId, null, roleMutation: false);
